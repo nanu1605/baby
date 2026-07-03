@@ -6,7 +6,7 @@ import argparse
 import asyncio
 import sys
 
-import tools.clock  # noqa: F401 — registers get_time
+from tools import register_all
 
 # Windows consoles may default to cp1252; Baby speaks UTF-8 (Hindi etc.).
 # stdin matters too: piped input would otherwise decode Devanagari as mojibake.
@@ -18,6 +18,7 @@ for _name in ("stdin", "stdout", "stderr"):
 
 
 def main() -> None:
+    register_all()
     parser = argparse.ArgumentParser(prog="baby", description="Baby — personal AI assistant")
     parser.add_argument("--cli", action="store_true", help="interactive REPL")
     parser.add_argument("--ui", action="store_true", help="web UI (Phase 1)")
@@ -25,11 +26,22 @@ def main() -> None:
     parser.add_argument("--all", action="store_true", help="everything (Phase 4)")
     args = parser.parse_args()
 
-    if args.ui or args.voice or args.all:
-        print("Not built yet — arrives in a later phase. Use --cli.")
+    if args.voice or args.all:
+        print("Not built yet — arrives in a later phase. Use --cli or --ui.")
         sys.exit(2)
 
-    if args.cli:
+    if args.ui:
+        import yaml
+
+        from ui.server import run_ui
+
+        with open("config.yaml", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        try:
+            asyncio.run(run_ui(config))
+        except KeyboardInterrupt:
+            print("\nbye.")
+    elif args.cli:
         from clients.cli import run_cli
 
         try:

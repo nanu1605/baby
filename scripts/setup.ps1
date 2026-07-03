@@ -55,6 +55,40 @@ if ($tags -contains $daily) {
     }
 }
 
+# --- 2b. Everything (instant file search) -------------------------------------
+if (-not (Get-Command Everything -ErrorAction SilentlyContinue) -and
+    -not (Test-Path "$env:ProgramFiles\Everything\Everything.exe") -and
+    -not (Test-Path "${env:ProgramFiles(x86)}\Everything\Everything.exe")) {
+    Write-Host "Everything not found — installing via winget..." -ForegroundColor Yellow
+    winget install --id voidtools.Everything -e --accept-package-agreements --accept-source-agreements
+} else {
+    Write-Host "Everything: OK"
+}
+
+# Everything must run non-elevated for IPC from Baby to work, and should start
+# at login so file_search stays instant. HKCU Run key handles both.
+Set-ItemProperty "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "Everything" `
+    -Value '"C:\Program Files\Everything\Everything.exe" -startup'
+
+# Everything SDK DLL (ships separately from the app; needed for the ctypes IPC).
+$babyDir = "$env:LOCALAPPDATA\baby"
+$dllPath = "$babyDir\Everything64.dll"
+if (-not (Test-Path $dllPath)) {
+    Write-Host "Downloading Everything SDK (for Everything64.dll)..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Force $babyDir | Out-Null
+    $sdkZip = "$env:TEMP\Everything-SDK.zip"
+    try {
+        Invoke-WebRequest "https://www.voidtools.com/Everything-SDK.zip" -OutFile $sdkZip -TimeoutSec 120
+        Expand-Archive $sdkZip -DestinationPath "$env:TEMP\Everything-SDK" -Force
+        Copy-Item "$env:TEMP\Everything-SDK\dll\Everything64.dll" $dllPath -Force
+        Write-Host "Everything64.dll installed to $dllPath"
+    } catch {
+        Write-Host "SDK download failed — file_search will use the scandir fallback index." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Everything SDK DLL: OK"
+}
+
 # --- 3. uv + Python env ------------------------------------------------------
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Host "uv not found — installing (user-scope)..." -ForegroundColor Yellow

@@ -50,6 +50,25 @@ class Database:
         row = await cur.fetchone()
         return row["id"] if row else None
 
+    # -- audit ---------------------------------------------------------------
+
+    async def add_audit(
+        self,
+        channel: str,
+        tool: str,
+        args: str,
+        safety_class: str,
+        approved: int,
+        result_summary: str,
+    ) -> int:
+        cur = await self.conn.execute(
+            "INSERT INTO audit_log (channel, tool, args, safety_class, approved,"
+            " result_summary) VALUES (?, ?, ?, ?, ?, ?)",
+            (channel, tool, args, safety_class, approved, result_summary),
+        )
+        await self.conn.commit()
+        return cur.lastrowid
+
     # -- messages -----------------------------------------------------------
 
     async def add_message(self, conversation_id: int, role: str, content: str) -> int:
@@ -78,3 +97,17 @@ class Database:
         cur = await self.conn.execute(query, params)
         rows = await cur.fetchall()
         return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    async def get_history(self, conversation_id: int, limit: int = 50) -> list[dict]:
+        """User/assistant messages with timestamps, oldest first — UI backfill."""
+        cur = await self.conn.execute(
+            "SELECT role, content, created_at FROM messages"
+            " WHERE conversation_id = ? AND role IN ('user', 'assistant')"
+            " ORDER BY id DESC LIMIT ?",
+            (conversation_id, limit),
+        )
+        rows = await cur.fetchall()
+        return [
+            {"role": r["role"], "content": r["content"], "created_at": r["created_at"]}
+            for r in reversed(rows)
+        ]

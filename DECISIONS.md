@@ -43,3 +43,51 @@ Running log of non-obvious choices made during the build. Newest last.
     LIMIT slots and conversation memory silently shrinks on tool-heavy turns.
 12. **Sync tools run via `asyncio.to_thread`** in registry dispatch so a future
     blocking tool (search, subprocess) can't stall streaming or other channels.
+
+## Phase 1 (2026-07-03)
+
+13. **`duckduckgo-search` → `ddgs`**: the spec-named package was frozen and
+    renamed in July 2025; using `ddgs`.
+14. **`pynvml` → `nvidia-ml-py`**: the `pynvml` PyPI package is deprecated;
+    `nvidia-ml-py` is NVIDIA's official binding (still imports as `pynvml`).
+15. **Everything64.dll downloaded, not vendored**: `setup.ps1` pulls the
+    voidtools SDK zip and drops the DLL in `%LOCALAPPDATA%\baby\`; the binary
+    stays out of git.
+16. **.lnk resolution without pywin32**: one PowerShell `WScript.Shell` COM
+    script per index build emits JSON; `open` launches the `.lnk` itself via
+    `os.startfile` — no binary .lnk parsing on the hot path.
+17. **"taskkill after 5 s" implemented as `psutil.Process.kill()`** — same
+    Win32 `TerminateProcess`, one less subprocess.
+18. **`Stop-Computer`/`shutdown` DENY→CONFIRM downgrade** uses a deterministic
+    shutdown-intent regex over the triggering user message — the LLM still
+    never classifies its own commands.
+19. **Chain splitting is quote-unaware by design**; mis-splits inside quotes
+    over-restrict (unknown → CONFIRM), never fail open. Scriptblock `{...}`
+    and subexpression `$(...)` contents are extracted as extra segments so
+    `ForEach-Object { Stop-Process lsass }` can't hide inside a pipeline.
+20. **Callbacks replaced by the event bus**: one emission path for CLI, UI,
+    and future surfaces. Audit rows are written inline in the dispatch path —
+    the bus (drop-oldest under backpressure) is only the live mirror.
+21. **markitdown installed with `[pdf,docx]` extras** — read_file converts
+    pdf/docx/pptx/xlsx without the full dependency kitchen sink.
+22. **Kill switch scope in Phase 1**: UI Stop button + `POST /kill` (cancels
+    the turn task and all pending confirmations). Global hotkey and voice
+    phrases arrive in Phase 3 with the keyboard/voice threads.
+23. **Fallback file index uses a 24 h TTL checked on use**; the spec's nightly
+    rebuild belongs to Phase 4's scheduler.
+24. **`GET /tasks` and `GET /memory` omitted** — their data layers are
+    Phase 4/Phase 2 respectively.
+25. **`cd`/`Set-Location` special-cased ALLOW** despite the generic
+    `Set-*` → CONFIRM rule; it mutates nothing on disk.
+26. **`GET /stats` endpoint added** for the header gauges (spec says "polled"
+    without naming a route).
+27. **Everything must run non-elevated**: the winget installer launched it
+    elevated and SDK IPC failed (error 2) until restarted normally. setup.ps1
+    adds an HKCU Run key (`-startup`) so it starts per-login, non-elevated.
+28. **UI multi-socket flows verified manually**: Starlette's TestClient gives
+    each websocket session its own portal thread, and asyncio queues are not
+    thread-safe across portals — the confirm-modal round trip is covered by
+    agent-level tests plus the manual checklist.
+29. **`explorer` not in the deny kill set** (spec lists only core session
+    processes); killing it falls to the generic taskkill CONFIRM, since
+    restarting Explorer is a legitimate ask.

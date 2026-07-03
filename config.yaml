@@ -56,9 +56,14 @@ search:
   engine: ddg                           # ddg | brave | searxng
   max_results: 6
 
+files:
+  everything_dll: ""                    # optional explicit DLL path; default resolution otherwise
+  index_ttl_hours: 24                   # scandir fallback index freshness
+
 safety:
   mode: enforce                         # enforce | dry_run
   auto_allow_app_close: [chrome, msedge, notepad, spotify, vlc]
+  confirm_timeout_s: 60                 # unanswered confirmation = NO
 
 telegram:
   enabled: false
