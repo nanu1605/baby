@@ -1,0 +1,22 @@
+# Secrets — never commit
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data
+baby.db
+baby.db-wal
+baby.db-shm
+logs/
+
+# Models / large artifacts
+models/*.onnx
+assets/baby_ready.wav
+
+# Local tool config
+.claude/

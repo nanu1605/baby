@@ -1,0 +1,69 @@
+owner:
+  name: Tanishq
+  city: Indore
+  languages: [en, hi, hinglish]
+
+models:
+  daily:
+    provider: ollama
+    model: qwen3.5:9b-q4_K_M            # verified tag (no -instruct variant published)
+    num_ctx: 8192
+    temperature: 0.7
+    keep_alive: 24h
+  heavy:
+    provider: ollama
+    model: qwen3.6:35b-a3b-q4_K_M       # verify tag before Phase 4
+    num_ctx: 8192
+    temperature: 0.5
+    keep_alive: 10m
+    min_free_ram_gb: 22
+  cloud:
+    provider: gemini
+    model: gemini-flash-latest          # free tier; key in .env; optional
+  embedder: intfloat/multilingual-e5-small
+
+router:
+  default: daily
+  escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
+  escalation_order: [heavy, cloud]
+
+voice:
+  wakeword_model: models/hey_baby.onnx
+  wakeword_threshold: 0.55
+  push_to_talk_hotkey: ctrl+alt+b
+  stt:
+    model: large-v3-turbo
+    device: cuda
+    compute_type: int8
+  tts:
+    engine: kokoro
+    voice_en: af_heart                  # verify against Kokoro VOICES.md in Phase 3
+    voice_hi: hf_beta                   # verify against Kokoro VOICES.md in Phase 3
+    speed: 1.05
+  vad_silence_ms: 400
+  barge_in: true
+  ready_announce:
+    enabled: true
+    phrase: "Baby ready"
+    sound_file: assets/baby_ready.wav
+    min_interval_s: 60
+
+ui:
+  host: 127.0.0.1
+  port: 8765
+
+search:
+  engine: ddg                           # ddg | brave | searxng
+  max_results: 6
+
+safety:
+  mode: enforce                         # enforce | dry_run
+  auto_allow_app_close: [chrome, msedge, notepad, spotify, vlc]
+
+telegram:
+  enabled: false
+
+briefing:
+  enabled: false
+  cron: "0 8 * * *"
+  include: [date, weather, pending_tasks, headlines, system_health]
