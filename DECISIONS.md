@@ -91,3 +91,45 @@ Running log of non-obvious choices made during the build. Newest last.
 29. **`explorer` not in the deny kill set** (spec lists only core session
     processes); killing it falls to the generic taskkill CONFIRM, since
     restarting Explorer is a legitimate ask.
+
+## Phase 2 (2026-07-03)
+
+30. **sqlite-vec pinned `>=0.1.9,<0.2`**; the vec0 DDL lives in
+    `memory/store.py`, not `schema.sql` — the extension loads per-connection,
+    and every other consumer of the DB (including all Phase 0/1 tests) must
+    keep working without it. 0.1.7+ is required for reliable vec0 DELETE.
+31. **`forget()` deletes the vector row** (and only flips `facts.active=0`,
+    keeping the row for audit): a vec0 KNN `MATCH` runs before any JOIN/WHERE
+    on other tables (sqlite-vec #196), so `active=1` cannot filter the KNN
+    pass — dead vectors would hold top-k slots forever. `search()` still
+    over-fetches 3x and join-filters as a backstop.
+32. **`min_similarity: 0.80`** — e5 cosine scores are anisotropic (unrelated
+    pairs land ~0.70–0.75), so the spec's "similarity floor" defaults to 0.80
+    and is exposed in config for tuning. Unit tests use a token-bag
+    FakeEmbedder whose scores sit far lower, with a 0.1 floor — they test the
+    floor's semantics, not its calibration.
+33. **Feature #8 is one dedicated post-task call** (`tools=None`, 80-token
+    cap, streamed with a `Next:` prefix); Appendix A's "proactively suggest
+    the next step" persona line is omitted — both together produce double
+    suggestions. The extra call only fires when at least one tool succeeded,
+    and its failure never fails the turn.
+34. **qwen3.5 is a thinking model on Ollama**: `max_tokens` is consumed by the
+    `reasoning` channel first, so tightly-capped calls returned empty content.
+    Verified `reasoning_effort: "none"` is the only /v1 knob that disables
+    thinking (`think: false` and `chat_template_kwargs` are ignored). All
+    internal capped calls (summary, extraction, next-step) pass it.
+35. **Brute-force fallback ships dormant**: if vec0 ever fails to load,
+    the store keeps float32 BLOBs in a plain `fact_embeddings` table and does
+    Python cosine over them — same public API, exercised by a forced-failure
+    test. On this machine the extension loads (verified: CPython 3.13.14,
+    SQLite 3.50.4, win_amd64 wheel).
+36. **Extractor has its own watermark** (`conversations.extracted_upto`) and
+    advances it even when the model's JSON is unparseable — one extraction
+    attempt per message span, never a retry loop on the same text.
+37. **Persona hardened after a live fabrication**: the 9B model replied
+    "locked in memory" without calling `remember` (nothing stored). The
+    memory section now says it MUST call the tool and that nothing is stored
+    without it — verified fixed live.
+38. **Embeddings via sentence-transformers on CPU**: PyPI torch wheels on
+    Windows are CPU-only (the 117 MB download confirms it), so the GPU budget
+    stays untouched. fastembed/ONNX noted as plan B if torch becomes a burden.

@@ -2,7 +2,9 @@ CREATE TABLE IF NOT EXISTS conversations (
   id INTEGER PRIMARY KEY,
   channel TEXT NOT NULL,               -- cli | ui | voice | telegram | scheduler
   started_at TEXT DEFAULT (datetime('now')),
-  summary TEXT                         -- rolling summary lives here
+  summary TEXT,                        -- rolling summary lives here
+  summarized_upto INTEGER DEFAULT 0,   -- last message id folded into summary
+  extracted_upto INTEGER DEFAULT 0     -- last message id scanned for facts
 );
 
 CREATE TABLE IF NOT EXISTS messages (

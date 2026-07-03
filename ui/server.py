@@ -34,6 +34,7 @@ class UIContext:
     gate: SafetyGate
     agent: AgentCore
     config: dict = field(default_factory=dict)
+    memory: object | None = None  # memory.Memory; kept loose to avoid heavy import
     current_turn: asyncio.Task | None = None
 
     def turn_running(self) -> bool:
@@ -60,6 +61,12 @@ def create_app(ctx: UIContext) -> FastAPI:
     @app.get("/history")
     async def history(limit: int = 50):
         return await ctx.db.get_history(ctx.agent.conversation_id, limit)
+
+    @app.get("/memory")
+    async def memory_view(limit: int = 200):
+        if ctx.memory is None:
+            return []
+        return await ctx.memory.store.list_facts(limit)
 
     @app.post("/confirm/{confirm_id}")
     async def confirm(confirm_id: str, body: dict):
@@ -174,11 +181,26 @@ async def run_ui(config: dict) -> None:
     files_tools.configure(index_ttl_hours=config.get("files", {}).get("index_ttl_hours", 24))
     asyncio.get_running_loop().run_in_executor(None, apps.build_index)
 
+    from memory import build_memory
+
+    memory = await build_memory(config, db, provider)
+    if memory is not None:
+        print(f"memory ready ({await memory.store.count_active()} facts)")
+
     conv_id = await db.latest_conversation("ui") or await db.create_conversation("ui")
     bus = EventBus()
     gate = build_gate(config, bus)
-    agent = AgentCore(provider, db, conv_id, channel="ui", bus=bus, gate=gate)
-    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=config)
+    agent = AgentCore(
+        provider,
+        db,
+        conv_id,
+        channel="ui",
+        bus=bus,
+        gate=gate,
+        memory=memory,
+        suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
+    )
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=config, memory=memory)
     app = create_app(ctx)
 
     ui_cfg = config.get("ui", {})

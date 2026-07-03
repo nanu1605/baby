@@ -105,6 +105,19 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# --- 3b. Memory stack (Phase 2) -----------------------------------------------
+# Pre-download the e5 embedding model (~470 MB, one-time) so first boot is fast,
+# and smoke-test the sqlite-vec extension load.
+Write-Host "Checking embedding model + sqlite-vec..."
+uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small', device='cpu'); print('e5 model: OK')"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "e5 model download failed — memory will be unavailable until it succeeds." -ForegroundColor Yellow
+}
+uv run python -c "import sqlite3, sqlite_vec; c = sqlite3.connect(':memory:'); c.enable_load_extension(True); c.load_extension(sqlite_vec.loadable_path()); print('sqlite-vec: OK', c.execute('select vec_version()').fetchone()[0])"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "sqlite-vec failed to load — memory will fall back to brute-force search." -ForegroundColor Yellow
+}
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"

@@ -56,6 +56,17 @@ search:
   engine: ddg                           # ddg | brave | searxng
   max_results: 6
 
+memory:
+  k: 5                                  # facts injected per turn
+  min_similarity: 0.80                  # e5 scores cluster high; tune with real facts
+  dedup_similarity: 0.90                # spec section 12
+  summarize_every: 10                   # messages between rolling-summary updates
+  extract_every: 20                     # messages between fact-extraction passes
+  keep_recent: 10                       # newest messages never folded into summary
+
+persona:
+  suggest_next_step: true               # feature #8: extra call after a real task
+
 files:
   everything_dll: ""                    # optional explicit DLL path; default resolution otherwise
   index_ttl_hours: 24                   # scandir fallback index freshness

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import TYPE_CHECKING
 
 from core.bus import EventBus
 from core.prompts import system_prompt
@@ -17,6 +18,9 @@ from core.providers.base import ChatProvider, ToolCall
 from core.safety import SafetyClass, SafetyConfig, SafetyGate
 from db.database import Database
 from tools import registry
+
+if TYPE_CHECKING:
+    from memory import Memory
 
 MAX_TOOL_ITERATIONS = 8
 
@@ -50,6 +54,8 @@ class AgentCore:
         bus: EventBus | None = None,
         gate: SafetyGate | None = None,
         history_limit: int = 30,
+        memory: Memory | None = None,
+        suggest_next_step: bool = False,
     ) -> None:
         self.provider = provider
         self.db = db
@@ -58,6 +64,9 @@ class AgentCore:
         self.bus = bus or EventBus()  # subscriber-less bus = no-op
         self.gate = gate or SafetyGate(SafetyConfig(), self.bus)
         self.history_limit = history_limit
+        self.memory = memory
+        self.suggest_next_step = suggest_next_step
+        self.maintenance_task: asyncio.Task | None = None  # clients may await on shutdown
 
     async def run_turn(self, user_text: str) -> str:
         """Process one user message; returns the final assistant reply."""
@@ -74,15 +83,38 @@ class AgentCore:
             raise
         finally:
             self.bus.publish("turn_end", self.channel, reply=reply, status=status)
+            if self.memory is not None and status == "ok":
+                self._schedule_maintenance()
 
     async def _loop(self, user_text: str) -> tuple[str, str]:
+        summary: str | None = None
+        memories: list[str] = []
+        after_id = 0
+        if self.memory is not None:
+            try:
+                summary, upto = await self.db.get_summary_state(self.conversation_id)
+                if summary:
+                    # Summarized turns must not also appear verbatim — that
+                    # double-spends the 8K context on the same messages.
+                    after_id = upto
+                memories = [f["text"] for f in await self.memory.store.search(user_text)]
+            except Exception:  # noqa: BLE001 — memory failure must not block a turn
+                summary, memories, after_id = None, [], 0
+
         # Only user/assistant text is reloaded across restarts; tool traffic
         # lives within a single turn (see DECISIONS.md).
         history = await self.db.get_messages(
-            self.conversation_id, self.history_limit, roles=("user", "assistant")
+            self.conversation_id,
+            self.history_limit,
+            roles=("user", "assistant"),
+            after_id=after_id,
         )
-        messages: list[dict] = [{"role": "system", "content": system_prompt()}, *history]
+        messages: list[dict] = [
+            {"role": "system", "content": system_prompt(summary, memories)},
+            *history,
+        ]
 
+        tools_succeeded = 0
         for _ in range(MAX_TOOL_ITERATIONS):
             text_parts: list[str] = []
             tool_calls: list[ToolCall] = []
@@ -96,6 +128,10 @@ class AgentCore:
 
             if not tool_calls:
                 reply = text or "(no response)"
+                if self.suggest_next_step and tools_succeeded > 0:
+                    suggestion = await self._suggest_next_step(messages, text)
+                    if suggestion:
+                        reply = f"{reply}\n\nNext: {suggestion}"
                 await self.db.add_message(self.conversation_id, "assistant", reply)
                 return reply, "ok"
 
@@ -115,6 +151,8 @@ class AgentCore:
             )
             for tc in tool_calls:
                 result = await self._execute_tool(tc, user_text)
+                if not result.lstrip().startswith('{"error"'):
+                    tools_succeeded += 1
                 await self.db.add_message(
                     self.conversation_id,
                     "tool",
@@ -128,6 +166,55 @@ class AgentCore:
         )
         await self.db.add_message(self.conversation_id, "assistant", capped)
         return capped, "capped"
+
+    async def _suggest_next_step(self, messages: list[dict], final_text: str) -> str:
+        """Feature #8: one extra no-tools call proposing the next action.
+
+        Failure is soft — a missing suggestion never fails the turn. The
+        "\\n\\nNext: " prefix streams only once real tokens arrive, so an
+        empty suggestion leaves no dangling text in the UI.
+        """
+        try:
+            prompt = [
+                *messages,
+                {"role": "assistant", "content": final_text or "(task done)"},
+                {
+                    "role": "user",
+                    "content": "In one short line, suggest the single most useful "
+                    "next step after what you just did. No preamble, no options — "
+                    "just the suggestion, in the language of the conversation.",
+                },
+            ]
+            parts: list[str] = []
+            async for chunk in self.provider.chat(
+                prompt, tools=None, max_tokens=80, reasoning_effort="none"
+            ):
+                if chunk.delta:
+                    if not parts:
+                        self.bus.publish("token", self.channel, text="\n\nNext: ")
+                    parts.append(chunk.delta)
+                    self.bus.publish("token", self.channel, text=chunk.delta)
+            return "".join(parts).strip()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — suggestion is best-effort
+            return ""
+
+    def _schedule_maintenance(self) -> None:
+        """Single-flight background summarize + extract after a good turn."""
+        if self.maintenance_task is not None and not self.maintenance_task.done():
+            return
+        self.maintenance_task = asyncio.create_task(self._maintenance())
+
+    async def _maintenance(self) -> None:
+        try:
+            await self.memory.summarizer.maybe_summarize(self.conversation_id)
+        except Exception:  # noqa: BLE001 — maintenance never disturbs the session
+            pass
+        try:
+            await self.memory.extractor.maybe_extract(self.conversation_id)
+        except Exception:  # noqa: BLE001
+            pass
 
     async def _execute_tool(self, tc: ToolCall, user_text: str) -> str:
         """Gate → execute → audit → events. Owns the whole tool lifecycle."""

@@ -79,6 +79,12 @@ async def run_cli(config_path: str = "config.yaml") -> None:
         await db.close()
         sys.exit(1)
 
+    from memory import build_memory
+
+    memory = await build_memory(config, db, provider)
+    if memory is not None:
+        print(f"memory ready ({await memory.store.count_active()} facts)")
+
     conv_id = await db.latest_conversation("cli")
     if conv_id is None:
         conv_id = await db.create_conversation("cli")
@@ -88,7 +94,16 @@ async def run_cli(config_path: str = "config.yaml") -> None:
 
     bus = EventBus()
     gate = build_gate(config, bus)
-    agent = AgentCore(provider, db, conv_id, channel="cli", bus=bus, gate=gate)
+    agent = AgentCore(
+        provider,
+        db,
+        conv_id,
+        channel="cli",
+        bus=bus,
+        gate=gate,
+        memory=memory,
+        suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
+    )
     renderer = asyncio.create_task(_render(bus, gate))
 
     print(f"Baby ready (text only) — model: {daily['model']}. Ctrl+C or 'exit' to quit.\n")
@@ -111,4 +126,9 @@ async def run_cli(config_path: str = "config.yaml") -> None:
         print("\nbye.")
     finally:
         renderer.cancel()
+        if agent.maintenance_task is not None and not agent.maintenance_task.done():
+            try:
+                await asyncio.wait_for(agent.maintenance_task, timeout=30)
+            except Exception:  # noqa: BLE001 — shutdown is best-effort
+                pass
         await db.close()

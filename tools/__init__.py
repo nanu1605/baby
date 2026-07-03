@@ -5,4 +5,4 @@ from __future__ import annotations
 
 
 def register_all() -> None:
-    from tools import apps, clock, files, shell, system_stats, web  # noqa: F401
+    from tools import apps, clock, files, memory_tools, shell, system_stats, web  # noqa: F401

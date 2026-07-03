@@ -22,6 +22,7 @@ class FakeProvider:
     def __init__(self, script: list[str | list[ToolCall]]) -> None:
         self.script = list(script)
         self.requests: list[list[dict]] = []
+        self.request_tools: list[list[dict] | None] = []
 
     async def chat(
         self,
@@ -30,6 +31,7 @@ class FakeProvider:
         **opts,
     ) -> AsyncIterator[Chunk]:
         self.requests.append([dict(m) for m in messages])
+        self.request_tools.append(tools)
         if not self.script:
             yield Chunk(delta="(script exhausted)", done=False)
             yield Chunk(done=True)

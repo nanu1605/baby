@@ -36,6 +36,21 @@ class OllamaProvider:
         tools: list[dict] | None = None,
         **opts,
     ) -> AsyncIterator[Chunk]:
+        # Ollama honors keep_alive on its OpenAI endpoint via extra body.
+        # num_ctx is belt-and-braces: OLLAMA_CONTEXT_LENGTH is the reliable
+        # mechanism (see DECISIONS.md), but pass it in case the endpoint
+        # honors options.
+        extra_body: dict = {
+            "keep_alive": self.keep_alive,
+            "options": {"num_ctx": self.num_ctx},
+        }
+        # Thinking models (qwen3.5) burn max_tokens in the reasoning channel
+        # and return empty content when capped. reasoning_effort="none" is the
+        # only /v1 knob that disables thinking (verified; think/false and
+        # chat_template_kwargs are ignored) — internal calls with tight caps
+        # (summary, extraction, next-step) must pass it.
+        if opts.get("reasoning_effort"):
+            extra_body["reasoning_effort"] = opts["reasoning_effort"]
         stream = await self._client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -43,14 +58,7 @@ class OllamaProvider:
             temperature=opts.get("temperature", self.temperature),
             max_tokens=opts.get("max_tokens"),
             stream=True,
-            # Ollama honors keep_alive on its OpenAI endpoint via extra body.
-            # num_ctx is belt-and-braces: OLLAMA_CONTEXT_LENGTH is the reliable
-            # mechanism (see DECISIONS.md), but pass it in case the endpoint
-            # honors options.
-            extra_body={
-                "keep_alive": self.keep_alive,
-                "options": {"num_ctx": self.num_ctx},
-            },
+            extra_body=extra_body,
         )
         # Streaming tool calls arrive fragmented; accumulate by index.
         pending: dict[int, dict] = {}
