@@ -1,5 +1,19 @@
 # Changelog
 
+## Phase 2 fixes — owner testing feedback (2026-07-03)
+
+- Forget no longer resurrectable: forgotten facts keep their vectors so
+  dedup can block the extractor from re-inserting them; explicit
+  re-remember reactivates instead. `forget` deactivates every match above
+  the floor (paraphrased duplicates used to survive and keep answering).
+- Reply language pinned per turn: deterministic English/Hindi/Hinglish
+  detection of the latest message, enforced via a trailing system nudge —
+  English questions no longer get Hinglish replies.
+- Tone mirrors the message: professional and emoji-free for work/serious
+  questions, playful only for casual chat.
+- Duplicate "Next:" lines fixed (model was imitating suggestions from
+  history; the extra call now skips when one is already present).
+
 ## Phase 2 — Memory & Personality (2026-07-03)
 
 - Long-term facts (`memory/store.py`): sqlite-vec `fact_vectors` (384-dim

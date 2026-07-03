@@ -133,3 +133,23 @@ Running log of non-obvious choices made during the build. Newest last.
 38. **Embeddings via sentence-transformers on CPU**: PyPI torch wheels on
     Windows are CPU-only (the 117 MB download confirms it), so the GPU budget
     stays untouched. fastembed/ONNX noted as plan B if torch becomes a burden.
+39. **Forgotten facts keep their vectors** (reverses #31's vector delete):
+    owner testing caught the extractor re-inserting a just-forgotten fact —
+    with the vector gone, dedup couldn't see it. Now `forget` only flips
+    `active=0`; dedup checks inactive matches and (a) drops extracted
+    near-matches of forgotten facts at the `min_similarity` threshold (looser,
+    since extracted phrasing rarely matches word-for-word), (b) reactivates on
+    an explicit re-remember. `forget` also deactivates ALL matches above the
+    floor, not just the best one — a paraphrased duplicate had slipped past
+    dedup and kept answering after its twin was forgotten.
+40. **Language is pinned per turn, deterministically**: the persona's
+    "reply in the user's language" rule alone doesn't hold — with a
+    Hinglish-heavy history the 9B answered English questions in Hinglish.
+    `detect_language()` (Devanagari check + Roman-Hindi marker words) pins the
+    reply language in the system prompt AND in a trailing system nudge next to
+    generation; the trailing position is what actually works.
+41. **Tone mirrors the current message**: persona + trailing nudge instruct
+    professional/emoji-free replies for work or serious questions, playful
+    only for casual chat (owner feedback: Baby was jokey about serious tasks).
+    Also: the model started imitating "Next:" lines it saw in history — the
+    suggestion call is now skipped when the reply already contains one.

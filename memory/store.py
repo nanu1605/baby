@@ -4,9 +4,11 @@ vec0 quirks that shape this module (see DECISIONS.md):
 - The extension loads per-connection, so the fact_vectors DDL lives here,
   not in schema.sql — the rest of the app never needs vec0.
 - A KNN MATCH runs before any JOIN/WHERE on other tables, so `active = 1`
-  cannot filter the KNN pass. forget() therefore deletes the vector row
-  (the facts row stays, active=0, for audit) and search() over-fetches then
-  join-filters as a backstop.
+  cannot filter the KNN pass. search() over-fetches then join-filters.
+- Forgotten facts KEEP their vector row: dedup must be able to see them,
+  or the background extractor re-inserts a fact the user just forgot
+  (observed live). An explicit re-remember reactivates the fact; an
+  extracted near-match of a forgotten fact is silently dropped.
 - vec0 reports cosine *distance* (1 - similarity); conversions are explicit.
 
 If the extension can't load, the store degrades to float32 BLOBs in a plain
@@ -104,25 +106,47 @@ class MemoryStore:
             (fact_id, _pack(vector)),
         )
 
-    async def _delete_vector(self, fact_id: int) -> None:
-        table = "fact_vectors" if self.available else "fact_embeddings"
-        await self.db.conn.execute(f"DELETE FROM {table} WHERE fact_id = ?", (fact_id,))
-
     # -- public API -----------------------------------------------------------
 
     async def add_fact(self, text: str, source: str = "explicit") -> dict:
-        """Store a fact unless a near-duplicate (passage-vs-passage) exists."""
+        """Store a fact unless a near-duplicate (passage-vs-passage) exists.
+
+        Deduplication is source-aware around forgotten (active=0) facts:
+        an explicit "remember" of a forgotten fact reactivates it (the user
+        changed their mind); an extracted near-match of a forgotten fact is
+        dropped (the extractor must never resurrect what the user forgot —
+        blocked at the looser min_similarity, since extracted phrasing
+        rarely matches the original word-for-word).
+        """
         vector = await self.embedder.embed_passage(text)
-        top = await self._nearest(vector, 1)
-        if top and top[0][1] >= self.dedup_similarity:
-            dup_id = top[0][0]
-            cur = await self.db.conn.execute("SELECT text FROM facts WHERE id = ?", (dup_id,))
-            row = await cur.fetchone()
-            return {
-                "stored": False,
-                "duplicate_of": dup_id,
-                "existing": row["text"] if row else "",
-            }
+        candidates = await self._nearest(vector, 3)
+        if candidates:
+            ids = [fid for fid, _ in candidates]
+            cur = await self.db.conn.execute(
+                f"SELECT id, text, active FROM facts WHERE id IN ({','.join('?' * len(ids))})",
+                ids,
+            )
+            rows = {r["id"]: r for r in await cur.fetchall()}
+            for fid, sim in candidates:  # best-first
+                row = rows.get(fid)
+                if row is None:
+                    continue
+                if row["active"] and sim >= self.dedup_similarity:
+                    return {"stored": False, "duplicate_of": fid, "existing": row["text"]}
+                if not row["active"]:
+                    if source == "explicit" and sim >= self.dedup_similarity:
+                        await self.db.conn.execute(
+                            "UPDATE facts SET active = 1, last_used_at = datetime('now')"
+                            " WHERE id = ?",
+                            (fid,),
+                        )
+                        await self.db.conn.commit()
+                        return {"stored": True, "id": fid, "reactivated": True}
+                    if source == "extracted" and sim >= self.min_similarity:
+                        return {
+                            "stored": False,
+                            "reason": "matches a fact the user asked to forget",
+                        }
         cur = await self.db.conn.execute(
             "INSERT INTO facts (text, source) VALUES (?, ?)", (text, source)
         )
@@ -163,15 +187,24 @@ class MemoryStore:
         return hits
 
     async def forget(self, query: str) -> dict:
-        """Deactivate the stored fact closest to the query (audit row kept)."""
-        matches = await self.search(query, k=1, update_last_used=False)
+        """Deactivate every stored fact matching the query.
+
+        All matches above the floor go, not just the best one — paraphrased
+        duplicates can slip past dedup (observed live: an extracted copy and
+        the explicit original both held "gym days"), and forgetting one copy
+        while its twin keeps answering betrays the user's intent. Reversible:
+        rows stay with active=0, and vectors are kept on purpose so dedup can
+        stop the extractor from re-inserting what was just forgotten.
+        """
+        matches = await self.search(query, update_last_used=False)
         if not matches:
             return {"error": "no stored fact matches that closely enough to forget"}
-        fact = matches[0]
-        await self.db.conn.execute("UPDATE facts SET active = 0 WHERE id = ?", (fact["id"],))
-        await self._delete_vector(fact["id"])
+        ids = [m["id"] for m in matches]
+        await self.db.conn.execute(
+            f"UPDATE facts SET active = 0 WHERE id IN ({','.join('?' * len(ids))})", ids
+        )
         await self.db.conn.commit()
-        return {"forgotten": fact["text"], "id": fact["id"]}
+        return {"forgotten": [m["text"] for m in matches]}
 
     async def list_facts(self, limit: int = 200) -> list[dict]:
         cur = await self.db.conn.execute(

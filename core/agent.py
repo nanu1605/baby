@@ -13,7 +13,7 @@ import json
 from typing import TYPE_CHECKING
 
 from core.bus import EventBus
-from core.prompts import system_prompt
+from core.prompts import detect_language, system_prompt
 from core.providers.base import ChatProvider, ToolCall
 from core.safety import SafetyClass, SafetyConfig, SafetyGate
 from db.database import Database
@@ -109,9 +109,19 @@ class AgentCore:
             roles=("user", "assistant"),
             after_id=after_id,
         )
+        language = detect_language(user_text)
         messages: list[dict] = [
-            {"role": "system", "content": system_prompt(summary, memories)},
+            {"role": "system", "content": system_prompt(summary, memories, language)},
             *history,
+            # Trailing nudge: the head-of-prompt language pin alone loses to a
+            # history full of another language (observed live with the 9B) —
+            # an instruction adjacent to generation is what holds.
+            {
+                "role": "system",
+                "content": f"Reply ONLY in {language}. Match the tone of the "
+                "latest message: professional and emoji-free for work or serious "
+                "questions, playful only for casual chat.",
+            },
         ]
 
         tools_succeeded = 0
@@ -128,7 +138,10 @@ class AgentCore:
 
             if not tool_calls:
                 reply = text or "(no response)"
-                if self.suggest_next_step and tools_succeeded > 0:
+                # Skip when the model already wrote a "Next:" line itself —
+                # it mimics suggestions seen in history, and appending a real
+                # one produced double "Next:" lines (observed live).
+                if self.suggest_next_step and tools_succeeded > 0 and "Next:" not in text:
                     suggestion = await self._suggest_next_step(messages, text)
                     if suggestion:
                         reply = f"{reply}\n\nNext: {suggestion}"
@@ -182,7 +195,7 @@ class AgentCore:
                     "role": "user",
                     "content": "In one short line, suggest the single most useful "
                     "next step after what you just did. No preamble, no options — "
-                    "just the suggestion, in the language of the conversation.",
+                    "just the suggestion, in the same language as my previous message.",
                 },
             ]
             parts: list[str] = []

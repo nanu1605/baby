@@ -121,15 +121,61 @@ async def test_forget(store, db):
     await store.add_fact("Tanishq car is a Skoda Kushaq")
     await store.add_fact("gym days are Monday Wednesday Friday")
     result = await store.forget("skoda car")
-    assert "Skoda" in result["forgotten"]
+    assert any("Skoda" in t for t in result["forgotten"])
 
-    cur = await db.conn.execute("SELECT active FROM facts WHERE id = ?", (result["id"],))
-    assert (await cur.fetchone())["active"] == 0
+    cur = await db.conn.execute("SELECT id FROM facts WHERE active = 0")
+    inactive = [r["id"] for r in await cur.fetchall()]
+    assert len(inactive) == 1
+    # vector row is KEPT so dedup can still see the forgotten fact
     cur = await db.conn.execute(
-        "SELECT COUNT(*) AS n FROM fact_vectors WHERE fact_id = ?", (result["id"],)
+        "SELECT COUNT(*) AS n FROM fact_vectors WHERE fact_id = ?", (inactive[0],)
     )
-    assert (await cur.fetchone())["n"] == 0
+    assert (await cur.fetchone())["n"] == 1
     assert await store.search("skoda car") == []
+    # the unrelated fact survives
+    assert await store.search("gym days") != []
+
+
+async def test_forget_kills_paraphrased_duplicates(store, db):
+    """Both copies of the same fact must go — one answering after 'forget'
+    while its twin is inactive was a live bug."""
+    await store.add_fact("gym days are Monday Wednesday Friday")
+    await store.add_fact("gym days on Monday and Wednesday and Friday", source="extracted")
+    cur = await db.conn.execute("SELECT COUNT(*) AS n FROM facts WHERE active = 1")
+    assert (await cur.fetchone())["n"] == 2  # paraphrase slipped past dedup
+
+    result = await store.forget("gym days")
+    assert len(result["forgotten"]) == 2
+    cur = await db.conn.execute("SELECT COUNT(*) AS n FROM facts WHERE active = 1")
+    assert (await cur.fetchone())["n"] == 0
+    assert await store.search("gym days") == []
+
+
+async def test_extracted_never_resurrects_forgotten(store, db):
+    await store.add_fact("gym days are Monday Wednesday Friday")
+    await store.forget("gym days")
+
+    # the background extractor proposing the same fact must be dropped
+    result = await store.add_fact("gym days are Monday Wednesday Friday", source="extracted")
+    assert result["stored"] is False
+    assert "forget" in result["reason"]
+    cur = await db.conn.execute("SELECT COUNT(*) AS n FROM facts WHERE active = 1")
+    assert (await cur.fetchone())["n"] == 0
+    assert await store.search("gym days") == []
+
+
+async def test_explicit_re_remember_reactivates(store, db):
+    first = await store.add_fact("gym days are Monday Wednesday Friday")
+    await store.forget("gym days")
+
+    result = await store.add_fact("gym days are Monday Wednesday Friday", source="explicit")
+    assert result["stored"] is True
+    assert result.get("reactivated") is True
+    assert result["id"] == first["id"]  # same row revived, no duplicate
+    cur = await db.conn.execute("SELECT COUNT(*) AS n FROM facts")
+    assert (await cur.fetchone())["n"] == 1
+    hits = await store.search("gym days")
+    assert hits and "Monday" in hits[0]["text"]
 
 
 async def test_forget_no_match(store):
@@ -308,6 +354,44 @@ async def test_no_suggestion_for_chat_turn(db):
     reply = await agent.run_turn("kaisa hai Baby?")
     assert reply == "namaste!"
     assert len(provider.requests) == 1
+
+
+async def test_no_double_next_when_model_mimics(db):
+    """Model imitating 'Next:' lines from history must not get a second one."""
+    from core.providers.base import ToolCall
+
+    conv_id = await db.create_conversation("cli")
+    script = [
+        [ToolCall(id="c1", name="note_tool", arguments='{"text": "x"}')],
+        "did it\n\nNext: model wrote this itself",
+    ]
+    provider = FakeProvider(script)
+    agent = AgentCore(provider, db, conv_id, channel="cli", suggest_next_step=True)
+    reply = await agent.run_turn("do the thing")
+    assert reply.count("Next:") == 1
+    assert len(provider.requests) == 2  # no extra suggestion call
+
+
+def test_detect_language():
+    from core.prompts import detect_language
+
+    assert detect_language("When are my gym days?") == "English"
+    assert detect_language("forget my gym days") == "English"
+    assert detect_language("kaisa hai Baby?") == "Hinglish"
+    assert detect_language("mera favourite cricketer kaun hai?") == "Hinglish"
+    assert detect_language("yaad rakhna, gym Monday ko hai") == "Hinglish"
+    assert detect_language("haan") == "Hinglish"
+    assert detect_language("मेरा जिम कब है?") == "Hindi"
+    assert detect_language("that's par for the course") == "English"
+
+
+async def test_language_pinned_in_system_prompt(db):
+    conv_id = await db.create_conversation("cli")
+    provider = FakeProvider(["sure"])
+    agent = AgentCore(provider, db, conv_id, channel="cli")
+    await agent.run_turn("When are my gym days?")
+    system = provider.requests[0][0]
+    assert "latest message is in English" in system["content"]
 
 
 class _FailingSuggestionProvider(FakeProvider):

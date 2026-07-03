@@ -35,8 +35,20 @@ All of these must pass before Phase 3 starts (spec Section 16, Phase 2).
 ## 5. Forget
 
 - [ ] Type: **"forget my gym days"** → `forget` fires, reply confirms.
-- [ ] /memory shows the fact with `active: 0`; asking about gym days no
-      longer uses it.
+- [ ] /memory shows **every** gym fact with `active: 0` (paraphrased
+      duplicates go too).
+- [ ] Restart Baby, ask **"when's my gym?"** → Baby doesn't know.
+      (In the SAME session it may still echo the recent chat history —
+      forget clears long-term memory, not the current conversation.)
+- [ ] Say **"remember my gym days are Mon/Wed/Fri"** again → fact
+      reactivates (same id in /memory, active back to 1).
+
+## 5b. Language + tone
+
+- [ ] English question → English-only reply (no Hindi words).
+- [ ] Work/serious question → professional reply, no emojis or banter.
+- [ ] Casual Hinglish → playful Hinglish.
+- [ ] Only ever ONE "Next:" line per reply.
 
 ## 6. Hygiene
 
