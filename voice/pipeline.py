@@ -163,6 +163,7 @@ class VoicePipeline:
                 compute_type=stt_cfg.get("compute_type", "int8"),
                 cpu_threads=int(stt_cfg.get("cpu_threads", 8)),
                 beam_size=int(stt_cfg.get("beam_size", 1)),
+                hotwords=str(stt_cfg.get("hotwords", "")),
             )
         self.stt.load()
         return ""

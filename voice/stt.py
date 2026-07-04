@@ -34,12 +34,16 @@ class SpeechToText:
         compute_type: str = "int8",
         cpu_threads: int = 8,
         beam_size: int = 1,
+        hotwords: str = "",
     ) -> None:
         self.model_name = model
         self.device = device
         self.compute_type = compute_type
         self.cpu_threads = cpu_threads
         self.beam_size = beam_size
+        # Names Whisper mishears with the owner's accent ("ollama" → "ullama");
+        # passed as decoder bias every window, unlike initial_prompt.
+        self.hotwords = hotwords
         self._model = None
 
     def load(self) -> None:
@@ -70,6 +74,7 @@ class SpeechToText:
             beam_size=self.beam_size,
             vad_filter=True,
             condition_on_previous_text=False,
+            hotwords=self.hotwords or None,
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
         if not text or text.lower() in _JUNK:

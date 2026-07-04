@@ -657,3 +657,113 @@ def test_wakeword_falls_back_to_builtin(tmp_path):
     ww = WakeWord(model_path=tmp_path / "hey_baby.onnx")  # absent
     assert ww.load() == "hey_jarvis"
     assert ww.active_model == "hey_jarvis"
+
+
+# -- 11. markdown never reaches the speaker -----------------------------------------
+
+
+def test_strip_markdown_bold_italic_code():
+    from voice.tts import strip_markdown
+
+    assert strip_markdown("**Tata Nexon EV** is *good* and `cheap`.") == (
+        "Tata Nexon EV is good and cheap."
+    )
+
+
+def test_strip_markdown_links_headings_bullets():
+    from voice.tts import strip_markdown
+
+    text = "## Top picks\n- [Nexon](https://x.y/nexon) first\n- Punch second"
+    assert strip_markdown(text) == "Top picks Nexon first Punch second"
+
+
+def test_strip_markdown_unpaired_asterisks_dropped():
+    from voice.tts import strip_markdown
+
+    assert strip_markdown("** loud start") == "loud start"
+
+
+def test_strip_markdown_plain_and_hindi_untouched():
+    from voice.tts import strip_markdown
+
+    assert strip_markdown("kal 8 baje uthna hai") == "kal 8 baje uthna hai"
+    assert strip_markdown("**ठीक है** boss") == "ठीक है boss"
+
+
+def test_synth_strips_markdown_before_kokoro():
+    import numpy as np
+
+    from voice.tts import TextToSpeech
+
+    spoken = []
+
+    class FakeKokoro:
+        def create(self, sentence, voice, speed, lang):
+            spoken.append(sentence)
+            return np.zeros(10, dtype=np.float32), 24000
+
+    tts = TextToSpeech()
+    tts._kokoro = FakeKokoro()
+    tts.synth("**Nexon EV** wins.")
+    assert spoken == ["Nexon EV wins."]
+
+
+def test_synth_pure_markdown_returns_silence():
+    import numpy as np
+
+    from voice.tts import TextToSpeech
+
+    class ExplodingKokoro:
+        def create(self, *a, **k):
+            raise AssertionError("must not synth empty text")
+
+    tts = TextToSpeech()
+    tts._kokoro = ExplodingKokoro()
+    pcm, rate = tts.synth("**")
+    assert len(pcm) == 0 and rate == 24000
+    assert pcm.dtype == np.int16
+
+
+# -- 12. stt hotword bias ------------------------------------------------------------
+
+
+def test_stt_passes_hotwords_to_whisper():
+    import numpy as np
+
+    from voice.stt import SpeechToText
+
+    seen = {}
+
+    class FakeInfo:
+        language = "en"
+
+    class FakeModel:
+        def transcribe(self, audio, **kwargs):
+            seen.update(kwargs)
+            return [], FakeInfo()
+
+    stt = SpeechToText(hotwords="Ollama, Chromium")
+    stt._model = FakeModel()
+    stt.transcribe(np.zeros(16000, dtype=np.int16))
+    assert seen["hotwords"] == "Ollama, Chromium"
+
+
+def test_stt_empty_hotwords_sends_none():
+    import numpy as np
+
+    from voice.stt import SpeechToText
+
+    seen = {}
+
+    class FakeInfo:
+        language = "en"
+
+    class FakeModel:
+        def transcribe(self, audio, **kwargs):
+            seen.update(kwargs)
+            return [], FakeInfo()
+
+    stt = SpeechToText()
+    stt._model = FakeModel()
+    stt.transcribe(np.zeros(16000, dtype=np.int16))
+    assert seen["hotwords"] is None

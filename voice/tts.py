@@ -66,6 +66,31 @@ def split_sentences(buf: str, *, final: bool = False) -> tuple[list[str], str]:
     return sentences, remainder
 
 
+# Markdown → speakable text: Kokoro/espeak read "**" aloud ("asterisk
+# asterisk" — owner report). Applied inside synth(), the single funnel for
+# replies, announcements, and the briefing. Order matters: paired constructs
+# first, then a sweep for unpaired leftovers.
+_MD_RULES: tuple[tuple[re.Pattern, str], ...] = (
+    (re.compile(r"```[^\n]*"), " "),  # code-fence lines
+    (re.compile(r"`([^`\n]*)`"), r"\1"),  # inline code
+    (re.compile(r"\[([^\]]+)\]\([^)\s]*\)"), r"\1"),  # [text](url) → text
+    (re.compile(r"\*\*([^*]+)\*\*"), r"\1"),  # bold
+    (re.compile(r"__([^_]+)__"), r"\1"),
+    (re.compile(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])"), r"\1"),  # italic
+    (re.compile(r"(?<!\w)_([^_\n]+)_(?!\w)"), r"\1"),
+    (re.compile(r"^#{1,6}\s+", re.MULTILINE), ""),  # headings
+    (re.compile(r"^\s*[-*•]\s+", re.MULTILINE), ""),  # bullet markers
+    (re.compile(r"[*_#`]{2,}"), " "),  # unpaired leftovers
+)
+
+
+def strip_markdown(text: str) -> str:
+    """Reduce markdown to plain speakable text; collapses whitespace."""
+    for pattern, repl in _MD_RULES:
+        text = pattern.sub(repl, text)
+    return " ".join(text.split())
+
+
 def pick_voice(sentence: str, voice_en: str, voice_hi: str) -> tuple[str, str]:
     """(voice, espeak lang code) for one sentence — any Devanagari → Hindi."""
     if _DEVANAGARI_RE.search(sentence):
@@ -102,6 +127,9 @@ class TextToSpeech:
 
         if self._kokoro is None:
             self.load()
+        sentence = strip_markdown(sentence)
+        if not sentence:  # pure-markdown chunk (e.g. a lone "**")
+            return np.zeros(0, dtype=np.int16), SAMPLE_RATE
         voice, lang = pick_voice(sentence, self.voice_en, self.voice_hi)
         samples, sample_rate = self._kokoro.create(
             sentence, voice=voice, speed=self.speed, lang=lang
