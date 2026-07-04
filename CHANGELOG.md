@@ -1,5 +1,15 @@
 # Changelog
 
+## Phase 3 fix — owner testing feedback (2026-07-04)
+
+- Voice worked only on the first try: the pause between the wake beep and
+  the user's first word was counted as end-of-utterance silence, so every
+  later capture ended before the user spoke and was dropped as empty. VAD
+  endpointing now requires speech to start first (`vad_speech_wait_ms`,
+  default 5 s grace after the beep); pure-silence captures skip the STT
+  call entirely and the feed shows "voice: heard nothing" instead of
+  failing silently.
+
 ## Phase 3 — Voice (2026-07-04)
 
 - Full voice loop on a dedicated thread (the spec-allowed exception to the

@@ -142,7 +142,10 @@ class VoicePipeline:
         if self.vad is None:
             from voice.vad import VoiceDetector
 
-            self.vad = VoiceDetector(silence_ms=int(self.cfg.get("vad_silence_ms", 400)))
+            self.vad = VoiceDetector(
+                silence_ms=int(self.cfg.get("vad_silence_ms", 400)),
+                speech_wait_ms=int(self.cfg.get("vad_speech_wait_ms", 5000)),
+            )
         self.vad.load()
         return ""
 
@@ -312,11 +315,15 @@ class VoicePipeline:
                 break
 
         self.state = IDLE
-        if not recorded:
+        # No speech at all (false wake, or the user stayed quiet): skip the
+        # expensive STT call on pure silence and say so in the feed.
+        if not recorded or not getattr(self.vad, "speech_started", True):
+            self._publish("status", text="voice: heard nothing")
             return
         pcm = np.concatenate(recorded)
         text, lang = self.stt.transcribe(pcm)
         if not text:
+            self._publish("status", text="voice: heard nothing")
             return
         if is_kill_phrase(text, self.kill_phrases):
             self._cancel_turn()

@@ -199,3 +199,12 @@ Running log of non-obvious choices made during the build. Newest last.
     checking a stop flag, so interruption lands within a beat. No AEC:
     open-speaker echo is handled by raising `barge_in_threshold` or a
     headset (documented in the checklist).
+50. **VAD endpointing needs a speech-start gate** (owner bug: "replied only
+    the first time"): silence was counted from the first captured frame, so
+    pausing >400 ms after the beep ended the capture before the user spoke —
+    whisper then saw pure silence and the turn vanished without feedback.
+    The first try worked only because wake word + question were said in one
+    breath (DB transcript "time is it." — the lead chopped by the beep).
+    Now silence ends an utterance only after speech has been seen;
+    pre-speech quiet gets `vad_speech_wait_ms` (5 s) grace, silent captures
+    skip STT, and the feed says "voice: heard nothing".

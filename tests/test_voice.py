@@ -179,22 +179,28 @@ class FakeWake:
 
 
 class FakeVAD:
-    def __init__(self, silence_frames_done: int = 2):
+    def __init__(self, silence_frames_done: int = 2, wait_frames_done: int = 5):
         self.silence_frames_done = silence_frames_done
+        self.wait_frames_done = wait_frames_done
         self._quiet = 0
+        self.speech_started = False
 
     def is_speech(self, chunk, threshold=None):
         return bool(abs(chunk.astype(np.int32)).mean() > 500)
 
     def utterance_done(self, chunk):
         if self.is_speech(chunk):
+            self.speech_started = True
             self._quiet = 0
             return False
         self._quiet += 1
+        if not self.speech_started:
+            return self._quiet >= self.wait_frames_done
         return self._quiet >= self.silence_frames_done
 
     def reset(self):
         self._quiet = 0
+        self.speech_started = False
 
 
 class FakeSTT:
@@ -398,6 +404,76 @@ async def test_ptt_path_enters_listening(db):
     await asyncio.to_thread(pipeline._idle, FrameBuffer())
     assert pipeline.state == LISTENING
     assert pipeline.audio.beeped == 1
+
+
+async def test_silent_capture_skips_stt(db):
+    """False wake / user stays quiet: give up after the wait, never call STT."""
+    pipeline, provider, _ = await _make_pipeline(db, ["never"])
+    pipeline.audio.frames += [SILENCE] * 6  # wait_frames_done=5 → gives up
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "idle"
+    assert pipeline.stt.calls == 0
+    assert provider.requests == []
+
+
+async def test_pause_before_speaking_still_captured(db):
+    """Owner bug: 'replied only the first time' — the pause between beep and
+    first word must not end the capture (silence counted from frame zero)."""
+    pipeline, provider, _ = await _make_pipeline(db, ["Reply."])
+    # 3 silent frames (> silence_frames_done=2) BEFORE any speech, then talk.
+    pipeline.audio.frames += [SILENCE, SILENCE, SILENCE, SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"
+    await asyncio.sleep(0.1)
+    assert provider.requests  # the turn was submitted despite the initial pause
+
+
+# -- 6b. VoiceDetector endpointing (no model — probability overridden) ------------
+
+
+def _scripted_vad(probs, **kwargs):
+    from voice.vad import VoiceDetector
+
+    vad = VoiceDetector(**kwargs)
+    seq = iter(probs)
+    vad.probability = lambda chunk: next(seq)
+    return vad
+
+
+def test_vad_pre_speech_silence_does_not_end_utterance():
+    # silence_ms=64 → 2 frames; speech_wait_ms=160 → 5 frames (32 ms frames)
+    vad = _scripted_vad([0.0] * 4, silence_ms=64, speech_wait_ms=160)
+    chunk = SILENCE
+    assert not any(vad.utterance_done(chunk) for _ in range(4))
+    assert not vad.speech_started
+
+
+def test_vad_gives_up_after_speech_wait():
+    vad = _scripted_vad([0.0] * 5, silence_ms=64, speech_wait_ms=160)
+    results = [vad.utterance_done(SILENCE) for _ in range(5)]
+    assert results == [False, False, False, False, True]
+    assert not vad.speech_started
+
+
+def test_vad_endpoints_on_silence_after_speech():
+    vad = _scripted_vad([0.9, 0.0, 0.0], silence_ms=64, speech_wait_ms=160)
+    assert not vad.utterance_done(SPEECH)  # speech
+    assert vad.speech_started
+    assert not vad.utterance_done(SILENCE)  # 1 silent frame
+    assert vad.utterance_done(SILENCE)  # 2 silent frames = 64 ms → done
+
+
+def test_vad_reset_clears_speech_flag():
+    vad = _scripted_vad([0.9], silence_ms=64, speech_wait_ms=160)
+    vad.utterance_done(SPEECH)
+    assert vad.speech_started
+    vad._model = None  # reset() must not require the real model
+    vad.reset()
+    assert not vad.speech_started
 
 
 # -- 7. barge-in ------------------------------------------------------------------

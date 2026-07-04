@@ -49,6 +49,7 @@ voice:
     voice_hi: hf_beta                   # A/B against hf_alpha by ear
     speed: 1.05
   vad_silence_ms: 400
+  vad_speech_wait_ms: 5000              # grace to start talking after the beep
   barge_in: true
   barge_in_threshold: 0.6               # raise if speaker echo self-triggers
   ready_announce:
