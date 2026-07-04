@@ -301,6 +301,31 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     )
     await scheduler.start()
 
+    telegram_bot = None
+    if config.get("telegram", {}).get("enabled", False):
+        import os
+
+        from clients.telegram_bot import TelegramBot
+
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "0")
+        telegram_bot = TelegramBot(
+            token=token,
+            chat_id=int(chat_id or 0),
+            db=db,
+            bus=bus,
+            gate=gate,
+            provider=provider,
+            config=config,
+            memory=memory,
+        )
+        if await telegram_bot.start():
+            notifier.telegram_send = telegram_bot.send_to_owner
+            print("telegram ready (owner chat only)")
+        else:
+            telegram_bot = None
+            print("telegram failed to start — continuing without it")
+
     if with_voice:
         from voice.readycue import ReadyCue
 
@@ -321,9 +346,14 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     try:
         await serve_task
     finally:
+        if telegram_bot is not None:
+            try:
+                await telegram_bot.stop()
+            except Exception:  # noqa: BLE001 — shutdown must reach every stage
+                pass
         try:
             await scheduler.stop()
-        except Exception:  # noqa: BLE001 — shutdown must reach every stage
+        except Exception:  # noqa: BLE001
             pass
         try:
             await pool.stop()
