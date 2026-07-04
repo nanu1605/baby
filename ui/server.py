@@ -56,6 +56,9 @@ def create_app(ctx: UIContext) -> FastAPI:
         data = await asyncio.to_thread(snapshot)
         data["model"] = ctx.config.get("models", {}).get("daily", {}).get("model", "?")
         data["turn_running"] = ctx.turn_running()
+        router = getattr(ctx.agent.provider, "active", None)
+        if router is not None:
+            data["router"] = router
         return data
 
     @app.get("/history")
@@ -153,21 +156,16 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     own thread; a voice failure degrades to text-only, never blocks boot.
     """
     from clients.cli import build_gate
-    from core.providers.ollama import OllamaProvider
     from core.readiness import ready_check
+    from core.router import build_provider
     from tools import apps, register_all
     from tools import files as files_tools
     from tools import web as web_tools
 
-    daily = config["models"]["daily"]
-    provider = OllamaProvider(
-        model=daily["model"],
-        temperature=daily.get("temperature", 0.7),
-        keep_alive=daily.get("keep_alive", "24h"),
-        num_ctx=daily.get("num_ctx", 8192),
-    )
     db = Database("baby.db")
     await db.connect()
+    bus = EventBus()
+    provider = build_provider(config, bus=bus, db=db)
 
     ok, notes = await ready_check(provider, db)
     for note in notes:
@@ -192,7 +190,6 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         print(f"memory ready ({await memory.store.count_active()} facts)")
 
     conv_id = await db.latest_conversation("ui") or await db.create_conversation("ui")
-    bus = EventBus()
     gate = build_gate(config, bus)
     agent = AgentCore(
         provider,

@@ -9,7 +9,6 @@ import yaml
 
 from core.agent import AgentCore
 from core.bus import EventBus
-from core.providers.ollama import OllamaProvider
 from core.readiness import ready_check
 from core.safety import SafetyConfig, SafetyGate
 from db.database import Database
@@ -60,17 +59,14 @@ async def _render(bus: EventBus, gate: SafetyGate) -> None:
 
 
 async def run_cli(config_path: str = "config.yaml") -> None:
+    from core.router import build_provider
+
     config = load_config(config_path)
     daily = config["models"]["daily"]
-    provider = OllamaProvider(
-        model=daily["model"],
-        temperature=daily.get("temperature", 0.7),
-        keep_alive=daily.get("keep_alive", "24h"),
-        num_ctx=daily.get("num_ctx", 8192),
-    )
-
     db = Database("baby.db")
     await db.connect()
+    bus = EventBus()
+    provider = build_provider(config, bus=bus, db=db)
 
     ok, notes = await ready_check(provider, db)
     for note in notes:
@@ -92,7 +88,6 @@ async def run_cli(config_path: str = "config.yaml") -> None:
     else:
         print(f"[resuming conversation #{conv_id}]")
 
-    bus = EventBus()
     gate = build_gate(config, bus)
     agent = AgentCore(
         provider,

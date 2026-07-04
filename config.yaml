@@ -12,7 +12,7 @@ models:
     keep_alive: 24h
   heavy:
     provider: ollama
-    model: qwen3.6:35b-a3b-q4_K_M       # verify tag before Phase 4
+    model: qwen3.6:35b-a3b              # library tag verified 2026-07-04 (24 GB MoE)
     num_ctx: 8192
     temperature: 0.5
     keep_alive: 10m
@@ -26,6 +26,7 @@ router:
   default: daily
   escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
   escalation_order: [heavy, cloud]
+  long_context_tokens: 4096             # above this → cloud (heavy shares the global 8K ctx)
 
 voice:
   enabled: true

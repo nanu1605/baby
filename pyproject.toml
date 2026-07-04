@@ -25,6 +25,10 @@ dependencies = [
     "silero-vad>=6.2.1",          # adds torchaudio; torch CPU already present
     "kokoro-onnx>=0.5.0",         # official kokoro PyPI pins <3.13
     "sounddevice>=0.5.5",
+    "python-dotenv>=1.2.2",
+    "apscheduler>=3.11,<4",
+    "playwright>=1.61",
+    "python-telegram-bot>=22,<23",
 ]
 
 [dependency-groups]

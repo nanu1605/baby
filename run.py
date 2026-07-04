@@ -18,6 +18,9 @@ for _name in ("stdin", "stdout", "stderr"):
 
 
 def main() -> None:
+    from dotenv import load_dotenv
+
+    load_dotenv()  # GEMINI_API_KEY / TELEGRAM_* from .env (never committed)
     register_all()
     parser = argparse.ArgumentParser(prog="baby", description="Baby — personal AI assistant")
     parser.add_argument("--cli", action="store_true", help="interactive REPL")

@@ -43,3 +43,35 @@ class ChatProvider(Protocol):
     ) -> AsyncIterator[Chunk]: ...
 
     async def healthy(self) -> bool: ...
+
+
+async def accumulate_stream(stream) -> AsyncIterator[Chunk]:
+    """OpenAI-format completion stream → Chunks.
+
+    Streaming tool calls arrive fragmented across events; reassemble them by
+    index. Shared by every OpenAI-wire provider (Ollama, Gemini).
+    """
+    pending: dict[int, dict] = {}
+    async for event in stream:
+        if not event.choices:
+            continue
+        choice = event.choices[0]
+        delta = choice.delta
+        if delta.content:
+            yield Chunk(delta=delta.content)
+        for tc in delta.tool_calls or []:
+            slot = pending.setdefault(tc.index, {"id": "", "name": "", "args": ""})
+            if tc.id:
+                slot["id"] = tc.id
+            if tc.function and tc.function.name:
+                slot["name"] = tc.function.name
+            if tc.function and tc.function.arguments:
+                slot["args"] += tc.function.arguments
+        if choice.finish_reason:
+            calls = [
+                ToolCall(id=s["id"] or f"call_{i}", name=s["name"], arguments=s["args"])
+                for i, s in sorted(pending.items())
+            ]
+            yield Chunk(tool_calls=calls, done=True)
+            return
+    yield Chunk(done=True)
