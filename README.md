@@ -29,6 +29,9 @@ Local models by default (privacy, zero cost); free cloud tier only as a fallback
 - **Autostart**: `scripts\autostart.ps1` registers a hidden logon task —
   Baby is ready with the spoken cue shortly after you reach the desktop.
   `-Remove` to undo.
+- **Tray icon**: a status dot in the system tray — green (ready), amber
+  (working), red (waiting for your confirmation). Right-click: Open Baby /
+  Quit Baby.
 - **Voice** (`run.py --voice`): say **"hey jarvis"** (interim — train your
   own "hey baby" via [scripts/wakeword_training.md](scripts/wakeword_training.md)),
   hear a beep, speak; Baby transcribes locally (Whisper large-v3-turbo, CPU),

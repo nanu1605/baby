@@ -277,3 +277,28 @@ Running log of non-obvious choices made during the build. Newest last.
     connection — two workers can never grab the same row, no polling races.
     `cancel_task` cancels the per-task child asyncio.Task; the worker loop
     survives and moves on.
+63. **Empty final reply → one forced retry with thinking off** (owner bug:
+    first background task ended "(no response)"): after a long tool loop
+    the qwen thinking model can spend its whole generation window in the
+    reasoning channel and emit zero content. When the closing call returns
+    empty text after ≥1 successful tool, `_final_answer` re-asks once with
+    `tools=None, max_tokens=700, reasoning_effort="none"` — the router
+    treats it as an internal call (stays daily) and the tokens still stream
+    to the UI/voice.
+64. **Markdown is stripped inside `TextToSpeech.synth`** (owner bug: Baby
+    said "asterisk asterisk"): synth is the single funnel every spoken
+    sentence passes — replies, announcements, briefing, prerender — so one
+    `strip_markdown` there beats patching each call site. A chunk that is
+    pure markdown (a lone `**`) synthesizes to zero samples instead of
+    crashing Kokoro.
+65. **Whisper `hotwords` over `initial_prompt`** for accent bias ("ollama" →
+    "ullama"): hotwords bias the decoder on EVERY window, while
+    initial_prompt only conditions the first and is a known hallucination
+    echo vector. The list lives in `voice.stt.hotwords` (config), empty
+    string disables.
+66. **Tray icon on a pystray thread** (owner request): green ready / amber
+    working / red waiting-on-confirm, menu Open Baby + Quit Baby. Same
+    narrow thread exception class as the toast helper — the tray thread
+    never touches Baby's state; a bus-subscriber coroutine folds events
+    (`TrayState`) and pushes image/tooltip updates in. Quit hops back to
+    the loop via `call_soon_threadsafe` and stops uvicorn cleanly.

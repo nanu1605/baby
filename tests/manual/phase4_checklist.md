@@ -71,6 +71,9 @@ All of these must pass before Phase 5 starts (spec §16, Phase 4).
 ## 7. Regression
 
 - [ ] Voice loop still works (wake → question → spoken reply).
+- [ ] Spoken replies contain no "asterisk asterisk" (markdown stripped).
+- [ ] Tray icon visible; turns amber during a turn, red while a confirm
+      modal waits, back to green after; Open Baby / Quit Baby menu works.
 - [ ] An announcement queued while you're mid-conversation waits until the
       conversation is idle, then plays.
 - [ ] VRAM on daily turns unchanged (~8 GB, all Ollama).

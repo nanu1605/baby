@@ -1,5 +1,26 @@
 # Changelog
 
+## Phase 4 fixes — owner testing feedback (2026-07-05)
+
+- Background task finished with "(no response)": after a long tool loop the
+  thinking model can burn its whole generation window reasoning and return
+  empty content. The agent now retries once with thinking disabled and no
+  tools, forcing a plain answer from the tool results already gathered.
+- Baby said "asterisk asterisk": spoken text now passes `strip_markdown`
+  inside TTS synth (bold/italic/code/links/headings/bullets removed) — one
+  funnel covers replies, announcements, and the briefing.
+- "ollama" heard as "ullama": Whisper now gets a `hotwords` decoder bias
+  (`voice.stt.hotwords` — Baby, Ollama, Telegram, Gemini, lakh, …) on every
+  decoding window.
+- Browser never opened ("playwright not installed"): the Chromium binary
+  was missing — `uv run playwright install chromium` ran; setup.ps1 §3d
+  already covers fresh machines.
+- New: system tray icon (pystray) — green ready, amber working, red waiting
+  on a confirmation; menu Open Baby / Quit Baby. `tray.enabled: false`
+  turns it off.
+- Tests: +17 (finalize retry, markdown strip, hotword passthrough, tray
+  state). Suite: 295 passing.
+
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 
 - Background tasks (`workers/queue.py`): "in the background, research X" →
