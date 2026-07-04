@@ -146,8 +146,12 @@ def _toast(title: str, message: str) -> None:
         pass
 
 
-async def run_ui(config: dict) -> None:
-    """Boot the full text stack: DB, model, tools, agent, UI server."""
+async def run_ui(config: dict, with_voice: bool = False) -> None:
+    """Boot the full text stack: DB, model, tools, agent, UI server.
+
+    with_voice=True additionally attaches the Phase 3 voice pipeline on its
+    own thread; a voice failure degrades to text-only, never blocks boot.
+    """
     from clients.cli import build_gate
     from core.providers.ollama import OllamaProvider
     from core.readiness import ready_check
@@ -217,13 +221,54 @@ async def run_ui(config: dict) -> None:
         await db.close()
         sys.exit(1)
 
-    ready_msg = f"Baby ready (text only) — http://{host}:{port}"
+    voice_pipeline = None
+    voice_ok = False
+    voice_notes: list[str] = []
+    if with_voice and config.get("voice", {}).get("enabled", True):
+        from voice.pipeline import VoicePipeline
+
+        voice_conv = await db.latest_conversation("voice") or await db.create_conversation("voice")
+        voice_agent = AgentCore(
+            provider,
+            db,
+            voice_conv,
+            channel="voice",
+            bus=bus,
+            gate=gate,
+            memory=memory,
+            suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
+        )
+        voice_pipeline = VoicePipeline(
+            asyncio.get_running_loop(), voice_agent, bus, config.get("voice", {})
+        )
+        voice_ok, voice_notes = await asyncio.to_thread(voice_pipeline.load)
+        for note in voice_notes:
+            print(f"voice: {note}")
+        if voice_ok:
+            voice_pipeline.start()
+        else:
+            voice_pipeline = None
+
+    if with_voice:
+        from voice.readycue import ReadyCue
+
+        cue = ReadyCue(config.get("voice", {}))
+        if voice_ok:
+            ready_msg = f"Baby ready — voice on ({voice_pipeline.wake.active_model}), UI at http://{host}:{port}"
+            cue.play_full()
+        else:
+            ready_msg = f"Baby ready (text only) — voice failed to load, UI at http://{host}:{port}"
+            cue.play_degraded()
+    else:
+        ready_msg = f"Baby ready (text only) — http://{host}:{port}"
     print(ready_msg)
-    _toast("Baby ready", f"UI at http://{host}:{port}")
+    _toast("Baby ready", ready_msg)
     bus.publish("status", "ui", text=ready_msg)
     await db.add_audit("ui", "startup", "{}", "allow", 1, ready_msg)
 
     try:
         await serve_task
     finally:
+        if voice_pipeline is not None:
+            voice_pipeline.stop()
         await db.close()

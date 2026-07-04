@@ -118,6 +118,33 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "sqlite-vec failed to load — memory will fall back to brute-force search." -ForegroundColor Yellow
 }
 
+# --- 3c. Voice stack (Phase 3) --------------------------------------------------
+# Kokoro TTS model (onnx, ~310 MB) + voices, openWakeWord feature models,
+# Whisper cache warm-up, espeak-ng verification, and the pre-rendered ready cue.
+New-Item -ItemType Directory -Force models, assets | Out-Null
+$ProgressPreference = 'SilentlyContinue'
+$kokoroBase = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0"
+if (-not (Test-Path "models\kokoro-v1.0.onnx")) {
+    Write-Host "Downloading Kokoro TTS model (~310 MB)..." -ForegroundColor Yellow
+    Invoke-WebRequest "$kokoroBase/kokoro-v1.0.onnx" -OutFile "models\kokoro-v1.0.onnx" -TimeoutSec 600
+}
+if (-not (Test-Path "models\voices-v1.0.bin")) {
+    Invoke-WebRequest "$kokoroBase/voices-v1.0.bin" -OutFile "models\voices-v1.0.bin" -TimeoutSec 300
+}
+Write-Host "Downloading openWakeWord feature models..."
+uv run python -c "import openwakeword.utils; openwakeword.utils.download_models()"
+Write-Host "Verifying bundled espeak-ng (espeakng-loader)..."
+uv run python -c "import espeakng_loader; print('espeak-ng:', espeakng_loader.get_library_path())"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "espeakng-loader failed - install espeak-ng system-wide: winget install eSpeak-NG.eSpeak-NG" -ForegroundColor Yellow
+}
+Write-Host "Warming faster-whisper model cache (large-v3-turbo, one-time ~1.6 GB)..."
+uv run python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8')"
+if (-not (Test-Path "assets\baby_ready.wav")) {
+    Write-Host "Pre-rendering ready cue..."
+    uv run python -m voice.tts --prerender "Baby ready" assets\baby_ready.wav
+}
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"

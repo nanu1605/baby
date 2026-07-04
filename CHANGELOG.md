@@ -1,5 +1,42 @@
 # Changelog
 
+## Phase 3 — Voice (2026-07-04)
+
+- Full voice loop on a dedicated thread (the spec-allowed exception to the
+  single-asyncio rule): wake word → beep → VAD-segmented capture → Whisper
+  STT → the same AgentCore/SafetyGate/audit path as text → Kokoro TTS reply,
+  sentence by sentence.
+- Wake word (`voice/wakeword.py`): openWakeWord, interim **"hey jarvis"**
+  model with auto-switch to `models/hey_baby.onnx` when the owner-trained
+  file lands (`scripts/wakeword_training.md` has the Colab steps).
+- STT (`voice/stt.py`): faster-whisper `large-v3-turbo`, CPU int8, 8 threads
+  (~5.5 s/utterance; `voice.stt.model: small` is the faster/worse-Hindi
+  knob). Hallucination gates: <0.3 s utterances dropped, junk list, VAD
+  filter.
+- TTS (`voice/tts.py`): kokoro-onnx (Kokoro-82M v1.0), per-sentence voice
+  routing — Devanagari → `hf_beta` (Hindi), else `af_heart` (English);
+  streaming sentence splitter with abbreviation + `।` handling;
+  `python -m voice.tts --prerender` bakes `assets/baby_ready.wav`.
+- Barge-in: talk over Baby and playback stops within ~100 ms, your
+  interruption is captured immediately. Kill phrases ("baby stop",
+  "baby ruk ja") cancel the turn outright. Push-to-talk: **ctrl+alt+b**
+  (ctypes RegisterHotKey, no admin).
+- Safety via voice: gated actions are spoken as "check the screen" — the
+  confirm modal stays UI-only, the gate is untouched.
+- Ready cue: cached-WAV "Baby ready" the moment the stack is live; degraded
+  chime + toast if voice fails to load (text keeps working); no cue at all
+  if the model is down.
+- `run.py --voice` / `--all`; voice runs its own conversation on the shared
+  provider/DB/bus/gate/memory. VRAM: voice adds **0** (all CPU) — measured
+  8.04 GB during boot, all Ollama.
+- Deps: faster-whisper, openwakeword, silero-vad, kokoro-onnx, sounddevice,
+  onnxruntime. setup.ps1 downloads kokoro + wake models, warms the whisper
+  cache, prerenders the ready cue.
+- Tests: `tests/test_voice.py` (44 cases — sentence splitting, voice
+  routing, kill phrases, bridge ordering, cross-thread publish/cancel, state
+  machine, barge-in, ready cue) with all audio/model stages faked via DI.
+  Suite: 192 passing.
+
 ## Phase 2 fixes — owner testing feedback (2026-07-03)
 
 - Forget no longer resurrectable: forgotten facts keep their vectors so

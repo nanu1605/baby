@@ -153,3 +153,49 @@ Running log of non-obvious choices made during the build. Newest last.
     only for casual chat (owner feedback: Baby was jokey about serious tasks).
     Also: the model started imitating "Next:" lines it saw in history — the
     suggestion call is now skipped when the reply already contains one.
+
+## Phase 3 (2026-07-04)
+
+42. **Whisper runs on CPU, not cuda** (owner-approved spec deviation): the 9B
+    model measures 7.99/8.0 GB VRAM warm, and CTranslate2 disables INT8 CUDA
+    kernels on sm_120 (RTX 50-series, `CUBLAS_STATUS_NOT_SUPPORTED`), so GPU
+    Whisper would need float16 ≈ 2 GB that doesn't exist. CPU int8
+    `large-v3-turbo` on 8 threads measures ~5.5 s/utterance (the 30 s window
+    padding dominates); `small` does 1.4 s but degrades Hindi — turbo kept,
+    `voice.stt.model: small` documented as the speed knob.
+43. **`kokoro-onnx` instead of the official `kokoro` pip** (owner-approved):
+    `kokoro` 0.9.4 and its `misaki` G2P pin Python `<3.13`; this venv is
+    3.13. `kokoro-onnx` 0.5.0 loads the same Kokoro-82M v1.0 weights
+    (`kokoro-v1.0.onnx` + `voices-v1.0.bin`) via onnxruntime CPU. Bonus: its
+    `espeakng-loader` wheel bundles espeak-ng, so the spec's system-level
+    espeak-ng install became a verify-only step — nothing to install.
+44. **`hey_jarvis` interim wake word** (owner-approved): openWakeWord's
+    training tools are not Python-3.13-clean and local training would fight
+    the LLM for GPU, so the owner trains `hey_baby.onnx` on Colab
+    (`scripts/wakeword_training.md`). The pretrained `hey_jarvis` model ships
+    as fallback; dropping `models/hey_baby.onnx` in place switches
+    automatically at next boot — no config change.
+45. **Push-to-talk via ctypes `RegisterHotKey`**, not the `keyboard` package
+    (unmaintained, global-hook based): a `GetMessageW` pump on a daemon
+    thread, no admin needed, `WM_QUIT` via `PostThreadMessageW` to stop.
+    Registration failure (combo taken) degrades to wake-word-only with a
+    warning.
+46. **Voice never confirms**: a `confirm_request` on the voice channel is
+    spoken as "check the screen" and resolved only in the UI modal. Yes/no
+    by voice would make the deterministic gate's approval channel spoofable
+    by anything the mic hears (TV, other people).
+47. **Cross-thread contract**: `EventBus.publish` is `put_nowait` and stays
+    LOOP-THREAD-ONLY. Voice thread → loop via
+    `asyncio.run_coroutine_threadsafe(agent.run_turn(...), loop)` and
+    `loop.call_soon_threadsafe(functools.partial(bus.publish, ...))`
+    (`call_soon_threadsafe` accepts no kwargs); loop → voice thread via a
+    stdlib `queue.Queue` fed by a bridge coroutine; cancel is `fut.cancel()`.
+48. **VRAM acceptance amended** (owner-approved): the spec's "≤7.5 GB with
+    9B + Whisper" line is unmeetable — the 9B alone holds 7.99 GB. New
+    criterion: the voice stack adds **0 VRAM** (everything CPU) and Ollama is
+    never evicted. Verified live: 8.04 GB during a voice boot, all Ollama.
+49. **Mic input stream never closes** while the pipeline runs — barge-in
+    detection during playback depends on it. Playback writes ~100 ms chunks
+    checking a stop flag, so interruption lands within a beat. No AEC:
+    open-speaker echo is handled by raising `barge_in_threshold` or a
+    headset (documented in the checklist).

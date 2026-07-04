@@ -16,7 +16,11 @@ logs/
 
 # Models / large artifacts
 models/*.onnx
+models/*.bin
 assets/baby_ready.wav
+
+# Knowledge graph (regenerable via /graphify)
+graphify-out/
 
 # Local tool config
 .claude/

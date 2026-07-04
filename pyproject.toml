@@ -19,6 +19,12 @@ dependencies = [
     "winotify>=1.1",
     "sqlite-vec>=0.1.9,<0.2",
     "sentence-transformers>=5.6",
+    "faster-whisper>=1.2.1",
+    "onnxruntime>=1.20,<2",       # shared: openwakeword + kokoro-onnx
+    "openwakeword>=0.6.0",
+    "silero-vad>=6.2.1",          # adds torchaudio; torch CPU already present
+    "kokoro-onnx>=0.5.0",         # official kokoro PyPI pins <3.13
+    "sounddevice>=0.5.5",
 ]
 
 [dependency-groups]

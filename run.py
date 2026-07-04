@@ -26,11 +26,10 @@ def main() -> None:
     parser.add_argument("--all", action="store_true", help="everything (Phase 4)")
     args = parser.parse_args()
 
-    if args.voice or args.all:
-        print("Not built yet — arrives in a later phase. Use --cli or --ui.")
-        sys.exit(2)
+    if args.all and not (args.ui or args.voice):
+        args.ui = args.voice = True
 
-    if args.ui:
+    if args.ui or args.voice:
         import yaml
 
         from ui.server import run_ui
@@ -38,7 +37,9 @@ def main() -> None:
         with open("config.yaml", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         try:
-            asyncio.run(run_ui(config))
+            # --voice boots the UI stack too (same process, spec section 16);
+            # voice attaches on top and fails soft back to text-only.
+            asyncio.run(run_ui(config, with_voice=args.voice))
         except KeyboardInterrupt:
             print("\nbye.")
     elif args.cli:
