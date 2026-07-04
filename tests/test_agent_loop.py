@@ -198,3 +198,22 @@ async def test_cancellation_publishes_cancelled_turn_end(db):
         events.append(q.get_nowait())
     end = next(e for e in events if e.kind == "turn_end")
     assert end.payload["status"] == "cancelled"
+
+
+# -- empty final reply (thinking model burned the window) ---------------------------
+
+
+async def test_empty_final_reply_retries_with_thinking_off(db):
+    script = [_tc("echo_tool", {"text": "x"}), "", "Recovered answer."]
+    agent, provider, _ = await _make_agent(db, script)
+    reply = await agent.run_turn("do it")
+    assert reply == "Recovered answer."
+    assert provider.request_tools[-1] is None  # finalize call carries no tools
+    assert provider.requests[-1][-1]["role"] == "system"  # answer-now nudge appended
+
+
+async def test_empty_reply_without_tools_stays_placeholder(db):
+    agent, provider, _ = await _make_agent(db, [""])
+    reply = await agent.run_turn("hi")
+    assert reply == "(no response)"
+    assert len(provider.requests) == 1  # no retry when no tool ran

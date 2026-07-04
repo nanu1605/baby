@@ -144,6 +144,13 @@ class AgentCore:
             text = "".join(text_parts)
 
             if not tool_calls:
+                # Thinking models can spend the whole generation window in the
+                # reasoning channel after a long tool loop and emit no content
+                # (observed live on the first background task). One no-tools
+                # retry with thinking off forces a plain answer from the tool
+                # results already in context.
+                if not text.strip() and tools_succeeded > 0:
+                    text = await self._final_answer(messages) or text
                 reply = text or "(no response)"
                 # Skip when the model already wrote a "Next:" line itself —
                 # it mimics suggestions seen in history, and appending a real
@@ -186,6 +193,24 @@ class AgentCore:
         )
         await self.db.add_message(self.conversation_id, "assistant", capped)
         return capped, "capped"
+
+    async def _final_answer(self, messages: list[dict]) -> str:
+        """Force a plain-text answer when the final model call came back empty."""
+        nudge = {
+            "role": "system",
+            "content": "Answer now in plain text using the tool results above. Do not call tools.",
+        }
+        parts: list[str] = []
+        try:
+            async for chunk in self.provider.chat(
+                [*messages, nudge], tools=None, max_tokens=700, reasoning_effort="none"
+            ):
+                if chunk.delta:
+                    parts.append(chunk.delta)
+                    self.bus.publish("token", self.channel, text=chunk.delta)
+        except Exception:  # noqa: BLE001 — fall back to the "(no response)" placeholder
+            return ""
+        return "".join(parts).strip()
 
     async def _suggest_next_step(self, messages: list[dict], final_text: str) -> str:
         """Feature #8: one extra no-tools call proposing the next action.
