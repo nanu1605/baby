@@ -326,6 +326,21 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             telegram_bot = None
             print("telegram failed to start — continuing without it")
 
+    tray = None
+    if config.get("tray", {}).get("enabled", True):
+        from ui.tray import TrayIcon
+
+        loop = asyncio.get_running_loop()
+
+        def _tray_quit() -> None:
+            # Called on the pystray thread — hop to the loop to stop uvicorn.
+            loop.call_soon_threadsafe(setattr, server, "should_exit", True)
+
+        tray = TrayIcon(bus, url=f"http://{host}:{port}", on_quit=_tray_quit)
+        if not tray.start():
+            tray = None
+            print("tray icon unavailable — continuing without it")
+
     if with_voice:
         from voice.readycue import ReadyCue
 
@@ -346,6 +361,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     try:
         await serve_task
     finally:
+        if tray is not None:
+            try:
+                tray.stop()
+            except Exception:  # noqa: BLE001 — shutdown must reach every stage
+                pass
         if telegram_bot is not None:
             try:
                 await telegram_bot.stop()

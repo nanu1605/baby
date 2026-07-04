@@ -42,6 +42,8 @@ voice:
     compute_type: int8
     cpu_threads: 8
     beam_size: 1
+    # Decoder bias for names Whisper mishears with an Indian accent
+    hotwords: "Baby, Ollama, Chromium, Telegram, Gemini, qwen, Spotify, WhatsApp, YouTube, Indore, lakh, crore"
   tts:
     engine: kokoro-onnx                 # official kokoro pip pins <3.13 (DECISIONS)
     model: models/kokoro-v1.0.onnx
@@ -97,6 +99,9 @@ browser:
 
 telegram:
   enabled: false
+
+tray:
+  enabled: true                         # status dot: green ready, amber busy, red confirm
 
 briefing:
   enabled: true                         # Phase 4: 08:00 local + 1h wake grace
