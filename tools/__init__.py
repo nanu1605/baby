@@ -7,6 +7,7 @@ from __future__ import annotations
 def register_all() -> None:
     from tools import (  # noqa: F401
         apps,
+        browser,
         clock,
         files,
         memory_tools,

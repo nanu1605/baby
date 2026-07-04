@@ -41,6 +41,27 @@ class SafetyConfig:
     home: Path = field(default_factory=Path.home)
 
 
+@dataclass
+class SafetySession:
+    """Per-process approval state (Phase 4).
+
+    browser_domain_fn reads the domain from the REAL Playwright page — the
+    model's kwargs are never trusted for it, so the LLM can't talk its way
+    past a per-domain confirm by claiming a different site.
+    """
+
+    confirmed_browser_domains: set = field(default_factory=set)
+    browser_domain_fn: object | None = None  # Callable[[], str]
+
+    def current_browser_domain(self) -> str:
+        if self.browser_domain_fn is None:
+            return ""
+        try:
+            return self.browser_domain_fn() or ""
+        except Exception:  # noqa: BLE001 — a broken page reads as "no page"
+            return ""
+
+
 # Processes whose termination can take down the session or the OS.
 SYSTEM_PROCESSES = frozenset(
     {"csrss", "wininit", "winlogon", "lsass", "services", "svchost", "smss", "dwm"}
@@ -313,8 +334,28 @@ def classify_tool(
     kwargs: dict,
     cfg: SafetyConfig,
     user_text: str | None = None,
+    session: SafetySession | None = None,
 ) -> Verdict:
     """Single gate entry for every registered tool."""
+    if tool == "browser_act":
+        action = str(kwargs.get("action", "")).lower().strip()
+        if action in ("goto", "read", "screenshot"):
+            return Verdict(SafetyClass.ALLOW, f"browser {action} (read-only)", action)
+        if action in ("click", "type"):
+            domain = session.current_browser_domain() if session else ""
+            if not domain:
+                return Verdict(
+                    SafetyClass.CONFIRM, f"browser {action} with no page open yet", action
+                )
+            if domain in session.confirmed_browser_domains:
+                return Verdict(
+                    SafetyClass.ALLOW, f"already approved for {domain} this session", domain
+                )
+            return Verdict(
+                SafetyClass.CONFIRM, f"first {action} on {domain} this session", domain
+            )
+        return Verdict(SafetyClass.CONFIRM, f"unknown browser action {action!r}", action)
+
     if tool == "run_shell":
         return classify_shell(str(kwargs.get("command", "")), user_text)
 
@@ -429,13 +470,18 @@ class SafetyGate:
     def __init__(self, cfg: SafetyConfig, bus: EventBus) -> None:
         self.cfg = cfg
         self.confirmations = ConfirmationManager(bus, cfg.confirm_timeout_s)
+        self.session = SafetySession()
 
     def classify(self, tool: str, kwargs: dict, user_text: str | None = None) -> Verdict:
-        return classify_tool(tool, kwargs, self.cfg, user_text)
+        return classify_tool(tool, kwargs, self.cfg, user_text, self.session)
 
     def note_approval(self, tool: str, kwargs: dict) -> None:
         """Record what an approved confirmation covers for the rest of the
         session (e.g. a browser domain). No-op for tools with no session state."""
+        if tool == "browser_act" and str(kwargs.get("action", "")).lower() in ("click", "type"):
+            domain = self.session.current_browser_domain()
+            if domain:
+                self.session.confirmed_browser_domains.add(domain)
 
     @property
     def dry_run(self) -> bool:

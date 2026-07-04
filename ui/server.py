@@ -197,6 +197,13 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         max_results=config.get("search", {}).get("max_results", 6),
     )
     files_tools.configure(index_ttl_hours=config.get("files", {}).get("index_ttl_hours", 24))
+    from tools import browser as browser_tools
+
+    browser_cfg = config.get("browser", {})
+    browser_tools.configure(
+        headless=bool(browser_cfg.get("headless", False)),
+        profile_dir=browser_cfg.get("profile_dir", ""),
+    )
     asyncio.get_running_loop().run_in_executor(None, apps.build_index)
 
     from memory import build_memory
@@ -207,6 +214,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
 
     conv_id = await db.latest_conversation("ui") or await db.create_conversation("ui")
     gate = build_gate(config, bus)
+    # The per-domain browser confirm reads the REAL page url, never model kwargs.
+    gate.session.browser_domain_fn = browser_tools.current_domain
     agent = AgentCore(
         provider,
         db,
@@ -308,6 +317,10 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         try:
             await pool.stop()
         except Exception:  # noqa: BLE001 — shutdown must reach every stage
+            pass
+        try:
+            await browser_tools.shutdown()
+        except Exception:  # noqa: BLE001
             pass
         if voice_pipeline is not None:
             voice_pipeline.stop()

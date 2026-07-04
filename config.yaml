@@ -91,6 +91,10 @@ workers:
   size: 2                               # background task concurrency (spec §15)
   max_iterations: 15                    # tool-step budget per background task
 
+browser:
+  headless: false                       # visible window (owner choice — easier logins)
+  profile_dir: ""                       # default %LOCALAPPDATA%/baby/browser
+
 telegram:
   enabled: false
 
