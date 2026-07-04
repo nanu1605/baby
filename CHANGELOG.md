@@ -1,5 +1,47 @@
 # Changelog
 
+## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
+
+- Background tasks (`workers/queue.py`): "in the background, research X" →
+  task_id immediately, chat stays usable; an asyncio pool (size 2) runs each
+  task through a fresh AgentCore (15 tool-step budget) on its own
+  `task:{id}` channel; progress lands in `task_events` + the activity feed.
+  Tools: `start_background_task` (destructive specs need a confirm),
+  `task_status`, `cancel_task`. `GET /tasks` read view.
+- Notifications (`workers/notify.py`, feature #10): on task finish/fail —
+  Windows toast + spoken announcement + Telegram push, each tier
+  best-effort. Voice announcements queue on the pipeline (`announce_q`) and
+  play only when Baby is idle — a live conversation always wins.
+- Model router (`core/router.py`): daily → heavy → cloud escalation live.
+  Triggers: explicit ("use the big brain" / "cloud pe pooch"), planning
+  keywords, retry-after-failure, long context (>4K tokens → cloud only —
+  heavy shares the global 8K ctx). Heavy (qwen3.6:35b-a3b) gated on >22 GB
+  free RAM; Gemini free tier (OpenAI-compat endpoint, no extra SDK) cools
+  down 5 min on 429/5xx. Every decision and denial → audit log + activity
+  feed; `/stats` exposes the active tier for the header badge.
+- Browser (`tools/browser.py`): `browser_act`
+  goto/read/click/type/screenshot via Playwright Chromium, persistent
+  profile in %LOCALAPPDATA%\baby\browser, visible window. Safety:
+  goto/read/screenshot allowed; click/type confirm ONCE per domain per
+  session — and the domain is read from the real page, never from model
+  arguments.
+- Scheduler (`workers/scheduler.py`): APScheduler cron over `schedules`
+  rows + the morning briefing (08:00 local, fires up to 1 h late after
+  wake) — date, Indore weather, pending tasks, headlines, system health,
+  spoken + toast, composed by the agent with its normal tools.
+- Telegram (`clients/telegram_bot.py`): polling bot embedded in the same
+  asyncio loop, answers ONLY `TELEGRAM_CHAT_ID` (everything else logged and
+  ignored); gated actions arrive as inline ✅/❌ buttons resolving the same
+  confirmation manager as the web modal; task completions push to the phone.
+- Autostart (`scripts/autostart.ps1`, feature #2): hidden Task Scheduler
+  logon job running pythonw; run.py self-logs to
+  %LOCALAPPDATA%\baby\logs\baby.log; `-Remove` unregisters.
+- Deps: apscheduler, playwright, python-telegram-bot, python-dotenv (.env
+  now actually loaded at boot). setup.ps1 installs Chromium, pulls the
+  heavy model, creates %LOCALAPPDATA%\baby dirs.
+- Tests: +80 (db tasks, router matrix, worker pool, notifier, browser +
+  safety matrix, scheduler, telegram handlers). Suite: 278 passing.
+
 ## Phase 3 fix — owner testing feedback (2026-07-04)
 
 - Voice worked only on the first try: the pause between the wake beep and

@@ -3,11 +3,32 @@
 A Jarvis-style, voice-enabled, **local-first** personal AI assistant for Windows 11.
 Local models by default (privacy, zero cost); free cloud tier only as a fallback brain.
 
-> Status: **Phase 3 — Voice** ✅
+> Status: **Phase 4 — Autonomy, Notifications, Reach** ✅
 > Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md)
 
 ## What works right now
 
+- **Background tasks**: "in the background, research the top 3 EVs under
+  15 lakh" → Baby hands back a task id and keeps chatting; when the task
+  finishes you get a toast, a spoken announcement, and (if enabled) a
+  Telegram message. `task_status` / `cancel_task` / `GET /tasks` to manage.
+- **Three brains**: daily 9B stays warm; "use the big brain" (or a planning
+  task, a failed retry, a huge input) escalates to the 35B — gated on free
+  RAM — or to Gemini's free tier. The activity feed narrates every routing
+  decision; the header badge shows which brain answered.
+- **Browser**: "open ollama.com and read me the headline" drives a real
+  Chromium window with a persistent profile (logins survive restarts).
+  Navigation and reading are free; the FIRST click/type on each site asks
+  you once per session.
+- **Morning briefing**: 08:00 (or within an hour of waking the PC) Baby
+  speaks the date, Indore weather, pending tasks, headlines, and system
+  health. Cron-able one-liners live in the `schedules` table.
+- **Telegram**: message Baby from your phone — replies, task notifications,
+  and even confirmation buttons (✅/❌) for gated actions. Locked to YOUR
+  chat id; everyone else gets silence.
+- **Autostart**: `scripts\autostart.ps1` registers a hidden logon task —
+  Baby is ready with the spoken cue shortly after you reach the desktop.
+  `-Remove` to undo.
 - **Voice** (`run.py --voice`): say **"hey jarvis"** (interim — train your
   own "hey baby" via [scripts/wakeword_training.md](scripts/wakeword_training.md)),
   hear a beep, speak; Baby transcribes locally (Whisper large-v3-turbo, CPU),
@@ -60,6 +81,7 @@ on CPU; the GPU stays reserved for the LLM.
 ## Usage
 
 ```powershell
+uv run python run.py --all    # everything: UI + voice + workers + telegram
 uv run python run.py --voice  # web UI + voice (wake word, PTT, TTS)
 uv run python run.py --ui     # web UI at http://127.0.0.1:8765
 uv run python run.py --cli    # terminal REPL
@@ -73,7 +95,10 @@ baby>
 It's 6:42 PM on Friday, July 3rd.
 ```
 
-`--all` currently equals `--voice`; more surfaces arrive in later phases.
+Telegram setup (optional): create a bot with **@BotFather**, get your chat
+id from **@userinfobot**, put both in `.env`
+(`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`), set `telegram.enabled: true`.
+Cloud escalation (optional): put a free `GEMINI_API_KEY` in `.env`.
 
 ## Development
 
@@ -93,5 +118,5 @@ Unit tests never touch the network — the agent loop is tested against a script
 | 1 ✅ | Real tools (files/shell/web/apps), safety gate, web UI + activity feed |
 | 2 ✅ | Long-term memory (sqlite-vec), persona, chat-vs-act detection |
 | 3 ✅ | Voice: wake word, Whisper STT, Kokoro TTS, EN/HI/Hinglish |
-| 4 | Background tasks, notifications, browser control, Telegram, autostart |
+| 4 ✅ | Background tasks, notifications, browser control, Telegram, autostart |
 | 5 | Multi-agent orchestration, screen awareness, speaker verification |

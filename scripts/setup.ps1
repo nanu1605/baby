@@ -145,11 +145,29 @@ if (-not (Test-Path "assets\baby_ready.wav")) {
     uv run python -m voice.tts --prerender "Baby ready" assets\baby_ready.wav
 }
 
+# --- 3d. Autonomy stack (Phase 4) ------------------------------------------------
+# Playwright Chromium for browser_act, the heavy escalation model, and the
+# working directories under %LOCALAPPDATA%\baby.
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\baby\browser",
+    "$env:LOCALAPPDATA\baby\logs", "$env:LOCALAPPDATA\baby\shots" | Out-Null
+Write-Host "Installing Playwright Chromium (~170 MB, one-time)..." -ForegroundColor Yellow
+uv run playwright install chromium
+$heavyTag = "qwen3.6:35b-a3b"
+$tags = (Invoke-RestMethod "http://127.0.0.1:11434/api/tags" -TimeoutSec 5).models.name
+if ($tags -notcontains $heavyTag) {
+    Write-Host "Pulling heavy model $heavyTag (~24 GB download — needs >22 GB FREE RAM to run;" -ForegroundColor Yellow
+    Write-Host "escalation falls back to the Gemini cloud tier whenever RAM is short)." -ForegroundColor Yellow
+    ollama pull $heavyTag
+}
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
     Write-Host ".env created from template — fill in keys as needed (never commit it)." -ForegroundColor Yellow
 }
+Write-Host "Telegram (optional): create a bot with @BotFather, put TELEGRAM_BOT_TOKEN and"
+Write-Host "TELEGRAM_CHAT_ID (from @userinfobot) in .env, then set telegram.enabled: true."
 
 Write-Host ""
-Write-Host "Setup complete. Start Baby with:  uv run python run.py --cli" -ForegroundColor Green
+Write-Host "Setup complete. Start Baby with:  uv run python run.py --all" -ForegroundColor Green
+Write-Host "Autostart at login (once you're happy): scripts\autostart.ps1" -ForegroundColor Green

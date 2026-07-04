@@ -8,12 +8,25 @@ import sys
 
 from tools import register_all
 
+# Under pythonw.exe (autostart, hidden) stdout/stderr are None — Task
+# Scheduler can't redirect them, so Baby owns its log file instead.
+if sys.stdout is None or sys.stderr is None:
+    import os
+    from pathlib import Path
+
+    _log_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "baby" / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _log = open(_log_dir / "baby.log", "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+    if sys.stdout is None:
+        sys.stdout = _log
+    if sys.stderr is None:
+        sys.stderr = _log
+
 # Windows consoles may default to cp1252; Baby speaks UTF-8 (Hindi etc.).
 # stdin matters too: piped input would otherwise decode Devanagari as mojibake.
-# Streams can be None under pythonw.exe — skip those.
 for _name in ("stdin", "stdout", "stderr"):
     _stream = getattr(sys, _name, None)
-    if _stream is not None and (_stream.encoding or "").lower() != "utf-8":
+    if _stream is not None and (getattr(_stream, "encoding", "") or "").lower() != "utf-8":
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 

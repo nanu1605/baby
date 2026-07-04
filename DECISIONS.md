@@ -208,3 +208,72 @@ Running log of non-obvious choices made during the build. Newest last.
     Now silence ends an utterance only after speech has been seen;
     pre-speech quiet gets `vad_speech_wait_ms` (5 s) grace, silent captures
     skip STT, and the feed says "voice: heard nothing".
+
+## Phase 4 (2026-07-04)
+
+51. **Router is a provider, not an agent feature**: `RouterProvider`
+    implements the same ChatProvider protocol AgentCore consumes, wrapping
+    {daily, heavy, cloud} — zero agent changes, and every surface (UI,
+    voice, tasks, scheduler, telegram) inherits escalation for free.
+    Per-turn stickiness keys on the trailing user message (stable across a
+    turn's tool-loop iterations); internal capped calls (max_tokens set, no
+    tools) always stay on daily. `retry_after_failure` arms via a duck-typed
+    `record_turn_result` hook called from run_turn's finally.
+52. **`long_context` escalates to CLOUD, never heavy**:
+    `OLLAMA_CONTEXT_LENGTH` is global, so the 35B gets the same 8K window as
+    the 9B — swapping 24 GB of weights for zero context gain would be pure
+    loss. Also: heavy needs >22 GB free RAM (usually NOT available on this
+    32 GB box) — the deny-and-fall-through path is the common case and every
+    denial is published ("heavy denied: 9.8 GB free < 22").
+53. **Gemini via its OpenAI-compat endpoint** (`…/v1beta/openai/`) with the
+    same `openai` AsyncClient as Ollama — no google SDK. The fragmented
+    tool-call stream accumulation moved to a shared
+    `base.accumulate_stream()`. 429/5xx puts the provider in a 5-minute
+    cooldown the router reads; cloud is never a hard dependency.
+54. **Completion notifications are direct calls, not bus events**: the bus
+    is drop-oldest under backpressure by design — a "task done"
+    toast/telegram must not be droppable. task_queued/started/done events
+    are published ADDITIONALLY, for the activity feed only.
+55. **Voice announcements get their own queue** (`announce_q`, maxsize 5),
+    drained at the top of `_idle()` — `sentence_q` is only consumed in
+    RESPONDING, so queuing there would speak announcements into the next
+    conversation. TTS synth runs on the voice thread (never the loop);
+    a live conversation always wins; overflow drops with a status line.
+56. **Browser per-domain confirm state lives in the SafetyGate**
+    (`SafetySession`), and the domain comes from the REAL Playwright page
+    via an injected `current_domain` callable — model kwargs are never
+    trusted for it, so the LLM can't claim a pre-approved domain to skip
+    the confirm. `gate.note_approval` records the domain only after the
+    human clicked Yes. The set resets per process (per spec: per session).
+57. **`start_background_task` is gated by a destructive-intent keyword scan**
+    over title+spec (delete/uninstall/pay/send/…, plus Hinglish forms):
+    routing natural-language specs through `classify_shell` would CONFIRM
+    every benign research task (unknown→CONFIRM). Tools inside the running
+    task still pass the gate individually — defense in depth.
+58. **Task channel is `task:{id}`**: free-text column, gives task_events
+    attribution and UI grouping with no schema change, and can never collide
+    with the voice bridge's `channel == "voice"` filter. Background/scheduler
+    agents run with `memory=None, suggest_next_step=False, max_iterations=15`
+    — one-shot conversations don't need rolling summaries, and N concurrent
+    maintenance calls into the 9B would serialize everything.
+59. **APScheduler pinned `>=3.11,<4`** — 4.x is still pre-release. Briefing
+    is agent-composed (one prompt from `briefing.include` through a
+    scheduler-channel AgentCore) instead of bespoke aggregation code: it
+    reuses the already-tested tools. `misfire_grace_time=3600` fires an
+    08:00 briefing on a PC that wakes at 08:40 (owner choice).
+60. **python-telegram-bot v22 embedded manually**: `run_polling()` blocks
+    and owns the loop, so the bot drives initialize → start →
+    `updater.start_polling` inside the existing loop (reverse on stop).
+    Chat-id lockdown per spec §18; confirmations surface as inline Yes/No
+    whose callback resolves the SAME ConfirmationManager as the web modal
+    (owner-approved: the phone may approve gated actions).
+61. **Autostart = current-user Task Scheduler job running pythonw.exe**
+    (`-Hidden`, `-StartWhenAvailable`, no time limit, `-Force` idempotent,
+    no admin). Task Scheduler can't redirect output, so run.py detects
+    None streams and self-logs to `%LOCALAPPDATA%\baby\logs\baby.log`.
+    Registered LAST per the spec's "autostart hides a crashing app" risk;
+    `autostart.ps1 -Remove` unregisters.
+62. **Atomic task claim via `UPDATE … RETURNING`** on the single aiosqlite
+    connection — two workers can never grab the same row, no polling races.
+    `cancel_task` cancels the per-task child asyncio.Task; the worker loop
+    survives and moves on.
