@@ -93,7 +93,9 @@ class TelegramBot:
             return True
         except Exception as exc:  # noqa: BLE001 — telegram failure must not block boot
             self.bus.publish(
-                "status", "telegram", text=f"telegram: failed to start — {type(exc).__name__}: {exc}"
+                "status",
+                "telegram",
+                text=f"telegram: failed to start — {type(exc).__name__}: {exc}",
             )
             self._app = None
             return False
