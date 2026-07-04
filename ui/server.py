@@ -294,6 +294,13 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     tasks_tools.configure(pool, db)
     ctx.pool = pool
 
+    from workers.scheduler import Scheduler
+
+    scheduler = Scheduler(
+        db=db, bus=bus, provider=provider, gate=gate, config=config, notifier=notifier
+    )
+    await scheduler.start()
+
     if with_voice:
         from voice.readycue import ReadyCue
 
@@ -315,8 +322,12 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         await serve_task
     finally:
         try:
-            await pool.stop()
+            await scheduler.stop()
         except Exception:  # noqa: BLE001 — shutdown must reach every stage
+            pass
+        try:
+            await pool.stop()
+        except Exception:  # noqa: BLE001
             pass
         try:
             await browser_tools.shutdown()

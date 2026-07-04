@@ -99,6 +99,6 @@ telegram:
   enabled: false
 
 briefing:
-  enabled: false
+  enabled: true                         # Phase 4: 08:00 local + 1h wake grace
   cron: "0 8 * * *"
   include: [date, weather, pending_tasks, headlines, system_health]
