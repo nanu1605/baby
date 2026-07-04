@@ -412,6 +412,10 @@ class SafetyGate:
     def classify(self, tool: str, kwargs: dict, user_text: str | None = None) -> Verdict:
         return classify_tool(tool, kwargs, self.cfg, user_text)
 
+    def note_approval(self, tool: str, kwargs: dict) -> None:
+        """Record what an approved confirmation covers for the rest of the
+        session (e.g. a browser domain). No-op for tools with no session state."""
+
     @property
     def dry_run(self) -> bool:
         return self.cfg.mode == "dry_run"

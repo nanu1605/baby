@@ -56,6 +56,7 @@ class AgentCore:
         history_limit: int = 30,
         memory: Memory | None = None,
         suggest_next_step: bool = False,
+        max_iterations: int = MAX_TOOL_ITERATIONS,
     ) -> None:
         self.provider = provider
         self.db = db
@@ -66,6 +67,7 @@ class AgentCore:
         self.history_limit = history_limit
         self.memory = memory
         self.suggest_next_step = suggest_next_step
+        self.max_iterations = max_iterations
         self.maintenance_task: asyncio.Task | None = None  # clients may await on shutdown
 
     async def run_turn(self, user_text: str) -> str:
@@ -83,6 +85,11 @@ class AgentCore:
             raise
         finally:
             self.bus.publish("turn_end", self.channel, reply=reply, status=status)
+            # Router hook (Phase 4): lets the provider arm retry_after_failure
+            # escalation for this channel's next turn. No-op for plain providers.
+            record = getattr(self.provider, "record_turn_result", None)
+            if record is not None:
+                record(self.channel, status)
             if self.memory is not None and status == "ok":
                 self._schedule_maintenance()
 
@@ -125,7 +132,7 @@ class AgentCore:
         ]
 
         tools_succeeded = 0
-        for _ in range(MAX_TOOL_ITERATIONS):
+        for _ in range(self.max_iterations):
             text_parts: list[str] = []
             tool_calls: list[ToolCall] = []
             async for chunk in self.provider.chat(messages, tools=registry.schemas()):
@@ -265,6 +272,10 @@ class AgentCore:
             if not ok:
                 result = json.dumps({"error": f"user confirmation {resolution} — not executed"})
                 approved, exec_status = 0, resolution
+            else:
+                # Let the gate remember what this approval covers (e.g. a
+                # browser domain for the rest of the session).
+                self.gate.note_approval(tc.name, kwargs)
 
         if approved:
             if self.gate.dry_run and verdict.klass is not SafetyClass.ALLOW:

@@ -23,6 +23,9 @@ from datetime import UTC, datetime
 #   confirm_resolved{confirm_id, approved, resolution}
 #   status          {text}
 #   error           {text}
+#   task_queued     {task_id, title}
+#   task_started    {task_id, title}
+#   task_done       {task_id, title, status: done|failed|cancelled, result_summary}
 
 
 @dataclass

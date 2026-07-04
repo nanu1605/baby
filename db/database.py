@@ -163,6 +163,87 @@ class Database:
         )
         await self.conn.commit()
 
+    # -- background tasks -----------------------------------------------------
+
+    async def add_task(self, title: str, spec: str, notify: int = 1) -> int:
+        cur = await self.conn.execute(
+            "INSERT INTO tasks (title, spec, notify) VALUES (?, ?, ?)",
+            (title, spec, notify),
+        )
+        await self.conn.commit()
+        return cur.lastrowid
+
+    async def claim_next_task(self) -> dict | None:
+        """Atomically claim the oldest queued task (single writer connection,
+        UPDATE…RETURNING) so two workers can never grab the same row."""
+        cur = await self.conn.execute(
+            "UPDATE tasks SET status = 'running', started_at = datetime('now')"
+            " WHERE id = (SELECT id FROM tasks WHERE status = 'queued' ORDER BY id LIMIT 1)"
+            " RETURNING *"
+        )
+        row = await cur.fetchone()
+        await self.conn.commit()
+        return dict(row) if row else None
+
+    async def update_task(self, task_id: int, *, status: str, result: str | None = None) -> None:
+        terminal = status in ("done", "failed", "cancelled")
+        await self.conn.execute(
+            "UPDATE tasks SET status = ?, result = COALESCE(?, result),"
+            " finished_at = CASE WHEN ? THEN datetime('now') ELSE finished_at END"
+            " WHERE id = ?",
+            (status, result, terminal, task_id),
+        )
+        await self.conn.commit()
+
+    async def get_task(self, task_id: int) -> dict | None:
+        cur = await self.conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def list_tasks(self, limit: int = 50, status: str | None = None) -> list[dict]:
+        query, params = "SELECT * FROM tasks", []
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        cur = await self.conn.execute(query, params)
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def count_tasks(self, status: str) -> int:
+        cur = await self.conn.execute("SELECT COUNT(*) AS n FROM tasks WHERE status = ?", (status,))
+        return (await cur.fetchone())["n"]
+
+    async def add_task_event(self, task_id: int, kind: str, payload: str) -> int:
+        cur = await self.conn.execute(
+            "INSERT INTO task_events (task_id, kind, payload) VALUES (?, ?, ?)",
+            (task_id, kind, payload),
+        )
+        await self.conn.commit()
+        return cur.lastrowid
+
+    async def list_task_events(self, task_id: int, limit: int = 100) -> list[dict]:
+        cur = await self.conn.execute(
+            "SELECT * FROM task_events WHERE task_id = ? ORDER BY id LIMIT ?",
+            (task_id, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    # -- schedules --------------------------------------------------------------
+
+    async def list_schedules(self, enabled_only: bool = True) -> list[dict]:
+        query = "SELECT * FROM schedules"
+        if enabled_only:
+            query += " WHERE enabled = 1"
+        cur = await self.conn.execute(query + " ORDER BY id")
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def set_schedule_last_run(self, schedule_id: int, ts: str) -> None:
+        await self.conn.execute(
+            "UPDATE schedules SET last_run = ? WHERE id = ?", (ts, schedule_id)
+        )
+        await self.conn.commit()
+
     async def get_history(self, conversation_id: int, limit: int = 50) -> list[dict]:
         """User/assistant messages with timestamps, oldest first — UI backfill."""
         cur = await self.conn.execute(
