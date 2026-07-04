@@ -476,6 +476,55 @@ def test_vad_reset_clears_speech_flag():
     assert not vad.speech_started
 
 
+# -- 6c. announcements (Phase 4) ---------------------------------------------------
+
+
+async def test_announce_played_when_idle(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.announce("your task is done")
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._idle, FrameBuffer())
+    assert pipeline.tts.synthed == ["your task is done"]
+    assert pipeline.audio.play_calls == 1
+    assert pipeline.state == "idle"  # announcements never change state
+
+
+async def test_announce_deferred_while_responding(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.announce("waiting my turn")
+    pipeline.sentence_q.put("Reply sentence.")
+    pipeline.sentence_q.put(None)
+    from voice.audio_io import FrameBuffer
+
+    fb = FrameBuffer()
+    await asyncio.to_thread(pipeline._respond, fb)  # speaks the reply only
+    assert pipeline.tts.synthed == ["Reply sentence."]
+    await asyncio.to_thread(pipeline._idle, fb)  # then the announcement
+    assert pipeline.tts.synthed == ["Reply sentence.", "waiting my turn"]
+
+
+async def test_announce_overflow_dropped(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+    for i in range(7):  # maxsize 5
+        pipeline.announce(f"announcement {i}")
+    assert pipeline.announce_q.qsize() == 5
+
+
+async def test_announce_synth_failure_recovers(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+
+    def boom(sentence):
+        raise RuntimeError("tts died")
+
+    pipeline.tts.synth = boom
+    pipeline.announce("doomed")
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._idle, FrameBuffer())  # must not raise
+    assert pipeline.state == "idle"
+
+
 # -- 7. barge-in ------------------------------------------------------------------
 
 

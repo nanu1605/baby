@@ -83,6 +83,9 @@ class VoicePipeline:
 
         self.state = IDLE
         self.sentence_q: queue.Queue = queue.Queue()
+        # Out-of-band announcements (task done, briefing). Spoken only while
+        # IDLE — a live conversation always wins; overflow gets dropped.
+        self.announce_q: queue.Queue = queue.Queue(maxsize=5)
         self.kill_phrases = tuple(cfg.get("kill_phrases", ("baby stop", "baby ruk ja")))
         self.max_utterance_s = float(cfg.get("max_utterance_s", 30))
         self.barge_in = bool(cfg.get("barge_in", True))
@@ -271,7 +274,32 @@ class VoicePipeline:
                 time.sleep(1.0)
                 self.state = IDLE
 
+    def announce(self, text: str) -> None:
+        """Thread-safe: queue text to be spoken next time the pipeline is idle."""
+        try:
+            self.announce_q.put_nowait(text)
+        except queue.Full:
+            self._publish("status", text="voice: announcement dropped (queue full)")
+
+    def _play_announcement(self) -> bool:
+        """Speak one queued announcement (IDLE only). True if one played."""
+        try:
+            text = self.announce_q.get_nowait()
+        except queue.Empty:
+            return False
+        try:
+            pcm, sample_rate = self.tts.synth(text)
+            self.audio.play(pcm, sample_rate, threading.Event())
+            self._publish("status", text=f"voice: announced {text!r}")
+        except Exception as exc:  # noqa: BLE001 — a failed announcement must not kill the loop
+            self._publish("error", text=f"voice announce: {type(exc).__name__}: {exc}")
+        return True
+
     def _idle(self, frames) -> None:
+        if self._play_announcement():
+            self.audio.drain()  # mic heard the announcement — don't wake on it
+            frames.clear()
+            return
         if self._ptt.is_set():
             self._ptt.clear()
             self._enter_listening(frames)
