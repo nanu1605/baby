@@ -184,6 +184,45 @@ def test_run_shell_routes_through_classify_shell(tmp_path):
     assert verdict.klass is SafetyClass.DENY
 
 
+def test_background_task_gated_spec_confirms(tmp_path):
+    cfg = _cfg(tmp_path)
+    for spec in (
+        "delete all my old downloads",
+        "uninstall spotify tonight",
+        "send an email to my boss",
+        "buy the cheapest SSD you find",
+        "purani files hata do",
+    ):
+        verdict = classify_tool("start_background_task", {"title": "t", "spec": spec}, cfg)
+        assert verdict.klass is SafetyClass.CONFIRM, spec
+
+
+def test_background_task_benign_spec_allowed(tmp_path):
+    cfg = _cfg(tmp_path)
+    for spec in (
+        "research the top 3 EVs under 15 lakh and summarize",
+        "compare python web frameworks for a small api",
+        "summarize today's AI news",
+    ):
+        verdict = classify_tool("start_background_task", {"title": "t", "spec": spec}, cfg)
+        assert verdict.klass is SafetyClass.ALLOW, spec
+
+
+def test_background_task_gated_title_also_confirms(tmp_path):
+    verdict = classify_tool(
+        "start_background_task",
+        {"title": "kill chrome later", "spec": "wait an hour first"},
+        _cfg(tmp_path),
+    )
+    assert verdict.klass is SafetyClass.CONFIRM
+
+
+def test_task_status_and_cancel_are_allowed(tmp_path):
+    cfg = _cfg(tmp_path)
+    assert classify_tool("task_status", {"task_id": 1}, cfg).klass is SafetyClass.ALLOW
+    assert classify_tool("cancel_task", {"task_id": 1}, cfg).klass is SafetyClass.ALLOW
+
+
 # --- confirmation manager -------------------------------------------------------
 
 

@@ -160,12 +160,20 @@ $("confirm-yes").addEventListener("click", () => answerConfirm(true));
 $("confirm-no").addEventListener("click", () => answerConfirm(false));
 dialog.addEventListener("cancel", (e) => { e.preventDefault(); answerConfirm(false); });
 
+const TASK_LABEL = { task_queued: "queued", task_started: "started", task_done: "finished" };
+
 reconnectingSocket("/ws/activity", (msg) => {
   if (msg.type === "tool_start") addFeedEntry(msg);
   else if (msg.type === "tool_end") closeFeedEntry(msg);
   else if (msg.type === "confirm_request") openConfirm(msg);
   else if (msg.type === "confirm_resolved" && msg.confirm_id === activeConfirmId) closeConfirm();
   else if (msg.type === "status") addSystemLine(msg.text);
+  else if (msg.type in TASK_LABEL) {
+    const tail = msg.type === "task_done"
+      ? ` (${msg.status}${msg.result_summary ? ": " + msg.result_summary : ""})`
+      : "";
+    addSystemLine(`task #${msg.task_id} ${TASK_LABEL[msg.type]}: ${msg.title}${tail}`);
+  }
 });
 
 /* ---------- header gauges + kill switch ---------- */

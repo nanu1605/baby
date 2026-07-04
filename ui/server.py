@@ -24,7 +24,16 @@ from db.database import Database
 WEB_DIR = Path(__file__).parent / "web"
 
 _CHAT_KINDS = {"turn_start", "token", "turn_end", "error"}
-_ACTIVITY_KINDS = {"tool_start", "tool_end", "confirm_request", "confirm_resolved", "status"}
+_ACTIVITY_KINDS = {
+    "tool_start",
+    "tool_end",
+    "confirm_request",
+    "confirm_resolved",
+    "status",
+    "task_queued",
+    "task_started",
+    "task_done",
+}
 
 
 @dataclass
@@ -36,6 +45,7 @@ class UIContext:
     config: dict = field(default_factory=dict)
     memory: object | None = None  # memory.Memory; kept loose to avoid heavy import
     current_turn: asyncio.Task | None = None
+    pool: object | None = None  # workers.queue.WorkerPool, attached in run_ui
 
     def turn_running(self) -> bool:
         return self.current_turn is not None and not self.current_turn.done()
@@ -59,7 +69,13 @@ def create_app(ctx: UIContext) -> FastAPI:
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
+        if ctx.pool is not None:
+            data["tasks_running"] = ctx.pool.running_count()
         return data
+
+    @app.get("/tasks")
+    async def tasks(limit: int = 50):
+        return await ctx.db.list_tasks(limit)
 
     @app.get("/history")
     async def history(limit: int = 50):
@@ -246,6 +262,29 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         else:
             voice_pipeline = None
 
+    # Phase 4: notifications + background worker pool. Voice/telegram tiers
+    # are injected as they come up; the pool works with toast-only too.
+    from tools import tasks as tasks_tools
+    from workers.notify import Notifier
+    from workers.queue import WorkerPool
+
+    notifier = Notifier(config, bus)
+    notifier.voice = voice_pipeline  # None when voice is off/failed
+    workers_cfg = config.get("workers", {})
+    pool = WorkerPool(
+        db=db,
+        bus=bus,
+        provider=provider,
+        gate=gate,
+        config=config,
+        notifier=notifier,
+        size=int(workers_cfg.get("size", 2)),
+        max_iterations=int(workers_cfg.get("max_iterations", 15)),
+    )
+    pool.start()
+    tasks_tools.configure(pool, db)
+    ctx.pool = pool
+
     if with_voice:
         from voice.readycue import ReadyCue
 
@@ -266,6 +305,10 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     try:
         await serve_task
     finally:
+        try:
+            await pool.stop()
+        except Exception:  # noqa: BLE001 — shutdown must reach every stage
+            pass
         if voice_pipeline is not None:
             voice_pipeline.stop()
         await db.close()

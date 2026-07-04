@@ -87,6 +87,10 @@ safety:
   auto_allow_app_close: [chrome, msedge, notepad, spotify, vlc]
   confirm_timeout_s: 60                 # unanswered confirmation = NO
 
+workers:
+  size: 2                               # background task concurrency (spec §15)
+  max_iterations: 15                    # tool-step budget per background task
+
 telegram:
   enabled: false
 

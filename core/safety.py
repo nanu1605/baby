@@ -94,6 +94,16 @@ _REDIRECT = re.compile(r"(?<!\d)>{1,2}")
 _REDIRECT_PROTECTED = re.compile(
     r"(?i)>{1,2}\s*\"?\s*(c:[\\/]+windows|\S*system32|c:[\\/]+program files)"
 )
+# Destructive intent in a natural-language background-task spec (Phase 4):
+# routing every spec through classify_shell would gate ALL of them (unknown →
+# CONFIRM), so a keyword scan implements "confirm if spec contains gated
+# actions" without gating benign research tasks.
+_TASK_GATED_RE = re.compile(
+    r"(?i)\b(delete|remove|erase|wipe|uninstall|install|kill|terminate|close|shut\s*down|"
+    r"restart|reboot|format|registry|regedit|pay|purchase|buy|order|send|upload|email|"
+    r"message|post|publish|tweet|delete\s+file|overwrite|modify|hata\s*d\w*|band\s+kar|"
+    r"bandh\s+kar|udaa?\s*d\w*)\b"
+)
 
 _SEGMENT_DENY: list[tuple[re.Pattern, str]] = [
     (re.compile(r"(?i)(^|\s|\"|')format(\.com|\.exe)?\s+[a-z]:"), "disk format"),
@@ -330,6 +340,17 @@ def classify_tool(
         if name in {n.lower() for n in cfg.auto_allow_app_close}:
             return Verdict(SafetyClass.ALLOW, "app close (auto-allowed)", name)
         return Verdict(SafetyClass.CONFIRM, f"closes {name or 'an app'}", name)
+
+    if tool == "start_background_task":
+        text = f"{kwargs.get('title', '')} {kwargs.get('spec', '')}"
+        if _TASK_GATED_RE.search(text):
+            return Verdict(
+                SafetyClass.CONFIRM,
+                "the task description mentions a gated action — confirm before queuing "
+                "(each tool inside the task is still gated individually)",
+                str(kwargs.get("title", "")),
+            )
+        return Verdict(SafetyClass.ALLOW, "background task (research/benign)", tool)
 
     return Verdict(SafetyClass.ALLOW, "read-only tool", tool)
 
