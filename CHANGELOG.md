@@ -40,6 +40,13 @@
   ignore earlier broken-tool claims and trust only the current tool list;
   the stale excuse messages in baby.db were replaced with a corrective
   note.
+- Stop button mid-turn made the NEXT turn answer the stopped command: the
+  bare "(cancelled)" marker read as an unanswered question. The marker now
+  says the request was abandoned and must not be resumed.
+- "I'll open Yahoo and run that search for you." — full stop, no tool
+  call, owner repeats himself: a promise-shaped reply with zero tool calls
+  now gets one deterministic push to actually call the tool. Suite: 309
+  passing.
 
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 

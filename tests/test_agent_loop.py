@@ -217,3 +217,60 @@ async def test_empty_reply_without_tools_stays_placeholder(db):
     reply = await agent.run_turn("hi")
     assert reply == "(no response)"
     assert len(provider.requests) == 1  # no retry when no tool ran
+
+
+# -- stopped turns must read as closed; promises must become actions ----------------
+
+
+async def test_cancelled_turn_writes_closure_marker(db):
+    import pytest
+
+    class Hang:
+        name = "hang"
+
+        async def chat(self, messages, tools=None, **opts):
+            await asyncio.Event().wait()
+            yield  # pragma: no cover
+
+        async def healthy(self):
+            return True
+
+    conv_id = await db.create_conversation("cli")
+    agent = AgentCore(Hang(), db, conv_id, channel="cli")
+    task = asyncio.create_task(agent.run_turn("search for diners"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    rows = await db.get_messages(conv_id)
+    assert rows[-1]["role"] == "assistant"
+    assert "stopped by the user" in rows[-1]["content"]
+    assert "do not answer" in rows[-1]["content"]
+
+
+async def test_promise_without_action_gets_one_push(db):
+    script = [
+        "I'll open Google and run the search for you.",
+        _tc("echo_tool", {"text": "searched"}),
+        "Done — here are the results.",
+    ]
+    agent, provider, _ = await _make_agent(db, script)
+    reply = await agent.run_turn("open google and search diners")
+    assert reply == "Done — here are the results."
+    push = provider.requests[1][-1]
+    assert push["role"] == "system" and "called no tool" in push["content"]
+
+
+async def test_plain_chat_reply_not_pushed(db):
+    agent, provider, _ = await _make_agent(db, ["Hello! All good here."])
+    reply = await agent.run_turn("kaisa hai?")
+    assert reply == "Hello! All good here."
+    assert len(provider.requests) == 1
+
+
+async def test_promise_push_happens_only_once(db):
+    script = ["I'll open Yahoo and run that search.", "I'll open it right away."]
+    agent, provider, _ = await _make_agent(db, script)
+    reply = await agent.run_turn("open yahoo")
+    assert reply == "I'll open it right away."  # second promise accepted, no loop
+    assert len(provider.requests) == 2

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import TYPE_CHECKING
 
 from core.bus import EventBus
@@ -23,6 +24,17 @@ if TYPE_CHECKING:
     from memory import Memory
 
 MAX_TOOL_ITERATIONS = 8
+
+# "I'll open Yahoo and run that search for you." — full stop, zero tool calls
+# (observed live, repeatedly, after cancelled turns). A promise of action with
+# no action gets ONE deterministic retry telling the model to act now.
+_INTENT_ONLY_RE = re.compile(
+    r"^\s*(?:(?:sure|okay|ok|right|alright)[,!\s]+)?"
+    r"(?:opening\b|(?:i'?ll|i\s+will|let\s+me)\s+"
+    r"(?:open|go|search|run|start|check|look|get|fetch|take|close|launch"
+    r"|browse|find|read|type|press|try|pull|research)\b)",
+    re.IGNORECASE,
+)
 
 
 def _summarize(text: str, limit: int = 300) -> str:
@@ -80,7 +92,12 @@ class AgentCore:
             reply, status = await self._loop(user_text)
             return reply
         except asyncio.CancelledError:
-            reply, status = "(cancelled)", "cancelled"
+            # The marker must read as CLOSURE to the model: a bare "(cancelled)"
+            # left the request looking unanswered and later turns re-answered it.
+            reply, status = (
+                "(stopped by the user — request abandoned, do not answer or resume it)",
+                "cancelled",
+            )
             await self.db.add_message(self.conversation_id, "assistant", reply)
             raise
         finally:
@@ -138,6 +155,7 @@ class AgentCore:
         ]
 
         tools_succeeded = 0
+        intent_retried = False
         for _ in range(self.max_iterations):
             text_parts: list[str] = []
             tool_calls: list[ToolCall] = []
@@ -157,6 +175,24 @@ class AgentCore:
                 # results already in context.
                 if not text.strip() and tools_succeeded > 0:
                     text = await self._final_answer(messages) or text
+                # A promise with no action ("I'll open Yahoo…", zero tool
+                # calls) leaves the request undone and the owner repeating
+                # himself — push once for the actual tool call.
+                if (
+                    not intent_retried
+                    and tools_succeeded == 0
+                    and _INTENT_ONLY_RE.match(text.strip())
+                ):
+                    intent_retried = True
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": "You promised an action but called no tool. "
+                            "Call the required tool NOW — do not reply with another promise.",
+                        }
+                    )
+                    continue
                 reply = text or "(no response)"
                 # Skip when the model already wrote a "Next:" line itself —
                 # it mimics suggestions seen in history, and appending a real
