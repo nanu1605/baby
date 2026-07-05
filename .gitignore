@@ -24,3 +24,11 @@ graphify-out/
 
 # Local tool config
 .claude/
+
+# Owner voice profile - biometric, never publish
+models/owner_voice.json
+
+# Graphify wrapper junk (not a node project)
+node_modules/
+package.json
+package-lock.json
