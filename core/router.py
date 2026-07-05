@@ -283,6 +283,38 @@ class RouterProvider:
         return getattr(self.daily, "num_ctx", 8192)
 
 
+def build_nim_providers(config: dict) -> dict:
+    """{"nim_primary": NvidiaProvider|None, "nim_heavy": ...} from config + env.
+
+    A slot is built only when its model is set (N1 bench winner) AND
+    NVIDIA_API_KEY is present — absent either, the slot is None and the
+    cloud-primary ladder (Phase N2) simply skips it.
+    """
+    import os
+
+    key = os.environ.get("NVIDIA_API_KEY", "")
+    slots: dict = {"nim_primary": None, "nim_heavy": None}
+    if not key:
+        return slots
+    from core.providers.nvidia import NIM_OPENAI_URL, NvidiaProvider
+
+    models = config.get("models", {})
+    cooldown = (
+        config.get("router", {}).get("health", {}).get("cooldown_429_s", 90)
+    )
+    for slot in slots:
+        cfg = models.get(slot, {})
+        if cfg.get("model"):
+            slots[slot] = NvidiaProvider(
+                model=cfg["model"],
+                api_key=key,
+                temperature=cfg.get("temperature", 0.7),
+                base_url=cfg.get("base_url", NIM_OPENAI_URL),
+                cooldown_s=float(cooldown),
+            )
+    return slots
+
+
 def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
     """Assemble daily(+heavy)(+cloud) behind a RouterProvider from config.
 
@@ -292,6 +324,15 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
     import os
 
     from core.providers.ollama import OllamaProvider
+
+    mode = config.get("router", {}).get("mode", "local_primary")
+    if mode == "cloud_primary":
+        # Router v2 lands in Phase N2; failing loud beats silently running the
+        # legacy ladder under a config that promises cloud-primary behavior.
+        raise ValueError(
+            "router.mode: cloud_primary requires the Phase N2 router — "
+            "set router.mode: local_primary"
+        )
 
     models = config.get("models", {})
     daily_cfg = models.get("daily", {})

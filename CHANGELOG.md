@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — NIM cloud-primary migration (feature/nim-cloud-primary-router)
+
+- N0 (2026-07-05): `core/providers/nvidia.py` — NVIDIA NIM provider on the
+  same OpenAI wire as Ollama/Gemini (streaming, tool passthrough, 90 s
+  cooldown on 429/5xx, cheap `healthy()`, network `probe()` with optional
+  1-token generation ping). Config gains `models.nim_primary`/`nim_heavy`,
+  the full `router:` cloud-primary block (inert) and `game_mode:`;
+  `router.mode: local_primary` keeps behavior identical — `cloud_primary`
+  is rejected until the N2 router lands. `.env.example` += `NVIDIA_API_KEY`.
+  Acceptance one-off: `scripts/nim_smoke.py --model <catalog-id>`.
+
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 
 - Multi-agent orchestrator (feature #9, `workers/orchestrator.py`): "start a

@@ -20,13 +20,39 @@ models:
   cloud:
     provider: gemini
     model: gemini-flash-latest          # free tier; key in .env; optional
+  nim_primary:
+    provider: nvidia
+    base_url: https://integrate.api.nvidia.com/v1
+    model: ""                           # set from the N1 bench winner; exact ID from build.nvidia.com
+    temperature: 0.7
+  nim_heavy:
+    provider: nvidia
+    base_url: https://integrate.api.nvidia.com/v1
+    model: ""                           # set from the N1 bench winner (heavy slot)
+    temperature: 0.5
   embedder: intfloat/multilingual-e5-small
 
 router:
+  mode: local_primary                   # cloud_primary | local_primary ← rollback switch (flips in N2)
   default: daily
   escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
   escalation_order: [heavy, cloud]
   long_context_tokens: 4096             # above this → cloud (heavy shares the global 8K ctx)
+  # cloud_primary keys (inert until Phase N2 router v2 lands):
+  primary: nim_primary
+  heavy: nim_heavy
+  offline_fallback: daily
+  backstop: cloud
+  local_keep_warm: true
+  first_token_timeout_s: {voice: 3.5, text: 8}
+  health: {probe_s: 45, recover_after: 3, cooldown_429_s: 90}
+  rate_limit: {rpm: 36, background_share: 0.5}
+  privacy_pins: [read_file, run_shell]
+  language_pin: {enabled: true, devanagari_ratio: 0.3, target: daily}
+
+game_mode:
+  enabled: true                         # NIM plan §2.5: unload local 9B, route all cloud
+  auto_detect: false                    # fullscreen-exclusive detection (off by default)
 
 voice:
   enabled: true

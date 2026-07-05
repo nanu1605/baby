@@ -348,3 +348,17 @@ Running log of non-obvious choices made during the build. Newest last.
 73. **Tailscale Serve, never Funnel** for phone access: tailnet-only HTTPS
     proxy onto the localhost bind, zero code change. Funnel would publish
     a login-less UI (with the confirm modal!) to the open internet.
+74. **NIM migration runs on a feature branch behind `router.mode`** (change
+    spec NIM_MIGRATION_PLAN.md): the cloud-primary brain hierarchy lands
+    phase by phase on `feature/nim-cloud-primary-router` with a draft PR,
+    and the old local-primary behavior stays selectable — rollback is one
+    config line at any point, even post-merge. In N0 `cloud_primary` fails
+    loud (ValueError) instead of silently running the legacy ladder under
+    a config that promises different routing; the N2 router replaces it.
+75. **NvidiaProvider keeps `healthy()` cheap and puts the network probe in
+    `probe()`** — the router consults healthy() on every pick, so it must
+    not hit the wire; the 45 s background probe (Phase N2) owns the
+    models-list GET, and the 1-token generation ping runs only on the
+    DEGRADED→CLOUD recovery attempt to avoid burning free-tier quota.
+    reasoning_effort is not forwarded to NIM until the N1 bench measures
+    per-model unknown-parameter tolerance.
