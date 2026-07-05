@@ -33,6 +33,8 @@ _ACTIVITY_KINDS = {
     "task_queued",
     "task_started",
     "task_done",
+    "project_started",
+    "project_done",
 }
 
 
@@ -46,6 +48,7 @@ class UIContext:
     memory: object | None = None  # memory.Memory; kept loose to avoid heavy import
     current_turn: asyncio.Task | None = None
     pool: object | None = None  # workers.queue.WorkerPool, attached in run_ui
+    orchestrator: object | None = None  # workers.orchestrator.Orchestrator
 
     def turn_running(self) -> bool:
         return self.current_turn is not None and not self.current_turn.done()
@@ -71,11 +74,23 @@ def create_app(ctx: UIContext) -> FastAPI:
             data["router"] = router
         if ctx.pool is not None:
             data["tasks_running"] = ctx.pool.running_count()
+        if ctx.orchestrator is not None:
+            data["projects_running"] = ctx.orchestrator.running_count()
         return data
 
     @app.get("/tasks")
     async def tasks(limit: int = 50):
         return await ctx.db.list_tasks(limit)
+
+    @app.get("/projects")
+    async def projects(limit: int = 20):
+        rows = await ctx.db.list_projects(limit)
+        for row in rows:
+            row["subtasks"] = [
+                {k: t.get(k) for k in ("id", "title", "status", "result")}
+                for t in await ctx.db.list_project_tasks(row["id"])
+            ]
+        return rows
 
     @app.get("/history")
     async def history(limit: int = 50):
@@ -295,6 +310,18 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     tasks_tools.configure(pool, db)
     ctx.pool = pool
 
+    orchestrator = None
+    if config.get("multi_agent", {}).get("enabled", True):
+        from tools import projects as projects_tools
+        from workers.orchestrator import Orchestrator
+
+        orchestrator = Orchestrator(
+            db=db, bus=bus, provider=provider, pool=pool, notifier=notifier, config=config
+        )
+        orchestrator.start()
+        projects_tools.configure(orchestrator, db)
+        ctx.orchestrator = orchestrator
+
     from workers.scheduler import Scheduler
 
     scheduler = Scheduler(
@@ -376,6 +403,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             await scheduler.stop()
         except Exception:  # noqa: BLE001
             pass
+        if orchestrator is not None:
+            try:
+                await orchestrator.stop()
+            except Exception:  # noqa: BLE001
+                pass
         try:
             await pool.stop()
         except Exception:  # noqa: BLE001

@@ -96,6 +96,12 @@ workers:
   size: 2                               # background task concurrency (spec §15)
   max_iterations: 15                    # tool-step budget per background task
 
+multi_agent:
+  enabled: true                         # feature #9: orchestrator over the tasks board
+  max_subtasks: 4                       # small local models compound errors — keep chains short
+  project_timeout_s: 1800
+  plan_max_tokens: 1500
+
 browser:
   headless: false                       # visible window (owner choice — easier logins)
   profile_dir: ""                       # default %LOCALAPPDATA%/baby/browser

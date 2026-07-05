@@ -174,6 +174,13 @@ reconnectingSocket("/ws/activity", (msg) => {
       : "";
     addSystemLine(`task #${msg.task_id} ${TASK_LABEL[msg.type]}: ${msg.title}${tail}`);
   }
+  else if (msg.type === "project_started") {
+    addSystemLine(`project #${msg.project_id} started: ${msg.title} (${msg.subtasks} subtasks)`);
+  }
+  else if (msg.type === "project_done") {
+    const tail = msg.result_summary ? ": " + msg.result_summary : "";
+    addSystemLine(`project #${msg.project_id} ${msg.status}: ${msg.title}${tail}`);
+  }
 });
 
 /* ---------- header gauges + kill switch ---------- */

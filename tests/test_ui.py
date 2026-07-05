@@ -111,3 +111,41 @@ def test_history_endpoint(ui):
     rows = client.get("/history").json()
     assert [r["role"] for r in rows] == ["user", "assistant"]
     assert rows[-1]["content"] == "pong"
+
+
+# -- Phase 5: project surfaces --------------------------------------------------------
+
+
+class _StubOrchestrator:
+    def __init__(self):
+        self._n = 1
+
+    def running_count(self):
+        return self._n
+
+
+def test_projects_endpoint_shape(ui):
+    client, ctx, _ = ui
+
+    async def seed():
+        pid = await ctx.db.add_project("proj", "spec")
+        await ctx.db.add_task("sub", "spec", notify=0, project_id=pid)
+        return pid
+
+    pid = asyncio.run(seed())
+    rows = client.get("/projects").json()
+    assert rows[0]["id"] == pid and rows[0]["title"] == "proj"
+    assert rows[0]["subtasks"][0]["title"] == "sub"
+
+
+def test_stats_projects_running_key(ui):
+    client, ctx, _ = ui
+    assert "projects_running" not in client.get("/stats").json()
+    ctx.orchestrator = _StubOrchestrator()
+    assert client.get("/stats").json()["projects_running"] == 1
+
+
+def test_activity_kinds_include_projects():
+    from ui.server import _ACTIVITY_KINDS
+
+    assert {"project_started", "project_done"} <= _ACTIVITY_KINDS
