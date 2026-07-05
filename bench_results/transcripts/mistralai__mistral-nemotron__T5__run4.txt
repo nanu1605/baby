@@ -1,0 +1,12 @@
+model: mistralai/mistral-nemotron  test: T5  run: 4
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Maine kya karna hai?
+
+- Ai ke baare mein jaan kar maine ek article likha hai.
+- Mumma ne mujhe lakhon ka spielen ka ghar banane ke liye thi.
+- Main maza aata hua video dekha tha.
+- Mere papa ne mujhe cricket match ke liye stadium mein leke gaya tha.
+
+Kya main un sab mein se koi kar sakta hoon?

@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi is the undisputed king of Indian street food — from spicy chaat at Chandni Chowk, parathas at Paranthe Wali Gali, and kebabs at Nizamuddin, to golgappe, aloo tikki, and butter chicken rolls, the sheer variety, bold flavors, and centuries-old culinary heritage make it the ultimate street food destination in India."}

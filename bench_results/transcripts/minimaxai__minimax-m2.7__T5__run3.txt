@@ -1,0 +1,9 @@
+model: minimaxai/minimax-m2.7  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+
+
+Sab theek hai yaar! 😄
+
+Main ready hoon, sirf tumhare commands ka intezaar kar raha tha. Batao, kya karna hai aaj? Kuch kaam hai ya bas baat karni hai? 🫡

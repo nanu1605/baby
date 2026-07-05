@@ -1,0 +1,16 @@
+model: mistralai/mistral-nemotron  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 29}
+calls:
+final:
+Weekend pe ghar pe chill karne ke liye kya plan hai?
+
+1. **Movie Marathon**: Apne favorite movies ya web series ka marathon laga lo. Snacks banana mat bhulo!
+2. **Cooking Experiment**: Naya dish banane ka try karo. Maybe pizza ya biryani!
+3. **Online Games**: Friends ke saath online games khelo, ya phir board games nikalo.
+4. **Music Session**: Playlist banao aur gaane suno. Guitar baaja lo agar hai!
+5. **Book Reading**: Padi hue kitabo ko complete karo ya naye book se start karo.
+6. **Home Workout**: Gym nahi jaana hai to ghar pe hi workout karo. YouTube pe videos hai.
+7. **Art & Craft**: Drawing karein ya phir DIY projects try karo.
+8. **Podcasts & Audiobooks**: Interesting topics ke podcasts suno ya audiobooks sunlo.
+9. **Virtual Meetups**: Friends ya family ke saath video call karo aur chat karo.
+10. **Relaxation**: Meditation aur yoga karo, ya phir bas relax karo aur stress chodo.

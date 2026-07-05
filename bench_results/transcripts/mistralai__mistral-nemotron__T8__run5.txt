@@ -1,0 +1,7 @@
+model: mistralai/mistral-nemotron  test: T8  run: 5
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+```json
+{"city": "Delhi", "why": "Delhi is the best Indian city for street food due to its diverse and rich culinary heritage, offering a wide variety of delicious street food options like chaat, samosas, kebabs, and parathas."}
+```

@@ -1,0 +1,11 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T2  run: 5
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query":"quarterly_report.pdf","max_results":10})
+  read_file({"path":"C:\\Users\\tanis\\Documents\\quarterly_report.pdf","max_kb":2000})
+final:
+I found the file **quarterly_report.pdf** in your Documents folder and read its contents. The report states:
+
+**Revenue: $4.2M**
+
+So the revenue number from the quarterly report is **$4.2 million**.

@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T1  run: 4
+score: {"pass": false, "correct_tools": false, "args_ok": false, "mentions_cpu": false}
+calls:
+final:
+

@@ -1,0 +1,5 @@
+model: moonshotai/kimi-k2.6  test: T8  run: 3
+score: {"pass": false}
+calls:
+final:
+

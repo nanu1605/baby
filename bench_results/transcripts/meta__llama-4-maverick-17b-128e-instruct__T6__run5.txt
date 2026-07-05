@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T6  run: 5
+score: {"pass": false, "devanagari_ratio": 0.0}
+calls:
+final:
+{"type": "function", "name": "write_file", "parameters": {"content": "\u0915\u0930\u094d\u092e \u092f\u094b\u0917\u094d\u092f \u092e\u0947\u0902 \u0935\u093f\u0936\u094d\u0935\u093e\u0938 \u0939\u094b, \u0935\u093f\u0936\u094d\u0935\u093e\u0938 \u092e\u0947\u0902 \u0915\u0930\u094d\u092e \u0939\u094b\u0917\u093e\u0964", "path": "C:/Users/Tanishq/Downloads/tomorrow.txt", "mode": "write"}}

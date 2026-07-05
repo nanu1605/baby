@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T3  run: 5
+score: {"pass": false, "args_ok": false, "query_ok": false, "limit_ok": false}
+calls:
+final:
+

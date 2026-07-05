@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T8  run: 5
+score: {"pass": false, "json_valid": true, "keys_ok": false}
+calls:
+final:
+{"name": "web_search", "parameters": {"query": "best Indian city for street food"}}

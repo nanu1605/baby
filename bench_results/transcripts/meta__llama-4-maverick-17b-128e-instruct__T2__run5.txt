@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T2  run: 5
+score: {"pass": false, "chain_ordered": false, "args_ok": false, "answer_ok": false}
+calls:
+final:
+{"type": "function", "name": "file_search", "parameters": {"query": "quarterly_report.pdf", "max_results": "1"}}

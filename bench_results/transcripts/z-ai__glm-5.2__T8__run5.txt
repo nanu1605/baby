@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T8  run: 5
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "From Chandni Chowk's chole bhature and parathas to Daulat Ki Chaal and Nihari at Jama Masjid, Delhi's Mughlai, Punjabi, and street-stall traditions make it the richest, most varied street-food scene in India."}

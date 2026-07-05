@@ -1,0 +1,10 @@
+model: mistralai/mistral-nemotron  test: T8  run: 1
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+```json
+{
+  "city": "Delhi",
+  "why": "Delhi is renowned for its vibrant street food culture, offering a wide variety of flavors and dishes influenced by various regional cuisines. Some iconic street foods include chaat, samosas, parathas, and kebabs. The city's bustling markets and food stalls provide an unforgettable culinary experience."
+}
+```

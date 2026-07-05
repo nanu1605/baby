@@ -1,0 +1,10 @@
+model: mistralai/mistral-nemotron  test: T8  run: 4
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+```json
+{
+  "city": "Delhi",
+  "why": "Delhi is renowned for its diverse and flavorful street food, offering a wide range of options from chaat and kebabs to parathas and sweets, reflecting the city's rich culinary heritage."
+}
+```

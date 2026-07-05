@@ -1,0 +1,5 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T5  run: 1
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Sab theek hai, dost! Main yahan hoon, ready to help. Aap kaise ho? Koi special baat hai joh discuss karni hai? 😊

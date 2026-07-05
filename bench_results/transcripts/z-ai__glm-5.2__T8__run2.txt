@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "From Chandni Chowk's chole bhature and parathas to Nizamuddin's kebabs and Daulat ki Chaat, Delhi offers unmatched variety, depth of flavor, and centuries-old street food heritage."}

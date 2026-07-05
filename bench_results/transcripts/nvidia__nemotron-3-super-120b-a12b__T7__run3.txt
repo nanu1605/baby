@@ -1,0 +1,25 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 51}
+calls:
+final:
+Arre yaar, weekend pe ghar pe chill karne ka maza hi kuch aur hai! 😎 Kuch mast plan deta hoon:
+
+1️⃣ **Movie/Web Series Marathon** - Apni favourite genre ki list bana lo (comedy, thriller, ya rom-com). Popcorn, snacks ke saath full paisa vasool time.
+
+2️⃣ **Gaming Session** - Agar PC/console hai toh friends ke saath online multiplayer ya solo adventure games. Naya game try kar lo.
+
+3️⃣ **Cooking Experiment** - Nahi tried koi recipe? YouTube se dekho aur try karo. Maggi se lekar gourmet tak - kuch naya banake khana apni tarah ka satisfaction deta hai.
+
+4️⃣ **Chill + Creative** - Drawing, sketching, ya even adult coloring books. Music bajate hue bas apni creativity ko flow kar do.
+
+5️⃣ **Learn Something Fun** - Short online course (photography, coding basics, ya even magic tricks). Ek naya skill seek lo - future ke liye investment!
+
+6️⃣ **Home Spa Day** - Face mask, foot soak, aromatic candles. Apne aap ko pamper kar lo - stress door, freshness aayega.
+
+7️⃣ **Book Nook** - Woh book jo months se shelf par padi hai, usse finally shuru karo. Chai/coffee ke saath perfect combination.
+
+8️⃣ **Virtual Travel** - Google Earth se kisi exotic place ka tour, ya museum ke virtual visits. Ghar baithe hi dunia ghoomo!
+
+Bas yaad rakho - plan ki zaroorat nahi, bas apni mood ke according karo. Sabse important: phone thoda door rakho, apne aap ko truly relax do time milna.
+
+Kaisa laga plan? Koi specific interest hai joh follow karna chahta ho? 😊

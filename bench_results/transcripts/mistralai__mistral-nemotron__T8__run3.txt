@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi is renowned for its diverse street food culture, offering a wide range of mouthwatering delicacies from different regions of India. From chaat to kebabs, street food in Delhi is a must-try for any food enthusiast."}

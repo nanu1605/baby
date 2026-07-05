@@ -1,0 +1,11 @@
+model: qwen/qwen3.5-122b-a10b  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 16}
+calls:
+final:
+Haan bhai, weekend ghar pe chill karna toh best option hai! 😎 Kuch mast plans hain:
+
+1. **Movie Marathon**: Koi classic ya trending series set karo. Popcorn, chips, aur cozy blanket ke saath perfect raat ban jayegi.
+
+2. **Cooking Experiment**: Koi naya recipe try karo jo ghar pe ban sake. Maybe pizza ya pasta? Khud banaya khana taste bhi acha aata hai!
+
+3. **Gaming Session**: Agar games pasand hai toh koi multiplayer game ya single-player adventure

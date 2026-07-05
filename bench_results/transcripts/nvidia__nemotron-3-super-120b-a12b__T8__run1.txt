@@ -1,0 +1,6 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T8  run: 1
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+  web_search({"query":"best Indian city for street food"})
+final:
+{"city": "Delhi", "why": "Delhi offers a vibrant and diverse street food scene with iconic dishes like chaat, paranthas, kebabs, chole bhature, and momos, reflecting influences from across India and making it a top destination for food lovers."}

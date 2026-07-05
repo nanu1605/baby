@@ -1,0 +1,11 @@
+model: qwen/qwen3.5-122b-a10b  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 15}
+calls:
+final:
+Haan Tanishq, weekend ghar pe chill karne ka plan toh best hai! 😎
+
+Kuch ideas deta hoon, tu dekh ke bata kya mood hai:
+
+1.  **Movie/Binge-Watch Marathon:** Koi purani favorite series ya nayi Netflix movie daal le. Popcorn ready rakhna! 🍿🎬
+2.  **Gaming Session:** Agar PC pe koi game install hai ya cloud gaming chal raha hai, toh thoda time de. 🎮
+3.  **Cooking/Chai Time:** Khud

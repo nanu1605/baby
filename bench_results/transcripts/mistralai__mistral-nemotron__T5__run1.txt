@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T5  run: 1
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hmm, I don't have access to your screen, but you can tell me which app or window you are using and I can try to help you with that.

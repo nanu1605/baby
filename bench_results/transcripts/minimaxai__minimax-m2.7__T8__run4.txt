@@ -1,0 +1,7 @@
+model: minimaxai/minimax-m2.7  test: T8  run: 4
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+
+
+{"city": "Mumbai", "why": "Mumbai is the undisputed street food capital of India, offering unparalleled variety from iconic dishes like vada pav, pav bhaji, chaat, and dosas at every corner. The city's fast-paced life cultivated a street food culture that's both affordable and deeply woven into its identity."}

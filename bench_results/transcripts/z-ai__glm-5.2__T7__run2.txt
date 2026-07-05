@@ -1,0 +1,41 @@
+model: z-ai/glm-5.2  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 39}
+calls:
+final:
+Haha, ekdum! Weekend pe ghar pe chill karna bhi ek art hai 😄. Lo bhai, kuch mast ideas:
+
+---
+
+### 🎬 Movie / Series Marathon
+- Koi epic trilogy dekh lo — *Lord of the Rings*, *Dark Knight*, ya *Godfather*
+- Naya series start karo — *The Boys*, *Money Heist*, ya *Breaking Bad* (agar abhi tak nahi dekha!)
+- Horror night bana lo — lights off, headphones on, blanket me chhup ke 👻
+
+### 🎮 Gaming Session
+- PC wala gaming mood on karo — koi bhi pending game complete kar do
+- Ya fir emulators pe purane PS2/PSP games khelo for nostalgia
+- Co-op game khelo dosto ke saath online — *It Takes Two*, *Mortal Kombat*, etc.
+
+### 🍕 Food + Chill Combo
+- Zomato/Swiggy se apna favourite meal order karo
+- Kitchen me kuch naya try kar sakte ho — simple pasta, mug cake, ya shakes
+- Snacks + cold drink + movie = perfect combo 🍿
+
+### 🎵 Music + Me Time
+- Naye albums/songs explore karo
+- Playlist banao next week ke liye
+- YouTube pe live concerts dekho — Coldplay, Imagine Dragons 🔥
+
+### 📚 Productive Chill (agar mood ho)
+- Koi book/podcast start karo
+- Kuch naya skill seekho — video editing, guitar basics, etc.
+- Apne room ko thoda rearrange karke fresh vibe do
+
+### 😎 Ultimate Lazy Mode
+- Bed se utarna hi nahi 😂
+- YouTube rabbit hole me gir jao (kurzegesagt, documentaries, ya random rabbit holes)
+- Naya show shuru karo, snacks khao, aur bas... **vibe** karo
+
+---
+
+Bhai bata, kis mood me ho? Main aur specific suggestions de sakta hoon — movie recommend karu, game suggest karu, ya kuch aur hi plan banau? 🎯

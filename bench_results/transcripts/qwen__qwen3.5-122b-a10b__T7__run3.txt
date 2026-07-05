@@ -1,0 +1,14 @@
+model: qwen/qwen3.5-122b-a10b  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 17}
+calls:
+final:
+Bilkul Tanishq! Weekend ko ghar pe chill karna ek badhiya idea hai. 😌
+
+Chalo kuch alag-alag vibes ka plan banate hain, tum batao kya mood hai:
+
+**1. Movie & Snack Marathon 🍿🎬**
+*   **Plan:** Ek purani favorite series ya koi new movie select karo.
+*   **Snacks:** Ghar pe hi popcorn, chips aur cold drink ki setup karo.
+*   **Vibe:** Room lights dim karo aur blanket ke neeche let jao.
+
+

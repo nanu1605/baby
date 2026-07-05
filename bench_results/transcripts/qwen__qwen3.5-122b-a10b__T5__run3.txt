@@ -1,0 +1,7 @@
+model: qwen/qwen3.5-122b-a10b  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Sab badhiya Tanishq! Main yahi hoon, taiyaar. 
+
+Batao, aaj kya plan hai? Koi specific kaam karna hai, kuch search karna hai, ya bas aise hi baatein karni hain?

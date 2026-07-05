@@ -1,0 +1,9 @@
+model: minimaxai/minimax-m2.7  test: T5  run: 1
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+
+
+Sab theek hai bhai! 😄
+
+Main yahi hoon, ready hoon tujhe help karne ke liye. Bata, kya karna hai aaj? Koi kaam hai ya bas baat karni hai? 🎯

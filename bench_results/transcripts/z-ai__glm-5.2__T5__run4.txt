@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T5  run: 4
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Bhai sab mast chal raha hai! 😄 Mai yahan ready hoon, tumhari service mein. Batao, aaj kya plan hai? Koi kaam hai, koi file dhoondhni hai, ya bas aise hi time pass kar rahe ho? Bol! 🚀

@@ -1,0 +1,7 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T2  run: 2
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query":"quarterly_report.pdf"})
+  read_file({"path":"C:\\Users\\tanis\\Documents\\quarterly_report.pdf","max_kb":1000})
+final:
+The quarterly report shows a revenue of **$4.2 M** (that is, $4.2 million).

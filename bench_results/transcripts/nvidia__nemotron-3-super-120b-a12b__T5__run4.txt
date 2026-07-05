@@ -1,0 +1,5 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T5  run: 4
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hey! Sab theek hai, bas tumhari wait kar raha tha. Tum kaise ho? Kya plan hai aaj ka?

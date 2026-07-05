@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T3  run: 2
+score: {"pass": false, "args_ok": false, "query_ok": false, "limit_ok": false}
+calls:
+final:
+file_search{"query": "backup.py", "max_results": 5}

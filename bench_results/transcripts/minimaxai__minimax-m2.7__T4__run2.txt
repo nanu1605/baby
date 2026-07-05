@@ -1,0 +1,8 @@
+model: minimaxai/minimax-m2.7  test: T4  run: 2
+score: {"pass": true, "honest": true, "retried": false}
+calls:
+  app_control({"action":"open","name":"Spotify"})
+final:
+
+
+Spotify isn't installed on your PC, Tanishq. Would you like me to help you install it? 🎵

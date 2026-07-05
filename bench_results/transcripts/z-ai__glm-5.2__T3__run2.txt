@@ -1,0 +1,13 @@
+model: z-ai/glm-5.2  test: T3  run: 2
+score: {"pass": true, "args_ok": true, "query_ok": true, "limit_ok": true}
+calls:
+  file_search({"max_results":5,"query":"backup.py"})
+final:
+Here are the Python scripts named **backup** found on your PC (showing at most 5 results):
+
+| # | File Path | Size |
+|---|-----------|------|
+| 1 | `C:\Users\tanis\scripts\backup.py` | 4 KB |
+| 2 | `C:\Users\tanis\old\backup_v2.py` | 6 KB |
+
+Found **2** matching files. Would you like me to open or read any of these?

@@ -1,0 +1,44 @@
+model: z-ai/glm-5.2  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 45}
+calls:
+final:
+Arre Tanishq! Weekend pe ghar pe chill karne ka plan? Ekdum mast idea hai! 🎉
+
+Toh bata bhai, aaj kaunsa mood hai — **movies/series binge**, **gaming**, **cooking try karna**, ya bas aaram se waqt bitana? Main kuch mast options deta hoon:
+
+---
+
+### 🎬 1. Binge-Watching Marathon
+- Koi new series start kar — *Money Heist*, *Breaking Bad*, *The Family Man*, *Mirzapur* (agar dekhi nahi hai)
+- Movie marathon — *Lord of the Rings* trilogy ya *Marvel movies* back-to-back
+- Snacks ready rakh aur blanket mein lapet ke dekh! 🍿
+
+### 🎮 2. Gaming Session
+- Agar PC/console hai toh koi open-world game mein doob ja — *GTA V*, *Cyberpunk*, *God of War*
+- Ya friends ke saath online multiplayer — *Valorant*, *BGMI*, ya *Minecraft*
+
+### 🍳 3. Kitchen Experiment
+- Weekend ka time hai kuch naya banane ka! YouTube pe koi easy recipe dekh aur try kar
+- Pasta, biryani, ya simple pancakes bhi try kar sakte ho
+- Fun fact: khud ka banaya khaana aur tasty lagta hai 😋
+
+### 🎧 4. Music + Chill
+- Apna playlist bana aur headphones pehen ke let ja
+- Lo-fi beats ya acoustic songs pe relaxed vibe
+- Koi book padh ya bas aaram se soch 💭
+
+### 🛋️ 5. Ultimate Lazy Day
+- Subah late uth
+- Nahi nahana 😜
+- Order food — biryani ya pizza
+- Movies + gaming + sleep = perfect day!
+
+---
+
+### 💡 Ek combo plan:
+- **Saturday**: Movie marathon + cooking try + gaming night
+- **Sunday**: Late utho, music chill, thoda walk ya stretching, aur raat ko gaming/movie
+
+---
+
+Tere kaunse options pasand aaye? Ya main tumhare PC pe koi movie ya series search kar doon? Bata de bhai! 😄

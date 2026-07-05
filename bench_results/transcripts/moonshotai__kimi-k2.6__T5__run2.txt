@@ -1,0 +1,9 @@
+model: moonshotai/kimi-k2.6  test: T5  run: 2
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+ Are Tanishq! Sab chill hai 😄
+
+Main yahaan active hoon, tera wait kar raha tha. Bata kya kaam hai? Koi file search karni hai, browser mein kuch karna hai, ya koi project start karna hai? Ya phir bas aise hi baat kar raha tha? 
+
+Bata, main hoon na! 💪

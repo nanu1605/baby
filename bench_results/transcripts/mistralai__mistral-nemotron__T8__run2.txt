@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Mumbai", "why": "Mumbai is renowned for its diverse and flavorful street food, offering iconic dishes like vada pav, pav bhaji, bhel puri, and sev puri. The vibrant street food culture reflects the city's cosmopolitan nature, with influences from various regions of India. Local favorites are easily accessible in areas like Crawford Market, Churchgate, and Juhu Beach."}

@@ -1,0 +1,18 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 39}
+calls:
+final:
+Arre yaar! Ghar pe hi chill karne ka plan? Perfect! Weekend ko ghar pe mast mazaak karne ke kai tarike hain. Sun le:
+
+**Chill Mode Activated:**
+1. **Movie/Series Marathon** - Apni favorite comfort show ya nayi web series binge karo. Popcorn, snacks, blanket fort banalo!
+2. **Gaming Session** - Agar PC/console hai toh friends ke saath online multiplayer ya solo adventure. Ya fir purani board games nikalo!
+3. **Cooking Adventure** - Nayi recipe try karo! Maggi se leke gourmet tak - kuch naya banana. Banakeela banana. Ya fir apni maa ki recipe se nostalgia trip.
+4. **DIY Spa Day** - Face mask, malish, aromatic candles... apni apni spa banalo ghar me.
+5. **Creative Corner** - Sketching, writing, ya kuch seekhna (guitar, language app, etc.). Dimag ko taza hawa dena.
+6. **Virtual Hangout** - Friends ke saath Zoom/Discord pe chai peelo, games khelo, ya bas bakbak karo.
+7. **Playlist Party** - Apni mood ke hisab se playlist banao - chill, upbeat, ya retro throwback. Dance karo ya bas suno.
+
+Aur haan... phone thoda keeda maro, screen time kam karo, bas apne aap ko relax karne do. Weekend ka matlab hai - **no rush, no stress, just YOU time.**
+
+Koi specific interest hai joh plan mein add karna chahte ho? Gaming, movies, cooking... batana, mai customize plan bana deta hoon! 😎

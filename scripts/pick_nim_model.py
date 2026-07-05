@@ -227,6 +227,7 @@ class Case:
     max_tokens: int | None = None
     system: str = SYSTEM
     max_steps: int = 5
+    use_tools: bool = True  # T9 mirrors the orchestrator plan call: tools=None
 
 
 CASES = [
@@ -249,7 +250,7 @@ CASES = [
     Case("T9", "Build me a personal finance tracker web app: expense entry form, "
                "monthly charts, CSV export, and a README.",
          {}, score_t9, heavy_only=True, max_tokens=1500,
-         system=_PLAN_PROMPT.format(n=4)),
+         system=_PLAN_PROMPT.format(n=4), use_tools=False),
 ]
 
 
@@ -315,10 +316,11 @@ async def run_case(provider, case: Case, tools, bucket) -> RunOutcome:
     ]
     started = time.monotonic()
     try:
+        case_tools = tools if case.use_tools else None
         for _ in range(case.max_steps):
             outcome.steps += 1
             text, tool_calls, first_s = await stream_once(
-                provider, messages, tools, case.max_tokens, bucket, outcome
+                provider, messages, case_tools, case.max_tokens, bucket, outcome
             )
             if outcome.first_token_s is None:
                 outcome.first_token_s = first_s
