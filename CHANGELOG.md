@@ -53,6 +53,14 @@
   now drops broken-tool claims (also when inherited from the previous
   summary), the per-turn nudge covers the summary too, and the poisoned
   summary/messages in baby.db were cleaned.
+- autostart.ps1 failed to parse (PS 5.1 reads BOM-less UTF-8 as ANSI; an
+  em dash became a curly quote that terminated the string) — both scripts
+  are now pure ASCII.
+- Autostart ran but Baby died at logon: it boots faster than the Ollama
+  app ("Ollama is not reachable"). ready_check now starts `ollama serve`
+  itself and waits up to `startup.wait_for_model_s` (120 s) for the
+  daemon; the scheduled task also retries 3× a minute apart. Suite: 312
+  passing.
 
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 

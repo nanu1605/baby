@@ -25,8 +25,12 @@ if (-not (Test-Path $pythonw)) {
 
 $action = New-ScheduledTaskAction -Execute $pythonw -Argument "run.py --all" -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+# RestartCount: if boot still fails (e.g. Ollama very slow to come up), Task
+# Scheduler relaunches Baby up to 3 times a minute apart.
 $settings = New-ScheduledTaskSettingsSet -Hidden -StartWhenAvailable `
-    -ExecutionTimeLimit ([TimeSpan]::Zero)
+    -ExecutionTimeLimit ([TimeSpan]::Zero) `
+    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+    -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 
 # -Force = idempotent re-register; no elevation required for a current-user task.
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `

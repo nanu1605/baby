@@ -68,7 +68,8 @@ async def run_cli(config_path: str = "config.yaml") -> None:
     bus = EventBus()
     provider = build_provider(config, bus=bus, db=db)
 
-    ok, notes = await ready_check(provider, db)
+    wait_s = int(config.get("startup", {}).get("wait_for_model_s", 120))
+    ok, notes = await ready_check(provider, db, wait_s=wait_s)
     for note in notes:
         print(note)
     if not ok:

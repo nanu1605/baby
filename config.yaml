@@ -65,6 +65,9 @@ ui:
   host: 127.0.0.1
   port: 8765
 
+startup:
+  wait_for_model_s: 120                 # logon race: wait for Ollama before giving up
+
 search:
   engine: ddg                           # ddg | brave | searxng
   max_results: 6
