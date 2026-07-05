@@ -5,6 +5,16 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "== Baby setup ==" -ForegroundColor Cyan
 
+# Load .env into this session so HF_TOKEN etc. reach the python download
+# steps below (run.py loads .env itself, but these one-off calls do not).
+if (Test-Path ".env") {
+    Get-Content ".env" | ForEach-Object {
+        if ($_ -match '^([A-Za-z_][A-Za-z0-9_]*)=(.+)$') {
+            [Environment]::SetEnvironmentVariable($matches[1], $matches[2].Trim(), "Process")
+        }
+    }
+}
+
 # --- 1. Ollama ---------------------------------------------------------------
 if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
     Write-Host "Ollama not found - installing via winget..." -ForegroundColor Yellow
