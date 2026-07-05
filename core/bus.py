@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 #   task_queued     {task_id, title}
 #   task_started    {task_id, title}
 #   task_done       {task_id, title, status: done|failed|cancelled, result_summary}
+#   project_started {project_id, title, subtasks}
+#   project_done    {project_id, title, status: done|failed|cancelled, result_summary}
 
 
 @dataclass

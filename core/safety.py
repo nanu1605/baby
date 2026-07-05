@@ -382,7 +382,7 @@ def classify_tool(
             return Verdict(SafetyClass.ALLOW, "app close (auto-allowed)", name)
         return Verdict(SafetyClass.CONFIRM, f"closes {name or 'an app'}", name)
 
-    if tool == "start_background_task":
+    if tool in ("start_background_task", "start_project"):
         text = f"{kwargs.get('title', '')} {kwargs.get('spec', '')}"
         if _TASK_GATED_RE.search(text):
             return Verdict(

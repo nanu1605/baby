@@ -11,6 +11,7 @@ def register_all() -> None:
         clock,
         files,
         memory_tools,
+        projects,
         shell,
         system_stats,
         tasks,
