@@ -1,5 +1,38 @@
 # Changelog
 
+## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
+
+- Multi-agent orchestrator (feature #9, `workers/orchestrator.py`): "start a
+  project: build me a starter FastAPI app with auth and tests" → the best
+  available brain (heavy if >22 GB RAM free, else Gemini, else daily with a
+  notice — new router `tier_hint`) decomposes it into ≤4 independent
+  subtasks on the tasks board; the Phase 4 worker pool executes them with
+  per-worker progress in the feed; one integration call announces the
+  result. Tools: `start_project` (gated like tasks), `project_status`,
+  `cancel_project`; `GET /projects`; project lines in the activity feed.
+- Screen awareness (+screen, `core/vision.py` + `describe_screen`): "what's
+  on my screen?" → screenshot (primary monitor, downscaled to 1280 px JPEG)
+  → the RESIDENT multimodal 9B — no second model, no eviction. Optional
+  dedicated model via `screen.model` (unloads right after each call);
+  Gemini vision fallback only when local fails, never silent, and
+  `screen.allow_cloud_fallback: false` keeps screenshots on the machine.
+- Speaker verification (+speaker-id, `voice/speaker.py`): sherpa-onnx CAM++
+  embeddings (27 MB, CPU, ~ms) vs your enrolled voice
+  (`scripts/enroll_voice.py`, 6 mixed EN/HI/Hinglish phrases, prints a
+  suggested threshold). Unknown voices are CHAT-ONLY: every tool call is
+  denied at the gate ("voice not recognized as the owner"), config
+  `mode: ignore` drops them entirely. Kill phrases work for any voice;
+  push-to-talk bypasses (keyboard = owner). Fail-soft: no enrollment/model
+  → verification off, voice behaves exactly as Phase 4.
+- docs/TAILSCALE.md: phone access to the UI over a tailnet-only HTTPS proxy
+  (`tailscale serve`), localhost bind unchanged; explicit "never Funnel".
+- DB: `projects` table + `tasks.project_id` (in-place migration).
+- Deps: sherpa-onnx (the only new one — vision and capture ride on
+  existing deps). setup.ps1 §3e downloads the speaker model.
+- Tests: +63 (router tier_hint, project CRUD/migration, orchestrator
+  lifecycle matrix, vision chain, speaker verify + fail-soft, gate
+  enforcement, UI surfaces). Suite: 375 passing.
+
 ## Phase 4 fixes — owner testing feedback (2026-07-05)
 
 - Background task finished with "(no response)": after a long tool loop the

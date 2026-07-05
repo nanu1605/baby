@@ -302,3 +302,49 @@ Running log of non-obvious choices made during the build. Newest last.
     never touches Baby's state; a bus-subscriber coroutine folds events
     (`TrayState`) and pushes image/tooltip updates in. Quit hops back to
     the loop via `call_soon_threadsafe` and stops uvicorn cleanly.
+67. **The daily 9B is the vision brain** (Phase 5 headline finding): the
+    Ollama qwen3.5 family is multimodal — the RESIDENT model answers
+    "what's on my screen?" with zero eviction and zero reload. A dedicated
+    model (`screen.model: qwen3-vl:2b-instruct`, 1.9 GB) stays as the
+    config escape hatch, sent with per-request `keep_alive: "0s"` so it
+    unloads immediately (its eviction of the 9B is opt-in, owner-accepted).
+68. **VisionService owns its own local→Gemini chain, NOT RouterProvider**:
+    the router's failover would try the 24 GB heavy model on a vision
+    failure — exactly the wrong reflex. It reuses the router's
+    GeminiProvider instance so the 5-minute 429 cooldown state is shared.
+    Screenshots can contain secrets: the cloud path fires only when local
+    vision fails AND `screen.allow_cloud_fallback` is true, and it is never
+    silent — a status event announces the screenshot leaving the machine.
+69. **Speaker verification = sherpa-onnx CAM++ (27 MB onnx, CPU)**:
+    pip-installable cp313 Windows wheels, self-contained runtime, tens of
+    ms per utterance. SpeechBrain rejected (no Windows support),
+    Resemblyzer rejected (unmaintained since 2023). Profile is plain JSON
+    (`models/owner_voice.json`) — inspectable, no pickle. Enrollment mixes
+    EN/HI/Hinglish phrases because CAM++ is VoxCeleb-English-trained; the
+    script prints the intra-speaker similarity matrix and a suggested
+    threshold instead of pretending one number fits every mic and room.
+70. **Unverified-voice enforcement is gate-level and channel-scoped**:
+    `SafetySession.unverified_channels` + a `channel` param on
+    classify_tool DENY every tool on an unverified voice turn ("chat
+    only") — the LLM cannot bypass a gate verdict, and concurrent UI/task
+    turns keep their tools. Ordering is a safety statement: kill phrases
+    are honored for ANY voice, THEN verification. PTT bypasses it (whoever
+    pressed the hotkey owns the PC). A broken check fails OPEN with a loud
+    error event — locking the owner out is worse than one missed check,
+    and gated actions still require the on-screen confirm anyway.
+71. **Orchestrator forces the smart brain via `tier_hint="best"`**, a new
+    chat opt the router honors BEFORE the internal-call short-circuit and
+    the sticky cache, reusing the same candidate walk (RAM gate, health,
+    denial audits, /stats badge all keep working). Heavy and cloud both
+    denied → daily with the denial notice, per spec.
+72. **The orchestrator never touches tools** — planning and integration are
+    capped no-tools chat calls; only the WorkerPool's daily-model workers
+    act (and every worker tool call still passes the gate). One project at
+    a time, ≤4 independent disjoint-file subtasks, one corrective JSON
+    re-ask, bus-completion with DB-poll fallback, hard timeout: small local
+    models compound errors across chained steps, so chains stay short and
+    failures are clean, never hung. Workers all share the one 9B — Ollama
+    serializes generation, which is the real VRAM bound (spec §15).
+73. **Tailscale Serve, never Funnel** for phone access: tailnet-only HTTPS
+    proxy onto the localhost bind, zero code change. Funnel would publish
+    a login-less UI (with the confirm modal!) to the open internet.

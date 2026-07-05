@@ -3,11 +3,27 @@
 A Jarvis-style, voice-enabled, **local-first** personal AI assistant for Windows 11.
 Local models by default (privacy, zero cost); free cloud tier only as a fallback brain.
 
-> Status: **Phase 4 — Autonomy, Notifications, Reach** ✅
+> Status: **Phase 5 — Multi-Agent & Advanced Awareness** ✅
 > Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md)
 
 ## What works right now
 
+- **Projects (multi-agent)**: "start a project: build me a starter FastAPI
+  app with auth and tests" → the smartest available brain plans it into
+  independent subtasks, background workers execute them in parallel (each
+  its own agent, every tool still gated), progress streams per worker, and
+  the integrated result is announced. `GET /projects` shows the board.
+- **Screen awareness**: "what's on my screen?" — typed or spoken — is
+  answered by the same local model that's already loaded (zero VRAM cost);
+  Gemini vision steps in only if the local path fails, and the feed says
+  so out loud. `screen.allow_cloud_fallback: false` keeps screenshots
+  on-machine, always.
+- **Speaker verification**: enroll once (`scripts\enroll_voice.py`, ~2 min)
+  and only YOUR voice can trigger actions — anyone else gets polite chat
+  with every tool denied at the safety gate (or silence, per config).
+  "baby stop" still works for any voice; push-to-talk bypasses the check.
+- **Phone access**: [docs/TAILSCALE.md](docs/TAILSCALE.md) — the UI on your
+  phone over a private tailnet, HTTPS, zero exposed ports.
 - **Background tasks**: "in the background, research the top 3 EVs under
   15 lakh" → Baby hands back a task id and keeps chatting; when the task
   finishes you get a toast, a spoken announcement, and (if enabled) a
@@ -122,4 +138,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | 2 ✅ | Long-term memory (sqlite-vec), persona, chat-vs-act detection |
 | 3 ✅ | Voice: wake word, Whisper STT, Kokoro TTS, EN/HI/Hinglish |
 | 4 ✅ | Background tasks, notifications, browser control, Telegram, autostart |
-| 5 | Multi-agent orchestration, screen awareness, speaker verification |
+| 5 ✅ | Multi-agent projects, screen awareness, speaker verification, Tailscale doc |
