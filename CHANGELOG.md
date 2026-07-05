@@ -16,6 +16,19 @@
   `minimaxai/minimax-m2.7` primary (tools 100%, 1.4 s first token),
   `z-ai/glm-5.2` heavy (planning 5/5). Full data in
   `bench_results/REPORT.md`; rationale in DECISIONS.md #76.
+- N2 (2026-07-06): Router v2 — `CloudRouter` + `HealthMonitor` in
+  `core/router.py`, default `router.mode: cloud_primary`. Ladder per spec
+  §2.1 (pins → offline → overflow → normal/heavy/game-mode), health state
+  machine (1 failure → DEGRADED, DNS → OFFLINE, 3 probes + 1-token gen
+  ping to recover, 90 s 429 cooldown, 45 s background probe), shared
+  36 RPM token bucket (probes ride as background traffic), per-request
+  mid-loop fallback resending the identical messages array, per-channel
+  first-token timeouts (voice 3.5 s / text 8 s — AgentCore now passes
+  `channel`), every transition/skip audited + on the activity feed.
+  `/stats` gains `router.state` + `brain_turns`. Legacy `RouterProvider`
+  untouched — `router.mode: local_primary` is the one-line rollback.
+  Live-verified: boot green, real turn answered by minimax via the full
+  stack (1.0 s first token), internal calls stayed local.
 
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 

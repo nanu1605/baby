@@ -33,7 +33,7 @@ models:
   embedder: intfloat/multilingual-e5-small
 
 router:
-  mode: local_primary                   # cloud_primary | local_primary ← rollback switch (flips in N2)
+  mode: cloud_primary                   # cloud_primary | local_primary ← rollback is this one line
   default: daily
   escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
   escalation_order: [heavy, cloud]

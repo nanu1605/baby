@@ -379,3 +379,22 @@ Running log of non-obvious choices made during the build. Newest last.
     Bench fidelity note: T9 runs with tools=None exactly like the
     orchestrator plan call - with tools attached, models called
     start_project instead of emitting JSON.
+77. **Router v2 keeps three deliberate deviations from a literal spec read**:
+    (a) healthy() on the NIM provider stays cheap (key + cooldown check) and
+    the network probing lives in probe()/HealthMonitor - the ladder consults
+    health on every pick and must not hit the wire; (b) a real successful
+    NIM call counts toward recovery exactly like a probe (spec: "successes
+    count toward recovery") and a full generation IS the generation proof,
+    so the 1-token ping is only spent when recovery rides probes alone;
+    (c) internal capped calls (summary/extraction/suggestion) stay on the
+    warm local 9B even in cloud_primary - free, private, immune to cloud
+    hiccups - EXCEPT tier_hint="best" (orchestrator planning/integration),
+    which outranks the short-circuit because those calls are capped and
+    toolless by design yet want the best brain. Text-based heavy triggers
+    are not consulted for internal calls: a summary containing the word
+    "plan" must not wake the heavy brain.
+78. **Overflow skips the cloud entirely, backstop included**: when the token
+    bucket is empty the ladder jumps straight to local (spec 2.1 "skip cloud
+    entirely; no queueing") - Gemini is not a rate-limit escape valve, it is
+    a failure backstop. In game mode (local unloaded) overflow is an honest
+    error instead.

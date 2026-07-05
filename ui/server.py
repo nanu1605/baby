@@ -73,6 +73,9 @@ def create_app(ctx: UIContext) -> FastAPI:
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
+        counts = getattr(ctx.agent.provider, "turn_counts", None)
+        if counts is not None:
+            data["brain_turns"] = dict(counts)  # per-brain totals for the N4 soak
         if ctx.pool is not None:
             data["tasks_running"] = ctx.pool.running_count()
         if ctx.orchestrator is not None:
@@ -213,6 +216,10 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         _toast("Baby could not start", notes[-1][:120])
         await db.close()
         sys.exit(1)
+
+    # Cloud-primary router runs a 45 s NIM health probe; needs the live loop.
+    if hasattr(provider, "start"):
+        provider.start()
 
     register_all()
     web_tools.configure(
@@ -430,4 +437,9 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             pass
         if voice_pipeline is not None:
             voice_pipeline.stop()
+        if hasattr(provider, "stop"):
+            try:
+                await provider.stop()
+            except Exception:  # noqa: BLE001
+                pass
         await db.close()

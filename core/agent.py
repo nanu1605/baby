@@ -159,7 +159,12 @@ class AgentCore:
         for _ in range(self.max_iterations):
             text_parts: list[str] = []
             tool_calls: list[ToolCall] = []
-            async for chunk in self.provider.chat(messages, tools=registry.schemas()):
+            # channel rides along for the router's per-channel first-token
+            # timeout (voice falls to local faster than text); plain providers
+            # ignore unknown opts.
+            async for chunk in self.provider.chat(
+                messages, tools=registry.schemas(), channel=self.channel
+            ):
                 if chunk.delta:
                     text_parts.append(chunk.delta)
                     self.bus.publish("token", self.channel, text=chunk.delta)
