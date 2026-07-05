@@ -23,12 +23,12 @@ models:
   nim_primary:
     provider: nvidia
     base_url: https://integrate.api.nvidia.com/v1
-    model: ""                           # set from the N1 bench winner; exact ID from build.nvidia.com
+    model: minimaxai/minimax-m2.7       # N1 bench winner (Tanishq, 2026-07-06): tools 100%, 1.4s first token
     temperature: 0.7
   nim_heavy:
     provider: nvidia
     base_url: https://integrate.api.nvidia.com/v1
-    model: ""                           # set from the N1 bench winner (heavy slot)
+    model: z-ai/glm-5.2                 # N1 bench winner (heavy): planning 5/5; slow (~130s) but background-only
     temperature: 0.5
   embedder: intfloat/multilingual-e5-small
 

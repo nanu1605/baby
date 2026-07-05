@@ -10,6 +10,12 @@
   `router.mode: local_primary` keeps behavior identical — `cloud_primary`
   is rejected until the N2 router lands. `.env.example` += `NVIDIA_API_KEY`.
   Acceptance one-off: `scripts/nim_smoke.py --model <catalog-id>`.
+- N1 (2026-07-06): `scripts/pick_nim_model.py` shootout — T1–T9 battery ×5
+  against Baby's real tool schemas, 36 RPM bucket (`core/ratelimit.py`),
+  429 backoff, resumable caches, transcripts. Winners (Tanishq):
+  `minimaxai/minimax-m2.7` primary (tools 100%, 1.4 s first token),
+  `z-ai/glm-5.2` heavy (planning 5/5). Full data in
+  `bench_results/REPORT.md`; rationale in DECISIONS.md #76.
 
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 

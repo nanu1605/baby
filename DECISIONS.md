@@ -362,3 +362,20 @@ Running log of non-obvious choices made during the build. Newest last.
     DEGRADED→CLOUD recovery attempt to avoid burning free-tier quota.
     reasoning_effort is not forwarded to NIM until the N1 bench measures
     per-model unknown-parameter tolerance.
+76. **NIM winners (Tanishq, 2026-07-06): minimaxai/minimax-m2.7 primary,
+    z-ai/glm-5.2 heavy** - from the N1 shootout (bench_results/REPORT.md,
+    T1-T9 x5 against Baby's real tool schemas, evening IST). minimax:
+    perfect tool calling and 1.4 s first token (under the 3.5 s voice
+    cutoff); its weaknesses - 60% error honesty, rejects reasoning_effort,
+    0% planning JSON - do not touch the primary slot (internal capped
+    calls stay local; planning is the heavy slot's job). glm-5.2: 5/5
+    valid planning decompositions and 100% on every quality test except
+    error honesty; ~130 s first token is acceptable only because heavy
+    work is background (orchestrator timeout 1800 s). Disqualified:
+    mistral-nemotron (emits pseudo-code instead of native tool_calls),
+    llama-4-maverick (broken on NIM serverless, 79 s first token),
+    kimi-k2.6 (chronic 429 wall on the free tier, 80 rate-hits even
+    off-peak), nemotron-3-super (claims success on failed tools, T4 0%).
+    Bench fidelity note: T9 runs with tools=None exactly like the
+    orchestrator plan call - with tools attached, models called
+    start_project instead of emitting JSON.
