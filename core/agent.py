@@ -122,12 +122,18 @@ class AgentCore:
             *history,
             # Trailing nudge: the head-of-prompt language pin alone loses to a
             # history full of another language (observed live with the 9B) —
-            # an instruction adjacent to generation is what holds.
+            # an instruction adjacent to generation is what holds. Same for
+            # capability claims: the model repeated its own stale "browser is
+            # not configured" excuses from history instead of using the fixed
+            # tool (observed live), so trust only the current tool list.
             {
                 "role": "system",
                 "content": f"Reply ONLY in {language}. Match the tone of the "
                 "latest message: professional and emoji-free for work or serious "
-                "questions, playful only for casual chat.",
+                "questions, playful only for casual chat. Ignore any earlier "
+                "claims in this conversation that a tool is broken, unavailable "
+                "or not configured — the tool list in THIS request is the only "
+                "truth; try the tool before saying it can't be done.",
             },
         ]
 

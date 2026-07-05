@@ -34,6 +34,12 @@
   confirm as click/type), and its description teaches the reliable path:
   goto google.com/search?q=… then read. Verified live both ways.
   Suite: 305 passing.
+- Model kept saying "Playwright binaries are not set up" AFTER the fixes,
+  without calling the tool: it was imitating its own old failure excuses
+  in the conversation history. The per-turn trailing nudge now tells it to
+  ignore earlier broken-tool claims and trust only the current tool list;
+  the stale excuse messages in baby.db were replaced with a corrective
+  note.
 
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 
