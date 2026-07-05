@@ -26,6 +26,14 @@
   action interrupted by a window close resets state so the retry reopens
   the browser. Verified against real Chromium (goto/read/screenshot/
   relaunch). Suite: 298 passing.
+- "Open google.com and search X" always failed: the model omits the
+  selector argument ('type needs a selector' killed every search, and no
+  key-press action existed to submit one). browser_act now finds the
+  search box itself when type has no selector, accepts click selectors in
+  either slot, gains a `press` action (Enter submits — same per-domain
+  confirm as click/type), and its description teaches the reliable path:
+  goto google.com/search?q=… then read. Verified live both ways.
+  Suite: 305 passing.
 
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 

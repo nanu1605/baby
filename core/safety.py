@@ -341,7 +341,7 @@ def classify_tool(
         action = str(kwargs.get("action", "")).lower().strip()
         if action in ("goto", "read", "screenshot"):
             return Verdict(SafetyClass.ALLOW, f"browser {action} (read-only)", action)
-        if action in ("click", "type"):
+        if action in ("click", "type", "press"):
             domain = session.current_browser_domain() if session else ""
             if not domain:
                 return Verdict(
@@ -478,7 +478,8 @@ class SafetyGate:
     def note_approval(self, tool: str, kwargs: dict) -> None:
         """Record what an approved confirmation covers for the rest of the
         session (e.g. a browser domain). No-op for tools with no session state."""
-        if tool == "browser_act" and str(kwargs.get("action", "")).lower() in ("click", "type"):
+        actions = ("click", "type", "press")
+        if tool == "browser_act" and str(kwargs.get("action", "")).lower() in actions:
             domain = self.session.current_browser_domain()
             if domain:
                 self.session.confirmed_browser_domains.add(domain)

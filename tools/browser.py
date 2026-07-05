@@ -87,11 +87,38 @@ def _shots_dir() -> Path:
     return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "baby" / "shots"
 
 
+# Where text goes when the model gives no selector — search/input boxes on
+# most sites, tried in order. The 9B routinely omits selectors (owner logs
+# showed 'type needs a selector' killing every search flow).
+_TYPE_TARGETS = (
+    'textarea[name="q"]',
+    'input[name="q"]',
+    'input[type="search"]',
+    '[role="searchbox"]',
+    'input[type="text"]',
+    "textarea",
+)
+
+
+async def _find_typable(page) -> str:
+    for candidate in _TYPE_TARGETS:
+        try:
+            if await page.query_selector(candidate) is not None:
+                return candidate
+        except Exception:  # noqa: BLE001 — a bad candidate must not end the scan
+            continue
+    return ""
+
+
 @tool
 async def browser_act(action: str, selector: str = "", value: str = "") -> str:
-    """Drive the browser: goto|read|click|type|screenshot (value=url for goto)."""
+    """Drive the real browser window. Actions: goto (value=url), read (whole
+    page, or selector), click (selector), type (value=text; finds the search
+    box itself when selector is empty), press (value=key, e.g. Enter — submits
+    a search), screenshot. Easiest web search: goto
+    "https://www.google.com/search?q=your+query" then read — no typing needed."""
     action = action.lower().strip()
-    if action not in ("goto", "read", "click", "type", "screenshot"):
+    if action not in ("goto", "read", "click", "type", "press", "screenshot"):
         return json.dumps({"error": f"unknown browser action {action!r}"})
     try:
         page = await _ensure()
@@ -113,15 +140,27 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
                 ensure_ascii=False,
             )
         if action == "click":
-            if not selector:
+            target = selector or value  # tolerate the selector in either slot
+            if not target:
                 return json.dumps({"error": "click needs a selector"})
-            await page.click(selector, timeout=_ACTION_TIMEOUT_MS)
-            return json.dumps({"clicked": selector, "url": page.url})
+            await page.click(target, timeout=_ACTION_TIMEOUT_MS)
+            return json.dumps({"clicked": target, "url": page.url})
         if action == "type":
-            if not selector:
-                return json.dumps({"error": "type needs a selector"})
-            await page.fill(selector, value, timeout=_ACTION_TIMEOUT_MS)
-            return json.dumps({"typed_into": selector})
+            target = selector or await _find_typable(page)
+            if not target:
+                return json.dumps(
+                    {"error": "type: no input field found — give a selector"}
+                )
+            await page.fill(target, value, timeout=_ACTION_TIMEOUT_MS)
+            return json.dumps({"typed_into": target, "hint": "press Enter to submit"})
+        if action == "press":
+            key = value or selector or "Enter"
+            await page.keyboard.press(key)
+            try:
+                await page.wait_for_load_state("load", timeout=_ACTION_TIMEOUT_MS)
+            except Exception:  # noqa: BLE001 — no navigation happened; that's fine
+                pass
+            return json.dumps({"pressed": key, "url": page.url, "title": await page.title()})
         # screenshot
         shots = _shots_dir()
         shots.mkdir(parents=True, exist_ok=True)

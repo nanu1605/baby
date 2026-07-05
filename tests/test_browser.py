@@ -11,15 +11,31 @@ from core.bus import EventBus
 from core.safety import SafetyClass, SafetyConfig, SafetyGate, SafetySession, classify_tool
 
 
+class _FakeKeyboard:
+    def __init__(self):
+        self.pressed: list[str] = []
+
+    async def press(self, key):
+        self.pressed.append(key)
+
+
 class FakePage:
     def __init__(self, url="https://ollama.com/library"):
         self.url = url
         self.clicked: list[str] = []
         self.filled: list[tuple[str, str]] = []
         self.shot_paths: list[str] = []
+        self.keyboard = _FakeKeyboard()
+        self.selectors_present: set[str] = {'textarea[name="q"]'}
 
     def is_closed(self):
         return False
+
+    async def query_selector(self, selector):
+        return object() if selector in self.selectors_present else None
+
+    async def wait_for_load_state(self, state, timeout=None):
+        pass
 
     async def goto(self, url, timeout=None):
         self.url = url
@@ -89,7 +105,6 @@ async def test_click_and_type_dispatch(page):
 @pytest.mark.asyncio
 async def test_click_without_selector_errors(page):
     assert "error" in json.loads(await browser.browser_act("click"))
-    assert "error" in json.loads(await browser.browser_act("type"))
 
 
 @pytest.mark.asyncio
@@ -280,3 +295,59 @@ async def test_action_on_window_closed_mid_flight_resets(monkeypatch):
     result = json.loads(await browser.browser_act("goto", value="https://google.com"))
     assert "window was closed" in result["error"]
     assert stopped  # state reset so the retry relaunches
+
+
+# -- forgiving slots + search flow (owner logs: 9B omits selectors) -----------------
+
+
+@pytest.mark.asyncio
+async def test_click_accepts_selector_in_value_slot(page):
+    result = json.loads(await browser.browser_act("click", value="#searchbox"))
+    assert result["clicked"] == "#searchbox"
+    assert page.clicked == ["#searchbox"]
+
+
+@pytest.mark.asyncio
+async def test_type_without_selector_finds_search_box(page):
+    result = json.loads(
+        await browser.browser_act("type", value="fine dining places in Indore")
+    )
+    assert result["typed_into"] == 'textarea[name="q"]'
+    assert page.filled == [('textarea[name="q"]', "fine dining places in Indore")]
+
+
+@pytest.mark.asyncio
+async def test_type_without_selector_and_no_field_errors(page):
+    page.selectors_present = set()
+    result = json.loads(await browser.browser_act("type", value="hello"))
+    assert "no input field" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_press_defaults_to_enter(page):
+    result = json.loads(await browser.browser_act("press"))
+    assert result["pressed"] == "Enter"
+    assert page.keyboard.pressed == ["Enter"]
+
+
+@pytest.mark.asyncio
+async def test_press_named_key_in_value(page):
+    result = json.loads(await browser.browser_act("press", value="Tab"))
+    assert result["pressed"] == "Tab"
+
+
+def test_safety_press_confirms_first_time_then_allows():
+    cfg = SafetyConfig()
+    session = SafetySession(browser_domain_fn=lambda: "google.com")
+    verdict = classify_tool("browser_act", {"action": "press"}, cfg, session=session)
+    assert verdict.klass is SafetyClass.CONFIRM
+    session.confirmed_browser_domains.add("google.com")
+    verdict = classify_tool("browser_act", {"action": "press"}, cfg, session=session)
+    assert verdict.klass is SafetyClass.ALLOW
+
+
+def test_note_approval_records_domain_for_press():
+    gate = SafetyGate(SafetyConfig(), EventBus())
+    gate.session.browser_domain_fn = lambda: "google.com"
+    gate.note_approval("browser_act", {"action": "press"})
+    assert "google.com" in gate.session.confirmed_browser_domains
