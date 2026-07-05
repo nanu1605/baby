@@ -49,6 +49,7 @@ class UIContext:
     current_turn: asyncio.Task | None = None
     pool: object | None = None  # workers.queue.WorkerPool, attached in run_ui
     orchestrator: object | None = None  # workers.orchestrator.Orchestrator
+    voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
 
     def turn_running(self) -> bool:
         return self.current_turn is not None and not self.current_turn.done()
@@ -79,6 +80,9 @@ def create_app(ctx: UIContext) -> FastAPI:
         screen_cfg = ctx.config.get("screen", {})
         if screen_cfg.get("enabled", True):
             data["vision"] = screen_cfg.get("model") or "daily multimodal"
+        if ctx.voice is not None:
+            verifier = getattr(ctx.voice, "verifier", None)
+            data["speaker_verify"] = getattr(verifier, "note", "off") if verifier else "off"
         return data
 
     @app.get("/tasks")
@@ -293,6 +297,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             voice_pipeline.start()
         else:
             voice_pipeline = None
+        ctx.voice = voice_pipeline
 
     # Phase 4: notifications + background worker pool. Voice/telegram tiers
     # are injected as they come up; the pool works with toast-only too.

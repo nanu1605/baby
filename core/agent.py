@@ -312,7 +312,7 @@ class AgentCore:
         except json.JSONDecodeError:
             kwargs = {}
 
-        verdict = self.gate.classify(tc.name, kwargs, user_text)
+        verdict = self.gate.classify(tc.name, kwargs, user_text, channel=self.channel)
         args_json = json.dumps(kwargs, ensure_ascii=False)
         event_args = kwargs if len(args_json) <= 2048 else {"_truncated": args_json[:2048]}
         self.bus.publish(

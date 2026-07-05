@@ -767,3 +767,118 @@ def test_stt_empty_hotwords_sends_none():
     stt._model = FakeModel()
     stt.transcribe(np.zeros(16000, dtype=np.int16))
     assert seen["hotwords"] is None
+
+
+# -- 13. speaker verification gate (Phase 5) -----------------------------------------
+
+
+class FakeVerifier:
+    def __init__(self, ok=True, similarity=0.9, enabled=True):
+        self.ok = ok
+        self.similarity = similarity
+        self.enabled = enabled
+        self.note = "on (threshold 0.5)"
+        self.calls = 0
+
+    def verify(self, pcm):
+        self.calls += 1
+        return self.ok, self.similarity
+
+
+async def test_unknown_speaker_chat_only_denies_tools(db):
+    from core.safety import SafetyClass
+
+    pipeline, provider, _ = await _make_pipeline(db, ["Sorry, chat only."])
+    pipeline.verifier = FakeVerifier(ok=False, similarity=0.2)
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert provider.requests  # the turn still runs (chat is allowed)
+    gate = pipeline.agent.gate
+    assert "voice" in gate.session.unverified_channels
+    verdict = gate.classify("run_shell", {"command": "dir"}, channel="voice")
+    assert verdict.klass is SafetyClass.DENY
+    verdict = gate.classify("get_time", {}, channel="voice")
+    assert verdict.klass is SafetyClass.DENY  # even read-only tools
+
+
+async def test_owner_speaker_clears_flag_and_submits(db):
+    pipeline, provider, _ = await _make_pipeline(db, ["Done."])
+    pipeline.verifier = FakeVerifier(ok=True, similarity=0.8)
+    pipeline.agent.gate.session.unverified_channels.add("voice")  # stale flag
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert provider.requests
+    assert "voice" not in pipeline.agent.gate.session.unverified_channels
+
+
+async def test_ignore_mode_drops_unknown_voice(db):
+    pipeline, provider, bus = await _make_pipeline(db, ["never"])
+    pipeline.verifier = FakeVerifier(ok=False, similarity=0.1)
+    pipeline.sv_mode = "ignore"
+    events = bus.subscribe()
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert provider.requests == []
+    assert pipeline.state == "idle"
+    texts = []
+    while not events.empty():
+        texts.append(events.get_nowait().payload.get("text", ""))
+    assert any("unknown speaker ignored" in t for t in texts)
+
+
+async def test_ptt_bypasses_verification(db):
+    pipeline, provider, _ = await _make_pipeline(db, ["Yes boss."])
+    pipeline.verifier = FakeVerifier(ok=False)  # would fail if consulted
+    pipeline._ptt.set()
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    fb = FrameBuffer()
+    await asyncio.to_thread(pipeline._idle, fb)
+    assert pipeline._listen_source == "ptt"
+    await asyncio.to_thread(pipeline._listen, fb)
+    await asyncio.sleep(0.1)
+    assert pipeline.verifier.calls == 0
+    assert provider.requests
+    assert "voice" not in pipeline.agent.gate.session.unverified_channels
+
+
+async def test_kill_phrase_honored_for_any_voice(db):
+    pipeline, provider, _ = await _make_pipeline(db, ["never"], stt_text="baby stop")
+    pipeline.verifier = FakeVerifier(ok=False)
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.verifier.calls == 0  # kill phrase checked FIRST
+    assert provider.requests == []
+
+
+async def test_disabled_verifier_never_blocks(db):
+    pipeline, provider, _ = await _make_pipeline(db, ["Reply."])
+    pipeline.verifier = FakeVerifier(ok=False, enabled=False)
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert pipeline.verifier.calls == 0
+    assert provider.requests
+
+
+async def test_wake_after_ptt_verifies_again(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline._listen_source = "ptt"
+    from voice.audio_io import FrameBuffer
+
+    pipeline._enter_listening(FrameBuffer())  # wake/barge-in path, default source
+    assert pipeline._listen_source == "wake"

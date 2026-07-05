@@ -70,6 +70,7 @@ class VoicePipeline:
         vad=None,
         stt=None,
         tts=None,
+        verifier=None,
     ) -> None:
         self.loop = loop
         self.agent = agent
@@ -80,6 +81,10 @@ class VoicePipeline:
         self.vad = vad
         self.stt = stt
         self.tts = tts
+        self.verifier = verifier  # voice.speaker.SpeakerVerifier (Phase 5)
+        sv_cfg = cfg.get("speaker_verify", {})
+        self.sv_mode = str(sv_cfg.get("mode", "chat_only"))
+        self._listen_source = "wake"  # wake | ptt — PTT bypasses verification
 
         self.state = IDLE
         self.sentence_q: queue.Queue = queue.Queue()
@@ -111,6 +116,7 @@ class VoicePipeline:
                 ("vad", self._load_vad),
                 ("stt", self._load_stt),
                 ("tts", self._load_tts),
+                ("speaker verify", self._load_verifier),
             ]
             for name, loader in steps:
                 started = time.monotonic()
@@ -182,6 +188,22 @@ class VoicePipeline:
             )
         self.tts.load()
         return ""
+
+    def _load_verifier(self) -> str:
+        sv_cfg = self.cfg.get("speaker_verify", {})
+        if not sv_cfg.get("enabled", True):
+            return "disabled in config"
+        if self.verifier is None:
+            from voice.speaker import SpeakerVerifier
+
+            self.verifier = SpeakerVerifier(
+                model_path=sv_cfg.get("model", "models/wespeaker_en_voxceleb_CAM++.onnx"),
+                profile_path=sv_cfg.get("profile", "models/owner_voice.json"),
+                threshold=float(sv_cfg.get("threshold", 0.5)),
+            )
+        if not self.verifier.enabled:
+            return self.verifier.load()
+        return self.verifier.note
 
     def start(self) -> None:
         """Bridge coroutine on the loop + state-machine thread + hotkey."""
@@ -303,7 +325,7 @@ class VoicePipeline:
             return
         if self._ptt.is_set():
             self._ptt.clear()
-            self._enter_listening(frames)
+            self._enter_listening(frames, source="ptt")
             return
         frame = self.audio.read(timeout=0.2)
         if frame is None:
@@ -314,7 +336,10 @@ class VoicePipeline:
                 self._enter_listening(frames)
                 return
 
-    def _enter_listening(self, frames) -> None:
+    def _enter_listening(self, frames, source: str = "wake") -> None:
+        # PTT bypasses speaker verification: whoever pressed the hotkey is at
+        # the keyboard and already owns the PC.
+        self._listen_source = source
         self.audio.beep()
         self.audio.drain()
         frames.clear()
@@ -359,9 +384,50 @@ class VoicePipeline:
             self._drain_sentences()
             self._publish("status", text="voice: stopped by kill phrase")
             return
+        # Speaker verification (Phase 5) — AFTER the kill phrase (anyone may
+        # stop Baby) and never for PTT. chat_only turns get their tools denied
+        # at the gate; ignore mode drops the utterance entirely.
+        verified = True
+        if (
+            self.verifier is not None
+            and getattr(self.verifier, "enabled", False)
+            and self._listen_source != "ptt"
+        ):
+            try:
+                verified, similarity = self.verifier.verify(pcm)
+            except Exception as exc:  # noqa: BLE001 — a broken check must not lock the owner out
+                self._publish(
+                    "error",
+                    text=f"voice: speaker check failed ({type(exc).__name__}: {exc})",
+                )
+                verified = True
+            else:
+                if not verified:
+                    if self.sv_mode == "ignore":
+                        self._publish(
+                            "status",
+                            text=f"voice: unknown speaker ignored "
+                            f"(similarity {similarity:.2f})",
+                        )
+                        return
+                    self._publish(
+                        "status",
+                        text=f"voice: speaker not recognized "
+                        f"(similarity {similarity:.2f}) — chat only",
+                    )
+        self._set_verified(verified)
         self._publish("status", text=f"voice: heard {text!r}")
         self._turn_future = self._submit(text)
         self.state = RESPONDING
+
+    def _set_verified(self, verified: bool) -> None:
+        """Flag the voice channel before the turn starts (same loop-FIFO as
+        _submit, so the gate always sees the flag first)."""
+        gate = getattr(self.agent, "gate", None)
+        if gate is None:
+            return
+        channel = getattr(self.agent, "channel", "voice")
+        self.loop.call_soon_threadsafe(gate.set_voice_verified, channel, verified)
 
     def _respond(self, frames) -> None:
         stop_playback = threading.Event()

@@ -15,6 +15,8 @@ from core.safety import (
     ConfirmationManager,
     SafetyClass,
     SafetyConfig,
+    SafetyGate,
+    SafetySession,
     classify_shell,
     classify_tool,
 )
@@ -277,3 +279,40 @@ async def test_cancel_all_refuses_pending():
     await asyncio.wait_for(q.get(), 1)
     manager.cancel_all()
     assert await task == (False, "refused")
+
+
+# -- Phase 5: unverified voice channel is chat-only ----------------------------------
+
+
+def test_unverified_channel_denies_every_tool():
+    cfg = SafetyConfig()
+    session = SafetySession(unverified_channels={"voice"})
+    for tool, kwargs in (
+        ("get_time", {}),
+        ("describe_screen", {}),
+        ("run_shell", {"command": "dir"}),
+        ("browser_act", {"action": "goto", "value": "x.com"}),
+        ("start_background_task", {"title": "t", "spec": "research"}),
+    ):
+        verdict = classify_tool(tool, kwargs, cfg, session=session, channel="voice")
+        assert verdict.klass is SafetyClass.DENY, tool
+        assert "chat only" in verdict.reason
+
+
+def test_other_channels_unaffected_by_unverified_voice():
+    cfg = SafetyConfig()
+    session = SafetySession(unverified_channels={"voice"})
+    verdict = classify_tool("get_time", {}, cfg, session=session, channel="ui")
+    assert verdict.klass is SafetyClass.ALLOW
+    verdict = classify_tool("get_time", {}, cfg, session=session)  # default channel
+    assert verdict.klass is SafetyClass.ALLOW
+
+
+def test_set_voice_verified_toggles_flag():
+    from core.bus import EventBus
+
+    gate = SafetyGate(SafetyConfig(), EventBus())
+    gate.set_voice_verified("voice", False)
+    assert "voice" in gate.session.unverified_channels
+    gate.set_voice_verified("voice", True)
+    assert "voice" not in gate.session.unverified_channels

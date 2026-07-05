@@ -43,15 +43,20 @@ class SafetyConfig:
 
 @dataclass
 class SafetySession:
-    """Per-process approval state (Phase 4).
+    """Per-process approval state (Phase 4/5).
 
     browser_domain_fn reads the domain from the REAL Playwright page — the
     model's kwargs are never trusted for it, so the LLM can't talk its way
     past a per-domain confirm by claiming a different site.
+
+    unverified_channels (Phase 5): channels whose CURRENT turn failed speaker
+    verification — every tool call on them is DENIED at the gate (chat-only).
+    Channel-scoped so a concurrent UI or task turn keeps its tools.
     """
 
     confirmed_browser_domains: set = field(default_factory=set)
     browser_domain_fn: object | None = None  # Callable[[], str]
+    unverified_channels: set = field(default_factory=set)
 
     def current_browser_domain(self) -> str:
         if self.browser_domain_fn is None:
@@ -335,8 +340,18 @@ def classify_tool(
     cfg: SafetyConfig,
     user_text: str | None = None,
     session: SafetySession | None = None,
+    channel: str = "",
 ) -> Verdict:
     """Single gate entry for every registered tool."""
+    # Speaker verification (Phase 5): an unverified voice turn gets NO tools
+    # at all — checked first so the LLM cannot reach any other branch.
+    if session is not None and channel and channel in session.unverified_channels:
+        return Verdict(
+            SafetyClass.DENY,
+            "voice not recognized as the owner — chat only",
+            tool,
+        )
+
     if tool == "browser_act":
         action = str(kwargs.get("action", "")).lower().strip()
         if action in ("goto", "read", "screenshot"):
@@ -479,8 +494,21 @@ class SafetyGate:
         self.confirmations = ConfirmationManager(bus, cfg.confirm_timeout_s)
         self.session = SafetySession()
 
-    def classify(self, tool: str, kwargs: dict, user_text: str | None = None) -> Verdict:
-        return classify_tool(tool, kwargs, self.cfg, user_text, self.session)
+    def classify(
+        self,
+        tool: str,
+        kwargs: dict,
+        user_text: str | None = None,
+        channel: str = "",
+    ) -> Verdict:
+        return classify_tool(tool, kwargs, self.cfg, user_text, self.session, channel)
+
+    def set_voice_verified(self, channel: str, verified: bool) -> None:
+        """Mark a channel's current turn as owner-verified (or not)."""
+        if verified:
+            self.session.unverified_channels.discard(channel)
+        else:
+            self.session.unverified_channels.add(channel)
 
     def note_approval(self, tool: str, kwargs: dict) -> None:
         """Record what an approved confirmation covers for the rest of the
