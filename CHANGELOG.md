@@ -47,6 +47,12 @@
   call, owner repeats himself: a promise-shaped reply with zero tool calls
   now gets one deterministic push to actually call the tool. Suite: 309
   passing.
+- Voice refused screenshots that worked when typed: the voice
+  conversation's rolling summary had baked in "Playwright binary errors
+  remain unresolved" and is injected as context every turn. The summarizer
+  now drops broken-tool claims (also when inherited from the previous
+  summary), the per-turn nudge covers the summary too, and the poisoned
+  summary/messages in baby.db were cleaned.
 
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 

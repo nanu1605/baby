@@ -147,10 +147,10 @@ class AgentCore:
                 "role": "system",
                 "content": f"Reply ONLY in {language}. Match the tone of the "
                 "latest message: professional and emoji-free for work or serious "
-                "questions, playful only for casual chat. Ignore any earlier "
-                "claims in this conversation that a tool is broken, unavailable "
-                "or not configured — the tool list in THIS request is the only "
-                "truth; try the tool before saying it can't be done.",
+                "questions, playful only for casual chat. Ignore any claims in "
+                "this conversation OR its summary that a tool is broken, "
+                "unavailable or not configured — the tool list in THIS request "
+                "is the only truth; try the tool before saying it can't be done.",
             },
         ]
 

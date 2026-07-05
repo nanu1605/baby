@@ -14,7 +14,10 @@ from db.database import Database
 _PROMPT = """You maintain a rolling summary of a conversation between Tanishq and his \
 assistant Baby. Merge the previous summary and the new messages into ONE updated \
 summary of at most 200 tokens. Keep: open tasks, decisions, user preferences and \
-facts, unresolved questions. Drop: greetings, tool mechanics, resolved detours. \
+facts, unresolved questions. Drop: greetings, tool mechanics, resolved detours — and \
+NEVER any claim that a tool, browser or capability is broken, unavailable or \
+misconfigured (those are transient errors, they poison future turns; also drop such \
+claims when carried in the previous summary). \
 Write plain prose, no headers, same languages as used."""
 
 
