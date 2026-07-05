@@ -20,6 +20,12 @@
   turns it off.
 - Tests: +17 (finalize retry, markdown strip, hotword passthrough, tray
   state). Suite: 295 passing.
+- Browser stuck after closing the window: the dead BrowserContext was kept
+  and every action failed with "Target page, context or browser has been
+  closed" until restart. A dead context now relaunches cleanly, and an
+  action interrupted by a window close resets state so the retry reopens
+  the browser. Verified against real Chromium (goto/read/screenshot/
+  relaunch). Suite: 298 passing.
 
 ## Phase 4 — Autonomy, Notifications, Reach (2026-07-04)
 

@@ -177,3 +177,106 @@ def test_note_approval_records_domain_for_click_only():
     assert gate.session.confirmed_browser_domains == {"ollama.com"}
     gate.note_approval("run_shell", {"command": "dir"})
     assert gate.session.confirmed_browser_domains == {"ollama.com"}
+
+
+# -- dead-context relaunch (owner closed the visible window) ------------------------
+
+
+class DeadContext:
+    pages: list = []
+
+    async def new_page(self):
+        raise RuntimeError("Target page, context or browser has been closed")
+
+    async def close(self):
+        pass
+
+
+class LiveContext:
+    def __init__(self):
+        self.pages: list = []
+
+    async def new_page(self):
+        return FakePage(url="about:blank")
+
+    async def close(self):
+        pass
+
+
+class FakeChromium:
+    def __init__(self):
+        self.launches = 0
+
+    async def launch_persistent_context(self, profile, headless):
+        self.launches += 1
+        return LiveContext()
+
+
+class FakePlaywright:
+    def __init__(self):
+        self.chromium = FakeChromium()
+
+    async def stop(self):
+        pass
+
+
+class FakeStarter:
+    """Stands in for playwright.async_api.async_playwright()."""
+
+    def __init__(self, pw):
+        self._pw = pw
+
+    def __call__(self):
+        return self
+
+    async def start(self):
+        return self._pw
+
+
+@pytest.mark.asyncio
+async def test_ensure_relaunches_after_context_closed(monkeypatch):
+    pw = FakePlaywright()
+    monkeypatch.setattr("playwright.async_api.async_playwright", FakeStarter(pw))
+    monkeypatch.setattr(browser, "_pw", FakePlaywright())
+    monkeypatch.setattr(browser, "_context", DeadContext())
+    monkeypatch.setattr(browser, "_page", None)
+    page = await browser._ensure()
+    assert page.url == "about:blank"  # fresh page from the relaunched context
+    assert pw.chromium.launches == 1
+    await browser.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_ensure_reuses_live_context_without_relaunch(monkeypatch):
+    pw = FakePlaywright()
+    monkeypatch.setattr("playwright.async_api.async_playwright", FakeStarter(pw))
+    monkeypatch.setattr(browser, "_context", LiveContext())
+    monkeypatch.setattr(browser, "_page", None)
+    page = await browser._ensure()
+    assert page.url == "about:blank"
+    assert pw.chromium.launches == 0  # no relaunch needed
+    await browser.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_action_on_window_closed_mid_flight_resets(monkeypatch):
+    closed_page = FakePage()
+
+    async def dying_goto(url, timeout=None):
+        raise RuntimeError("Page.goto: Target page, context or browser has been closed")
+
+    closed_page.goto = dying_goto
+
+    async def fake_ensure():
+        return closed_page
+
+    stopped = []
+
+    async def fake_shutdown():
+        stopped.append(True)
+
+    monkeypatch.setattr(browser, "_ensure", fake_ensure)
+    monkeypatch.setattr(browser, "shutdown", fake_shutdown)
+    result = json.loads(await browser.browser_act("goto", value="https://google.com"))
+    assert "window was closed" in result["error"]
+    assert stopped  # state reset so the retry relaunches

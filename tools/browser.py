@@ -45,20 +45,28 @@ def current_domain() -> str:
 
 
 async def _ensure():
-    """Lazy-launch the persistent context; returns the active page."""
+    """Lazy-launch the persistent context; returns the active page.
+
+    The window is visible, so the owner can close it at any moment — a dead
+    context must trigger a clean relaunch, not fail forever with
+    "Target page, context or browser has been closed" (owner bug report).
+    """
     global _pw, _context, _page
     if _page is not None and not _page.is_closed():
         return _page
     if _profile_dir is None:
         configure()
-    if _context is None:
-        from playwright.async_api import async_playwright
+    if _context is not None:
+        try:
+            _page = _context.pages[0] if _context.pages else await _context.new_page()
+            return _page
+        except Exception:  # noqa: BLE001 — closed/crashed context: reset and relaunch
+            await shutdown()
+    from playwright.async_api import async_playwright
 
-        _profile_dir.mkdir(parents=True, exist_ok=True)
-        _pw = await async_playwright().start()
-        _context = await _pw.chromium.launch_persistent_context(
-            str(_profile_dir), headless=_headless
-        )
+    _profile_dir.mkdir(parents=True, exist_ok=True)
+    _pw = await async_playwright().start()
+    _context = await _pw.chromium.launch_persistent_context(str(_profile_dir), headless=_headless)
     _page = _context.pages[0] if _context.pages else await _context.new_page()
     return _page
 
@@ -121,4 +129,10 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
         await page.screenshot(path=str(path))
         return json.dumps({"screenshot": str(path), "url": page.url})
     except Exception as exc:  # noqa: BLE001 — tools must return errors, not raise
+        if "has been closed" in str(exc):
+            # Owner closed the window mid-action: reset now so the retry relaunches.
+            await shutdown()
+            return json.dumps(
+                {"error": f"browser window was closed — retry the {action} to reopen it"}
+            )
         return json.dumps({"error": f"browser {action} failed: {exc}"})
