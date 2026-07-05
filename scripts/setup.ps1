@@ -160,6 +160,23 @@ if ($tags -notcontains $heavyTag) {
     ollama pull $heavyTag
 }
 
+# --- 3e. Speaker verification model (Phase 5) ---------------------------------
+# CAM++ speaker-embedding onnx (27 MB) from the sherpa-onnx release; the '+'
+# characters must be percent-encoded in the URL but not in the filename.
+$spkModel = "models\wespeaker_en_voxceleb_CAM++.onnx"
+if (-not (Test-Path $spkModel)) {
+    Write-Host "Downloading speaker verification model (27 MB)..." -ForegroundColor Yellow
+    $spkUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/wespeaker_en_voxceleb_CAM%2B%2B.onnx"
+    try {
+        Invoke-WebRequest $spkUrl -OutFile $spkModel -TimeoutSec 300
+    } catch {
+        Write-Host "speaker model download failed - voice verification stays off until it lands." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Speaker verification model: OK"
+}
+Write-Host "Enroll your voice (one-time, ~2 min):  uv run python scripts\enroll_voice.py"
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
