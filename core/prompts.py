@@ -27,6 +27,24 @@ _HINGLISH_MARKERS = frozenset(
 )
 
 
+def devanagari_ratio(text: str) -> float:
+    """Fraction of alphabetic chars in the Devanagari block (U+0900–U+097F).
+
+    The NIM router's language pin routes a turn to the local brain when this
+    ratio crosses router.language_pin.devanagari_ratio (default 0.3); the N1
+    bench reuses it to score Hindi replies (T6).
+    """
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return 0.0
+    return sum(1 for ch in letters if "ऀ" <= ch <= "ॿ") / len(letters)
+
+
+def hinglish_hits(text: str) -> int:
+    """Count of Roman-script Hindi marker words in text (Hinglish heuristic)."""
+    return sum(1 for w in re.findall(r"[a-z]+", text.lower()) if w in _HINGLISH_MARKERS)
+
+
 def detect_language(text: str) -> str:
     """Best-effort language of one message: English, Hindi, or Hinglish."""
     if any("ऀ" <= ch <= "ॿ" for ch in text):
