@@ -33,6 +33,20 @@ CREATE TABLE IF NOT EXISTS tasks (
   notify INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   started_at TEXT,
+  finished_at TEXT,
+  project_id INTEGER REFERENCES projects(id)  -- orchestrator subtasks (Phase 5)
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  spec TEXT NOT NULL,
+  status TEXT DEFAULT 'queued',        -- queued | planning | running | integrating | done | failed | cancelled
+  plan TEXT,                           -- JSON subtask list the orchestrator produced
+  result TEXT,
+  notify INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now')),
+  started_at TEXT,
   finished_at TEXT
 );
 

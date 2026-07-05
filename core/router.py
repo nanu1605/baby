@@ -134,8 +134,36 @@ class RouterProvider:
     def _provider_for(self, tier: str) -> ChatProvider | None:
         return {"daily": self.daily, "heavy": self.heavy, "cloud": self.cloud}.get(tier)
 
+    async def _first_available(self, candidates: list[str], why: str) -> tuple[str, str]:
+        """First candidate that is configured, RAM-eligible and healthy; else daily."""
+        for candidate in candidates:
+            provider = self._provider_for(candidate)
+            if provider is None:
+                self._note_denial(candidate, f"{why}: {candidate} not configured")
+                continue
+            if candidate == "heavy":
+                free = self._free_ram_gb()
+                if free <= self.min_free_ram_gb:
+                    self._note_denial(
+                        "heavy", f"{why}: heavy denied — {free:.1f} GB free < "
+                        f"{self.min_free_ram_gb:g} GB needed"
+                    )
+                    continue
+            if not await provider.healthy():
+                self._note_denial(candidate, f"{why}: {candidate} unhealthy/cooldown")
+                continue
+            return candidate, why
+        return "daily", f"{why}: all escalation targets unavailable — staying on daily"
+
     async def _pick(self, messages: list[dict], tools, opts) -> tuple[str, str]:
         """(tier, reason). Consumes the retry flag; honors per-turn stickiness."""
+        # Orchestrator override (Phase 5): tier_hint="best" asks for the best
+        # available brain regardless of message triggers. Checked BEFORE the
+        # internal-call short-circuit (planning/integration are capped no-tools
+        # calls by design) and before stickiness (hinted calls are explicit).
+        if opts.get("tier_hint") == "best":
+            return await self._first_available(self.escalation_order, "tier_hint")
+
         # Internal capped calls (summary/extraction/suggestion) stay on daily.
         if opts.get("max_tokens") and not tools:
             return "daily", "internal call"
@@ -151,26 +179,7 @@ class RouterProvider:
         if fired:
             why = "+".join(fired)
             candidates = ["cloud"] if cloud_only else self.escalation_order
-            for candidate in candidates:
-                provider = self._provider_for(candidate)
-                if provider is None:
-                    self._note_denial(candidate, f"{why}: {candidate} not configured")
-                    continue
-                if candidate == "heavy":
-                    free = self._free_ram_gb()
-                    if free <= self.min_free_ram_gb:
-                        self._note_denial(
-                            "heavy", f"{why}: heavy denied — {free:.1f} GB free < "
-                            f"{self.min_free_ram_gb:g} GB needed"
-                        )
-                        continue
-                if not await provider.healthy():
-                    self._note_denial(candidate, f"{why}: {candidate} unhealthy/cooldown")
-                    continue
-                tier, reason = candidate, why
-                break
-            else:
-                reason = f"{why}: all escalation targets unavailable — staying on daily"
+            tier, reason = await self._first_available(candidates, why)
 
         self._sticky[key] = tier
         while len(self._sticky) > 8:

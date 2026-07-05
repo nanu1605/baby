@@ -41,6 +41,12 @@ class Database:
                 await self.conn.execute(
                     f"ALTER TABLE conversations ADD COLUMN {column} INTEGER DEFAULT 0"
                 )
+        cur = await self.conn.execute("PRAGMA table_info(tasks)")
+        have = {row["name"] for row in await cur.fetchall()}
+        if "project_id" not in have:
+            await self.conn.execute(
+                "ALTER TABLE tasks ADD COLUMN project_id INTEGER REFERENCES projects(id)"
+            )
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -165,10 +171,12 @@ class Database:
 
     # -- background tasks -----------------------------------------------------
 
-    async def add_task(self, title: str, spec: str, notify: int = 1) -> int:
+    async def add_task(
+        self, title: str, spec: str, notify: int = 1, project_id: int | None = None
+    ) -> int:
         cur = await self.conn.execute(
-            "INSERT INTO tasks (title, spec, notify) VALUES (?, ?, ?)",
-            (title, spec, notify),
+            "INSERT INTO tasks (title, spec, notify, project_id) VALUES (?, ?, ?, ?)",
+            (title, spec, notify, project_id),
         )
         await self.conn.commit()
         return cur.lastrowid
@@ -228,6 +236,68 @@ class Database:
             (task_id, limit),
         )
         return [dict(r) for r in await cur.fetchall()]
+
+    # -- projects (Phase 5 orchestrator) -----------------------------------------
+
+    async def add_project(self, title: str, spec: str, notify: int = 1) -> int:
+        cur = await self.conn.execute(
+            "INSERT INTO projects (title, spec, notify) VALUES (?, ?, ?)",
+            (title, spec, notify),
+        )
+        await self.conn.commit()
+        return cur.lastrowid
+
+    async def claim_next_project(self) -> dict | None:
+        """Atomically claim the oldest queued project (same pattern as tasks)."""
+        cur = await self.conn.execute(
+            "UPDATE projects SET status = 'planning', started_at = datetime('now')"
+            " WHERE id = (SELECT id FROM projects WHERE status = 'queued' ORDER BY id LIMIT 1)"
+            " RETURNING *"
+        )
+        row = await cur.fetchone()
+        await self.conn.commit()
+        return dict(row) if row else None
+
+    async def update_project(
+        self,
+        project_id: int,
+        *,
+        status: str,
+        plan: str | None = None,
+        result: str | None = None,
+    ) -> None:
+        terminal = status in ("done", "failed", "cancelled")
+        await self.conn.execute(
+            "UPDATE projects SET status = ?, plan = COALESCE(?, plan),"
+            " result = COALESCE(?, result),"
+            " finished_at = CASE WHEN ? THEN datetime('now') ELSE finished_at END"
+            " WHERE id = ?",
+            (status, plan, result, terminal, project_id),
+        )
+        await self.conn.commit()
+
+    async def get_project(self, project_id: int) -> dict | None:
+        cur = await self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def list_projects(self, limit: int = 20) -> list[dict]:
+        cur = await self.conn.execute(
+            "SELECT * FROM projects ORDER BY id DESC LIMIT ?", (limit,)
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def list_project_tasks(self, project_id: int) -> list[dict]:
+        cur = await self.conn.execute(
+            "SELECT * FROM tasks WHERE project_id = ? ORDER BY id", (project_id,)
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def count_projects(self, status: str) -> int:
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) AS n FROM projects WHERE status = ?", (status,)
+        )
+        return (await cur.fetchone())["n"]
 
     # -- schedules --------------------------------------------------------------
 

@@ -128,3 +128,78 @@ async def test_max_iterations_caps_tool_loop(db):
     reply = await agent.run_turn("loop forever")
     assert "tool-step limit" in reply
     assert len(provider.requests) == 2
+
+
+# -- projects (Phase 5 orchestrator) -------------------------------------------------
+
+
+async def test_project_crud_round_trip(db):
+    pid = await db.add_project("Starter API", "Build a FastAPI starter", notify=0)
+    project = await db.get_project(pid)
+    assert project["status"] == "queued" and project["notify"] == 0
+
+    await db.update_project(pid, status="planning", plan='{"subtasks": []}')
+    project = await db.get_project(pid)
+    assert project["status"] == "planning" and project["plan"] == '{"subtasks": []}'
+    assert project["finished_at"] is None
+
+    await db.update_project(pid, status="done", result="all good")
+    project = await db.get_project(pid)
+    assert project["result"] == "all good" and project["finished_at"] is not None
+
+
+async def test_claim_next_project_orders_and_empties(db):
+    assert await db.claim_next_project() is None
+    first = await db.add_project("p1", "spec1")
+    second = await db.add_project("p2", "spec2")
+    claimed = await db.claim_next_project()
+    assert claimed["id"] == first and claimed["status"] == "planning"
+    assert claimed["started_at"] is not None
+    claimed2 = await db.claim_next_project()
+    assert claimed2["id"] == second
+    assert await db.claim_next_project() is None
+
+
+async def test_tasks_link_to_project(db):
+    pid = await db.add_project("p", "s")
+    t1 = await db.add_task("sub1", "spec", notify=0, project_id=pid)
+    t2 = await db.add_task("sub2", "spec", notify=0, project_id=pid)
+    await db.add_task("unrelated", "spec")
+    subs = await db.list_project_tasks(pid)
+    assert [t["id"] for t in subs] == [t1, t2]
+    assert all(t["project_id"] == pid for t in subs)
+
+
+async def test_project_id_migration_on_old_db(tmp_path):
+    """A tasks table created without project_id gains the column on connect."""
+    import sqlite3
+
+    from db.database import Database
+
+    path = tmp_path / "old.db"
+    raw = sqlite3.connect(path)
+    raw.execute(
+        "CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT NOT NULL,"
+        " spec TEXT NOT NULL, status TEXT DEFAULT 'queued', result TEXT,"
+        " notify INTEGER DEFAULT 1, created_at TEXT, started_at TEXT, finished_at TEXT)"
+    )
+    raw.commit()
+    raw.close()
+
+    database = Database(path)
+    await database.connect()
+    try:
+        pid = await database.add_project("p", "s")
+        tid = await database.add_task("t", "s", project_id=pid)
+        task = await database.get_task(tid)
+        assert task["project_id"] == pid
+    finally:
+        await database.close()
+
+
+async def test_count_projects(db):
+    await db.add_project("a", "s")
+    await db.add_project("b", "s")
+    await db.claim_next_project()
+    assert await db.count_projects("queued") == 1
+    assert await db.count_projects("planning") == 1
