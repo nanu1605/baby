@@ -1,4 +1,4 @@
-# Baby setup — run from repo root:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+# Baby setup - run from repo root:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 # Idempotent. Installs nothing without telling you what and why.
 
 $ErrorActionPreference = "Stop"
@@ -7,12 +7,12 @@ Write-Host "== Baby setup ==" -ForegroundColor Cyan
 
 # --- 1. Ollama ---------------------------------------------------------------
 if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-    Write-Host "Ollama not found — installing via winget..." -ForegroundColor Yellow
+    Write-Host "Ollama not found - installing via winget..." -ForegroundColor Yellow
     winget install --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements
     # winget updates only the registry PATH; patch this session so ollama resolves now.
     $env:Path = "$env:LOCALAPPDATA\Programs\Ollama;$env:Path"
     if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
-        Write-Host "Ollama installed but not resolvable yet — open a new terminal and re-run this script." -ForegroundColor Red
+        Write-Host "Ollama installed but not resolvable yet - open a new terminal and re-run this script." -ForegroundColor Red
         exit 1
     }
 } else {
@@ -34,13 +34,13 @@ $tags = $null
 try {
     $tags = (Invoke-RestMethod http://127.0.0.1:11434/api/tags -TimeoutSec 5).models.name
 } catch {
-    Write-Host "Ollama daemon not reachable — starting it..." -ForegroundColor Yellow
+    Write-Host "Ollama daemon not reachable - starting it..." -ForegroundColor Yellow
     Start-Process ollama -ArgumentList "serve" -WindowStyle Hidden
     Start-Sleep -Seconds 5
     try {
         $tags = (Invoke-RestMethod http://127.0.0.1:11434/api/tags -TimeoutSec 5).models.name
     } catch {
-        Write-Host "Could not reach Ollama at 127.0.0.1:11434 — launch the Ollama app and re-run." -ForegroundColor Red
+        Write-Host "Could not reach Ollama at 127.0.0.1:11434 - launch the Ollama app and re-run." -ForegroundColor Red
         exit 1
     }
 }
@@ -50,7 +50,7 @@ if ($tags -contains $daily) {
     Write-Host "Pulling daily model $daily (~6.6 GB)..." -ForegroundColor Yellow
     ollama pull $daily
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Model pull failed — check network and re-run." -ForegroundColor Red
+        Write-Host "Model pull failed - check network and re-run." -ForegroundColor Red
         exit 1
     }
 }
@@ -59,7 +59,7 @@ if ($tags -contains $daily) {
 if (-not (Get-Command Everything -ErrorAction SilentlyContinue) -and
     -not (Test-Path "$env:ProgramFiles\Everything\Everything.exe") -and
     -not (Test-Path "${env:ProgramFiles(x86)}\Everything\Everything.exe")) {
-    Write-Host "Everything not found — installing via winget..." -ForegroundColor Yellow
+    Write-Host "Everything not found - installing via winget..." -ForegroundColor Yellow
     winget install --id voidtools.Everything -e --accept-package-agreements --accept-source-agreements
 } else {
     Write-Host "Everything: OK"
@@ -83,7 +83,7 @@ if (-not (Test-Path $dllPath)) {
         Copy-Item "$env:TEMP\Everything-SDK\dll\Everything64.dll" $dllPath -Force
         Write-Host "Everything64.dll installed to $dllPath"
     } catch {
-        Write-Host "SDK download failed — file_search will use the scandir fallback index." -ForegroundColor Yellow
+        Write-Host "SDK download failed - file_search will use the scandir fallback index." -ForegroundColor Yellow
     }
 } else {
     Write-Host "Everything SDK DLL: OK"
@@ -91,7 +91,7 @@ if (-not (Test-Path $dllPath)) {
 
 # --- 3. uv + Python env ------------------------------------------------------
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-    Write-Host "uv not found — installing (user-scope)..." -ForegroundColor Yellow
+    Write-Host "uv not found - installing (user-scope)..." -ForegroundColor Yellow
     powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
     $env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
 } else {
@@ -111,11 +111,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Checking embedding model + sqlite-vec..."
 uv run python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('intfloat/multilingual-e5-small', device='cpu'); print('e5 model: OK')"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "e5 model download failed — memory will be unavailable until it succeeds." -ForegroundColor Yellow
+    Write-Host "e5 model download failed - memory will be unavailable until it succeeds." -ForegroundColor Yellow
 }
 uv run python -c "import sqlite3, sqlite_vec; c = sqlite3.connect(':memory:'); c.enable_load_extension(True); c.load_extension(sqlite_vec.loadable_path()); print('sqlite-vec: OK', c.execute('select vec_version()').fetchone()[0])"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "sqlite-vec failed to load — memory will fall back to brute-force search." -ForegroundColor Yellow
+    Write-Host "sqlite-vec failed to load - memory will fall back to brute-force search." -ForegroundColor Yellow
 }
 
 # --- 3c. Voice stack (Phase 3) --------------------------------------------------
@@ -155,7 +155,7 @@ uv run playwright install chromium
 $heavyTag = "qwen3.6:35b-a3b"
 $tags = (Invoke-RestMethod "http://127.0.0.1:11434/api/tags" -TimeoutSec 5).models.name
 if ($tags -notcontains $heavyTag) {
-    Write-Host "Pulling heavy model $heavyTag (~24 GB download — needs >22 GB FREE RAM to run;" -ForegroundColor Yellow
+    Write-Host "Pulling heavy model $heavyTag (~24 GB download - needs >22 GB FREE RAM to run;" -ForegroundColor Yellow
     Write-Host "escalation falls back to the Gemini cloud tier whenever RAM is short)." -ForegroundColor Yellow
     ollama pull $heavyTag
 }
@@ -163,7 +163,7 @@ if ($tags -notcontains $heavyTag) {
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
-    Write-Host ".env created from template — fill in keys as needed (never commit it)." -ForegroundColor Yellow
+    Write-Host ".env created from template - fill in keys as needed (never commit it)." -ForegroundColor Yellow
 }
 Write-Host "Telegram (optional): create a bot with @BotFather, put TELEGRAM_BOT_TOKEN and"
 Write-Host "TELEGRAM_CHAT_ID (from @userinfobot) in .env, then set telegram.enabled: true."

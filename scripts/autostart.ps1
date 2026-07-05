@@ -1,4 +1,4 @@
-# Register (or remove) Baby's hidden Windows logon task — feature #2.
+# Register (or remove) Baby's hidden Windows logon task - feature #2.
 # Runs pythonw.exe (no window); output goes to %LOCALAPPDATA%\baby\logs\baby.log
 # (run.py self-logs when its streams are None). No admin needed: current-user
 # logon trigger with the default limited run level.
@@ -19,7 +19,7 @@ if ($Remove) {
 $repo = Split-Path -Parent $PSScriptRoot
 $pythonw = Join-Path $repo ".venv\Scripts\pythonw.exe"
 if (-not (Test-Path $pythonw)) {
-    Write-Host "no .venv\Scripts\pythonw.exe — run scripts\setup.ps1 first." -ForegroundColor Red
+    Write-Host "no .venv\Scripts\pythonw.exe - run scripts\setup.ps1 first." -ForegroundColor Red
     exit 1
 }
 
