@@ -29,10 +29,34 @@ def cosine(a, b) -> float:
     return float(np.dot(va, vb) / denom)
 
 
+def _preload_onnxruntime_dll() -> None:
+    """Beat the System32 DLL shadow before sherpa loads.
+
+    Windows ships a stale onnxruntime.dll (WindowsML, ORT 1.17) in System32,
+    which outranks add_dll_directory in the pyd search order and segfaults
+    sherpa (needs ORT C-API >= 24). ORT's own python module statically links
+    the runtime, so merely importing onnxruntime does NOT put an
+    "onnxruntime.dll" module in the process. Loading the venv copy explicitly
+    does — and an already-loaded module always wins name resolution.
+    """
+    import ctypes
+    from pathlib import Path
+
+    try:
+        import onnxruntime
+
+        dll = Path(onnxruntime.__file__).parent / "capi" / "onnxruntime.dll"
+        if dll.exists():
+            ctypes.WinDLL(str(dll))
+    except Exception:  # noqa: BLE001 — best-effort; sherpa raises clearly if it fails
+        pass
+
+
 class SherpaExtractor:
     """Thin sherpa-onnx wrapper: embed(int16 mono 16 kHz) -> list[float]."""
 
     def __init__(self, model_path: str, num_threads: int = 2) -> None:
+        _preload_onnxruntime_dll()
         import sherpa_onnx  # heavy; lazy at call sites
 
         config = sherpa_onnx.SpeakerEmbeddingExtractorConfig(

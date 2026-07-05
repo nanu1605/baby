@@ -121,11 +121,15 @@ class Orchestrator:
 
     async def cancel(self, project_id: int) -> bool:
         """Cancel a queued or running project; False if it's already finished."""
+        project = await self.db.get_project(project_id)
+        # Terminal status wins over the running map (same race as WorkerPool
+        # cancel: the child lingers a tick after writing its final status).
+        if project and project["status"] in ("done", "failed", "cancelled"):
+            return False
         child = self._running.get(project_id)
         if child is not None:
             child.cancel()
             return True
-        project = await self.db.get_project(project_id)
         if project and project["status"] == "queued":
             await self.db.update_project(project_id, status="cancelled")
             self.bus.publish(

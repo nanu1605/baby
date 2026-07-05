@@ -82,11 +82,16 @@ class WorkerPool:
 
     async def cancel(self, task_id: int) -> bool:
         """Cancel a queued or running task; False if it's already finished."""
+        task = await self.db.get_task(task_id)
+        # Terminal in the DB beats the running map: the child lingers there a
+        # tick after writing its final status, and cancelling it then would
+        # both lie to the caller and race the completion notification.
+        if task and task["status"] in ("done", "failed", "cancelled"):
+            return False
         child = self._running.get(task_id)
         if child is not None:
             child.cancel()
             return True
-        task = await self.db.get_task(task_id)
         if task and task["status"] == "queued":
             await self.db.update_task(task_id, status="cancelled")
             self.bus.publish(
