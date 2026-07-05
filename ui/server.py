@@ -76,6 +76,9 @@ def create_app(ctx: UIContext) -> FastAPI:
             data["tasks_running"] = ctx.pool.running_count()
         if ctx.orchestrator is not None:
             data["projects_running"] = ctx.orchestrator.running_count()
+        screen_cfg = ctx.config.get("screen", {})
+        if screen_cfg.get("enabled", True):
+            data["vision"] = screen_cfg.get("model") or "daily multimodal"
         return data
 
     @app.get("/tasks")
@@ -220,6 +223,10 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         headless=bool(browser_cfg.get("headless", False)),
         profile_dir=browser_cfg.get("profile_dir", ""),
     )
+    from core.vision import VisionService
+    from tools import screen as screen_tools
+
+    screen_tools.configure(VisionService(config, provider, bus))
     asyncio.get_running_loop().run_in_executor(None, apps.build_index)
 
     from memory import build_memory

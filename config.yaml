@@ -102,6 +102,14 @@ multi_agent:
   project_timeout_s: 1800
   plan_max_tokens: 1500
 
+screen:
+  enabled: true                         # feature +screen: "what's on my screen?"
+  model: ""                             # "" = daily multimodal 9B (no eviction); qwen3-vl:2b-instruct = dedicated
+  all_screens: false                    # primary monitor only by default
+  max_side: 1280                        # longest side after downscale (token budget)
+  jpeg_quality: 80
+  allow_cloud_fallback: true            # Gemini ONLY when local vision fails (screenshots may hold secrets)
+
 browser:
   headless: false                       # visible window (owner choice — easier logins)
   profile_dir: ""                       # default %LOCALAPPDATA%/baby/browser

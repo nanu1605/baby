@@ -12,6 +12,7 @@ def register_all() -> None:
         files,
         memory_tools,
         projects,
+        screen,
         shell,
         system_stats,
         tasks,
