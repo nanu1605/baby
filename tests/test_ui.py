@@ -149,3 +149,22 @@ def test_activity_kinds_include_projects():
     from ui.server import _ACTIVITY_KINDS
 
     assert {"project_started", "project_done"} <= _ACTIVITY_KINDS
+
+
+def test_ws_game_command_bypasses_model(ui):
+    """Escape hatch: bare game-mode text toggles with ZERO model calls."""
+    client, ctx, provider = ui
+    calls = []
+
+    async def fake_set(on):
+        calls.append(on)
+        return "game mode ON - local brain unloaded, cloud answers now"
+
+    provider.set_game_mode = fake_set
+    provider.game_mode = True
+    with client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "user_message", "text": "game mode on"})
+        msgs = [ws.receive_json() for _ in range(3)]
+    assert calls == [True]
+    assert [m["type"] for m in msgs] == ["turn_start", "token", "turn_end"]
+    assert provider.requests == []  # the model never ran

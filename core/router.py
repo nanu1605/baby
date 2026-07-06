@@ -669,6 +669,16 @@ class CloudRouter:
             if self._is_heavy_turn(messages, opts):
                 return ["nim_heavy", "nim_primary", "backstop"], "game mode (heavy)"
             return ["nim_primary", "backstop"], "game mode"
+        # Language pin outranks connectivity state (spec §2.1 lists pins as
+        # the FIRST rung): a Devanagari turn during DEGRADED was routing to
+        # Gemini instead of the local Qwen (caught by the live E2E battery).
+        # Game mode still wins above — Hindi flows fine to the NIM primary
+        # and the whole point is a free GPU.
+        if self.language_pin_enabled:
+            from core.prompts import devanagari_ratio
+
+            if devanagari_ratio(_trailing_user_text(messages)) >= self.devanagari_threshold:
+                return ["daily"], "language pin (Devanagari)"
         if self.monitor.state == "offline":
             return ["daily"], "offline"
         if self.monitor.state == "degraded":
@@ -690,14 +700,6 @@ class CloudRouter:
         # "plan" must not wake the heavy brain.
         if opts.get("max_tokens") and not tools:
             return ["daily"], "internal call"
-        # Language pin: Devanagari-dominant messages go to the local Qwen
-        # (strong Hindi). Roman-script Hinglish is NOT pinned — it flows to
-        # the NIM primary (spec §2.4).
-        if self.language_pin_enabled:
-            from core.prompts import devanagari_ratio
-
-            if devanagari_ratio(_trailing_user_text(messages)) >= self.devanagari_threshold:
-                return ["daily"], "language pin (Devanagari)"
         if self._is_heavy_turn(messages, opts):
             return ["nim_heavy", "nim_primary", "daily"], "heavy turn"
         return ["nim_primary", "backstop", "daily"], "normal turn"

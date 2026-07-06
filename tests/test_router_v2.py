@@ -553,3 +553,30 @@ async def test_parse_game_command():
     assert parse_game_command("baby, gaming mode on!") is True
     assert parse_game_command("what is game mode?") is None
     assert parse_game_command("turn on the lights") is None
+
+
+async def test_redaction_guards_even_a_bugged_ladder():
+    # Defense-in-depth proof: if a FUTURE ladder bug routes pinned content to
+    # a cloud rung, the payload that reaches the provider is already masked.
+    primary = NimFake(["cloud reply"])
+    router = make_router(primary=primary)
+    router._ladder = lambda m, t, o: (["nim_primary"], "simulated ladder bug")
+    reply = ""
+    async for chunk in router.chat(_pinned_messages(), tools=None):
+        reply += chunk.delta
+    assert reply == "cloud reply"
+    sent = str(primary.requests[0])
+    assert "SECRET-BYTES-42" not in sent
+    assert "local-only content redacted" in sent
+
+
+async def test_language_pin_outranks_degraded_state():
+    # Caught live by the E2E battery: Devanagari during DEGRADED was routed
+    # to the Gemini backstop instead of the local Qwen.
+    primary = NimFake(["never"])
+    backstop = FakeProvider(["never"])
+    router = make_router(primary=primary, backstop=backstop)
+    router.monitor.state = "degraded"
+    assert await collect(router, "आज का मौसम कैसा है?") == "local reply"
+    assert backstop.requests == []
+    assert "language pin" in router.active["reason"]
