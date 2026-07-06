@@ -305,6 +305,11 @@ class HealthMonitor:
         self.probe_s = float(cfg.get("probe_s", 45))
         self.recover_after = int(cfg.get("recover_after", 3))
         self.cooldown_429_s = float(cfg.get("cooldown_429_s", 90))
+        # Recovery must prove USABLE generation: the models-list GET succeeds
+        # even when generation is congested past any interactive budget, and
+        # an unbounded ping would flip cloud→degraded→cloud forever (observed
+        # live: every recovered turn re-paid the 3.5 s first-token tax).
+        self.gen_ping_timeout_s = float(cfg.get("gen_ping_timeout_s", 8))
         self.state = "cloud"
         self.cooldown_until = 0.0
         self._streak = 0
@@ -373,6 +378,8 @@ class HealthMonitor:
                 pass
 
     async def _probe_once(self) -> None:
+        import asyncio
+
         # Probes share the NIM bucket as background traffic; a full bucket
         # means real calls are flowing — passive signals cover us.
         if self.bucket is not None and not self.bucket.try_acquire(background=True):
@@ -391,10 +398,18 @@ class HealthMonitor:
         if self.state == "degraded":
             self._streak += 1
             if self._streak >= self.recover_after:
-                # Prove generation before flipping back — burns one bucket slot.
+                # Prove generation before flipping back — burns one bucket slot
+                # and must land within the interactive budget or the recovery
+                # is a lie (congested-but-alive stays degraded, local serves).
                 if self.bucket is not None:
                     await self.bucket.acquire_wait(background=True)
-                if await self.provider.probe(generation=True):
+                try:
+                    ok = await asyncio.wait_for(
+                        self.provider.probe(generation=True), self.gen_ping_timeout_s
+                    )
+                except TimeoutError:
+                    ok = False
+                if ok:
                     self._transition("cloud", "recovered")
                 else:
                     self._streak = 0
@@ -408,7 +423,7 @@ class HealthMonitor:
         if self.bus is not None:
             self.bus.publish(
                 "status", "router",
-                text=f"router: cloud {old} → {new} ({reason})",
+                text=f"router: cloud state {old} → {new} ({reason})",
             )
         if self.db is not None:
             import asyncio
@@ -540,6 +555,14 @@ class CloudRouter:
             return ["nim_primary", "backstop"], "game mode"
         if self.monitor.state == "offline":
             return ["daily"], "offline"
+        if self.monitor.state == "degraded":
+            # Hysteresis means STAY fallen: re-trying NIM on every agent
+            # iteration re-paid the first-token timeout each time (observed
+            # live — ~3.5 s of dead air per tool step). Probes own recovery;
+            # until then the backstop and the warm local brain serve.
+            if opts.get("max_tokens") and not tools and opts.get("tier_hint") != "best":
+                return ["daily"], "internal call"
+            return ["backstop", "daily"], "degraded — waiting for probes"
         # tier_hint="best" (orchestrator planning/integration) outranks the
         # internal-call short-circuit — those calls are capped AND toolless by
         # design, yet they are exactly the turns that want the heavy brain.

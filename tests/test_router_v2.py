@@ -323,3 +323,39 @@ async def test_cloud_primary_without_key_fails_loud(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     with pytest.raises(ValueError, match="cloud_primary"):
         build_provider(CLOUD_CONFIG)
+
+
+# -- degraded state must STAY fallen (observed live: 3.5s tax per tool step) ---------
+
+
+async def test_degraded_skips_nim_and_serves_backstop():
+    primary = NimFake(["never"])
+    backstop = FakeProvider(["backstop reply"])
+    router = make_router(primary=primary, backstop=backstop)
+    router.monitor.state = "degraded"
+    assert await collect(router) == "backstop reply"
+    assert primary.requests == []  # no per-turn NIM gamble while degraded
+
+
+async def test_degraded_internal_call_stays_daily():
+    primary = NimFake(["never"])
+    backstop = FakeProvider(["never"])
+    router = make_router(primary=primary, backstop=backstop)
+    router.monitor.state = "degraded"
+    assert await collect(router, max_tokens=80) == "local reply"
+    assert backstop.requests == []
+
+
+async def test_slow_gen_ping_blocks_recovery():
+    class SlowPing(NimFake):
+        async def probe(self, generation=False):
+            self.probe_calls.append(generation)
+            if generation:
+                await asyncio.sleep(0.2)  # past the budget below
+            return True
+
+    nim = SlowPing([])
+    monitor = HealthMonitor(nim, cfg={"recover_after": 1, "gen_ping_timeout_s": 0.05})
+    monitor.state = "degraded"
+    await monitor._probe_once()
+    assert monitor.state == "degraded"  # congested-but-alive is not recovered
