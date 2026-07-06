@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS messages (
   conversation_id INTEGER REFERENCES conversations(id),
   role TEXT NOT NULL,                  -- user | assistant | tool
   content TEXT NOT NULL,
+  turn_id INTEGER,                     -- groups every row of one run_turn (P2)
+  status TEXT DEFAULT 'ok',            -- ok | failed | quarantined (P2); only 'ok' loads to context
   created_at TEXT DEFAULT (datetime('now'))
 );
 
