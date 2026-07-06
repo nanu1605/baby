@@ -358,9 +358,11 @@ async def run_case(provider, case: Case, tools, bucket) -> RunOutcome:
     return outcome
 
 
-async def probe_reasoning_tolerance(model: str, key: str, bucket) -> str:
+async def probe_reasoning_tolerance(
+    model: str, key: str, bucket, base_url: str = NIM_OPENAI_URL
+) -> str:
     """T0: does this model accept extra_body reasoning_effort? (N2 needs to know)."""
-    client = AsyncOpenAI(base_url=NIM_OPENAI_URL, api_key=key)
+    client = AsyncOpenAI(base_url=base_url, api_key=key)
     await bucket.acquire_wait()
     try:
         await client.chat.completions.create(
@@ -504,10 +506,17 @@ def write_report(summaries: list[dict], runs_per_test: int) -> None:
 # -- main -------------------------------------------------------------------------
 
 
-async def bench(models: list[str], heavy: set[str], runs_per_test: int) -> None:
-    key = os.environ.get("NVIDIA_API_KEY", "")
-    if not key.startswith("nvapi-"):
-        print("FAIL: NVIDIA_API_KEY missing from .env")
+async def bench(
+    models: list[str],
+    heavy: set[str],
+    runs_per_test: int,
+    base_url: str = NIM_OPENAI_URL,
+    key_env: str = "NVIDIA_API_KEY",
+    rpm: int = 36,
+) -> None:
+    key = os.environ.get(key_env, "")
+    if not key:
+        print(f"FAIL: {key_env} missing from .env")
         raise SystemExit(1)
 
     import tools as tool_pkg
@@ -517,14 +526,16 @@ async def bench(models: list[str], heavy: set[str], runs_per_test: int) -> None:
     tools = registry.schemas()
     print(f"tool schemas: {len(tools)} (live from tools/registry.py)")
 
-    bucket = TokenBucket(rpm=36)
+    bucket = TokenBucket(rpm=rpm)
     summaries = []
     for model in models:
         data = load_cache(model)
-        provider = NvidiaProvider(model=model, api_key=key)
+        provider = NvidiaProvider(model=model, api_key=key, base_url=base_url)
         print(f"\n=== {model} ===")
         if data.get("reasoning_effort") is None:
-            data["reasoning_effort"] = await probe_reasoning_tolerance(model, key, bucket)
+            data["reasoning_effort"] = await probe_reasoning_tolerance(
+                model, key, bucket, base_url
+            )
             save_cache(model, data)
             print(f"  T0 reasoning_effort probe: {data['reasoning_effort']}")
         for case in CASES:
@@ -548,11 +559,26 @@ async def bench(models: list[str], heavy: set[str], runs_per_test: int) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="NIM model shootout (Phase N1)")
+    parser = argparse.ArgumentParser(
+        description="Model shootout (Phase N1 on NIM; any OpenAI-compatible host via flags)"
+    )
     parser.add_argument("--models", default="", help="comma-separated catalog IDs")
     parser.add_argument("--heavy", default="", help="comma-separated heavy-slot IDs")
     parser.add_argument("--runs", type=int, default=5, help="runs per test (default 5)")
+    parser.add_argument("--base-url", default=NIM_OPENAI_URL,
+                        help="OpenAI-compatible endpoint (e.g. https://openrouter.ai/api/v1)")
+    parser.add_argument("--key-env", default="NVIDIA_API_KEY",
+                        help="env var holding the API key for --base-url")
+    parser.add_argument("--rpm", type=int, default=36,
+                        help="request budget per minute (host rate limit)")
+    parser.add_argument("--tag", default="",
+                        help="write cache/report under bench_results/<tag>/ so a new "
+                             "shootout never overwrites a committed REPORT.md")
     args = parser.parse_args()
+    if args.tag:
+        RESULTS_DIR = ROOT / "bench_results" / args.tag
+        TRANSCRIPT_DIR = RESULTS_DIR / "transcripts"
     model_list = [m.strip() for m in args.models.split(",") if m.strip()] or DEFAULT_MODELS
     heavy_set = {m.strip() for m in args.heavy.split(",") if m.strip()} or DEFAULT_HEAVY
-    asyncio.run(bench(model_list, heavy_set, args.runs))
+    asyncio.run(bench(model_list, heavy_set, args.runs,
+                      base_url=args.base_url, key_env=args.key_env, rpm=args.rpm))
