@@ -471,3 +471,24 @@ Running log of non-obvious choices made during the build. Newest last.
     even after the one _final_answer retry, is served as an honest
     "try that once more?" line and audited (tool="generation"), never
     the bare placeholder. The literal "(no response)" is gone.
+87. **DB hygiene: tag-and-quarantine per turn, not one held transaction
+    (P2)**: the spec asked for "transactional turns", but a transaction
+    held open across a whole run_turn would re-open the exact
+    shared-connection hazard the db.lock was added to close — a commit from
+    a background coroutine landing in the turn's read gap. Instead every row
+    of a turn shares a `turn_id`; a turn that errors is marked
+    `status='failed'` in one UPDATE (excluded from every context load), a
+    cancelled turn keeps its closure marker (NOT quarantined, so later
+    turns do not re-answer it), and a hard-kill leftover (a turn with no
+    assistant row) is failed at boot by `_reconcile_incomplete_turns`.
+    Legacy rows (turn_id NULL, pre-P2) are never touched — the ALTER
+    default backfills them 'ok', so no history is lost. Three more layers
+    back this: `core/context.py::sanitize_messages` is applied to every
+    assembled array (drops orphaned tool rows, repairs malformed tool-call
+    args to `{}`, drops empty content — audited as context_sanitizer, and
+    idempotent so it never mangles a valid multi-tool turn); a provider
+    that still 4xx-rejects the context self-heals once from the rolling
+    summary + current turn; and `scripts/migrate_v2_db.py` sweeps the
+    existing DB. The sanitizer running on every assembly is what makes
+    persistent poison impossible — the next turn is already clean, so the
+    same debris can never re-break a call.
