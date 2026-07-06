@@ -10,13 +10,9 @@ models:
     num_ctx: 8192
     temperature: 0.7
     keep_alive: 24h
-  heavy:
-    provider: ollama
-    model: qwen3.6:35b-a3b              # library tag verified 2026-07-04 (24 GB MoE)
-    num_ctx: 8192
-    temperature: 0.5
-    keep_alive: 10m
-    min_free_ram_gb: 22
+  # heavy (local qwen3.6:35b-a3b) removed at N5 — the heavy tier is
+  # z-ai/glm-5.2 on NIM (models.nim_heavy). local_primary rollback now
+  # escalates daily → cloud only.
   cloud:
     provider: gemini
     model: gemini-flash-latest          # free tier; key in .env; optional

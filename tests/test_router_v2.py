@@ -311,6 +311,21 @@ async def test_local_primary_mode_builds_legacy_router(monkeypatch):
     assert isinstance(provider, RouterProvider)
 
 
+async def test_local_primary_without_heavy_still_rolls_back(monkeypatch):
+    # N5 removed the local 35B from the stock config — the one-line rollback
+    # (router.mode: local_primary) must keep working with daily alone or
+    # daily + Gemini cloud.
+    from core.providers.ollama import OllamaProvider
+
+    cfg = {"models": {"daily": {"model": "qwen3.5:9b-q4_K_M"},
+                      "cloud": {"model": "gemini-flash-latest"}},
+           "router": {"mode": "local_primary"}}
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    assert isinstance(build_provider(cfg), RouterProvider)  # daily + cloud
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert isinstance(build_provider(cfg), OllamaProvider)  # bare daily
+
+
 async def test_cloud_primary_mode_builds_cloud_router(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)

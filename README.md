@@ -28,10 +28,12 @@ Local models by default (privacy, zero cost); free cloud tier only as a fallback
   15 lakh" → Baby hands back a task id and keeps chatting; when the task
   finishes you get a toast, a spoken announcement, and (if enabled) a
   Telegram message. `task_status` / `cancel_task` / `GET /tasks` to manage.
-- **Three brains**: daily 9B stays warm; "use the big brain" (or a planning
-  task, a failed retry, a huge input) escalates to the 35B — gated on free
-  RAM — or to Gemini's free tier. The activity feed narrates every routing
-  decision; the header badge shows which brain answered.
+- **Four brains, cloud-primary**: openai/gpt-4o-mini via OpenRouter serves
+  interactive turns (first token ~1.2 s); "use the big brain" (or a planning
+  task) escalates to z-ai/glm-5.2 on NVIDIA NIM; Gemini's free tier backstops;
+  the local 9B stays warm for offline, privacy-pinned and overflow turns. The
+  activity feed narrates every routing decision; the header badge shows which
+  brain answered.
 - **Browser**: "open ollama.com and read me the headline" drives a real
   Chromium window with a persistent profile (logins survive restarts).
   Navigation and reading are free; the FIRST click/type on each site asks

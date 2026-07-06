@@ -12,7 +12,8 @@ inherits routing with zero agent changes. Escalation triggers (spec §9.3):
                        same 8K window as daily and can't fit it any better.
 
 Heavy additionally needs psutil free RAM above models.heavy.min_free_ram_gb
-(the 35B MoE lives mostly in system RAM). Every escalation AND every denial
+(a heavy Ollama model, if configured, lives mostly in system RAM — the stock
+config stopped shipping one at N5). Every escalation AND every denial
 is audited and surfaced on the bus. Internal capped calls (summary,
 extraction, next-step: max_tokens set, no tools) always stay on daily.
 """

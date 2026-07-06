@@ -437,3 +437,13 @@ Running log of non-obvious choices made during the build. Newest last.
     so each can point at a different host; tier names (nim_primary)
     kept for audit/report continuity. NIM rollback is three config
     lines (recorded inline in config.yaml). Tanishq picked the winner.
+84. **Local 35B removed (N5)**: qwen3.6:35b-a3b deleted from config,
+    setup.ps1 and disk (~20 GB reclaimed; `ollama pull qwen3.6:35b-a3b`
+    brings it back if ever wanted). Its every trigger (tier_hint,
+    planning, retry, long context) is served by nim_heavy - z-ai/glm-5.2
+    on NIM, which benched 5/5 on planning and tolerates congestion
+    because it is background-only. The legacy local_primary rollback
+    keeps working without a heavy block: build_provider only wires heavy
+    when models.heavy.model exists, so rollback = daily + Gemini cloud
+    (regression-tested). The RAM-gate machinery in RouterProvider stays
+    (harmless, exercised by tests) for anyone who re-adds a local heavy.

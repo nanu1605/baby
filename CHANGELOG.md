@@ -51,6 +51,12 @@
   transitions, first-token p50/p95, voice dead-air count, traceback
   count). `/stats` += per-brain `latency_ms` percentiles. README gains
   the cloud-primary architecture diagram.
+- N5 (2026-07-06): **Local 35B removed** — `models.heavy`
+  (qwen3.6:35b-a3b, ~20 GB on disk, >22 GB RAM to run) deleted from
+  config and setup; its role is fully served by `nim_heavy`
+  (z-ai/glm-5.2 on NIM). The one-line rollback
+  (`router.mode: local_primary`) now escalates daily → Gemini only and
+  is regression-tested without a heavy block.
 - OR (2026-07-06): **Primary brain moved to OpenRouter** —
   `openai/gpt-4o-mini` (day-1 soak caught NIM serving 0/45 attempts;
   re-benched on OpenRouter: every test 100%, first token p50 1.2 s —
