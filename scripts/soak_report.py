@@ -106,10 +106,9 @@ def render(data: dict, since: str, tracebacks: int) -> str:
     ]
     for tier, count in data["routes"].most_common():
         samples = data["served"].get(tier, [])
-        lines.append(
-            f"| {tier} | {count} | {percentile(samples, 0.5)} ms | "
-            f"{percentile(samples, 0.95)} ms |"
-        )
+        p50 = f"{percentile(samples, 0.5)} ms" if samples else "n/a"
+        p95 = f"{percentile(samples, 0.95)} ms" if samples else "n/a"
+        lines.append(f"| {tier} | {count} | {p50} | {p95} |")
     lines += [
         "",
         f"- Fallback routes (rung dropped mid-turn): **{data['fallbacks']}**",
