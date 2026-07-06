@@ -79,6 +79,15 @@ def create_app(ctx: UIContext) -> FastAPI:
         game = getattr(ctx.agent.provider, "game_mode", None)
         if game is not None:
             data["game_mode"] = bool(game)
+        latency = getattr(ctx.agent.provider, "latency", None)
+        if latency:
+            def pct(samples, p):
+                ranked = sorted(samples)
+                return round(ranked[min(len(ranked) - 1, int(p * len(ranked)))], 1)
+            data["latency_ms"] = {
+                tier: {"p50": pct(s, 0.5), "p95": pct(s, 0.95)}
+                for tier, s in latency.items() if s
+            }
         if ctx.pool is not None:
             data["tasks_running"] = ctx.pool.running_count()
         if ctx.orchestrator is not None:

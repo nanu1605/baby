@@ -41,6 +41,16 @@
   ready"; optional fullscreen auto-detect (`game_mode.auto_detect`,
   default off, `ui/gamewatch.py`). Live-verified VRAM swing via
   nvidia-smi.
+- N4 (2026-07-06): Routing made visible + soak tooling. Per-message
+  **brain badge** (local / NIM / Gemini, model + routing reason on
+  hover — the brain that authored the final answer), header router-state
+  dot (cloud/degraded/offline/game) and a game-mode toggle button.
+  Router records a durable `served` audit row per completed stream
+  (channel + first-token ms) — `scripts/soak_report.py` turns the audit
+  trail into the PR soak summary (turns/brain, skip reasons, state
+  transitions, first-token p50/p95, voice dead-air count, traceback
+  count). `/stats` += per-brain `latency_ms` percentiles. README gains
+  the cloud-primary architecture diagram.
 
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 

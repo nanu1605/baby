@@ -299,3 +299,21 @@ async def test_malformed_tool_args_sanitized_in_history(db):
     assert assistant["tool_calls"][0]["function"]["arguments"] == "{}"
     tool_msg = next(m for m in second if m["role"] == "tool")
     assert "invalid arguments JSON" in tool_msg["content"]
+
+
+async def test_turn_end_carries_brain_snapshot(db):
+    from core.bus import EventBus
+
+    bus = EventBus()
+    q = bus.subscribe()
+    provider = FakeProvider(["answer"])
+    provider.active = {"tier": "nim_primary", "reason": "normal turn", "model": "m/x"}
+    conv_id = await db.create_conversation("cli")
+    agent = AgentCore(provider, db, conv_id, channel="cli", bus=bus, gate=None)
+    await agent.run_turn("hi")
+    events = []
+    while not q.empty():
+        events.append(q.get_nowait())
+    end = next(e for e in events if e.kind == "turn_end")
+    assert end.payload["brain"]["tier"] == "nim_primary"
+    assert end.payload["brain"]["model"] == "m/x"

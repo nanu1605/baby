@@ -6,6 +6,7 @@ All offline: fake providers script every outcome; no network, no quota.
 from __future__ import annotations
 
 import asyncio
+import json
 
 import httpx
 import pytest
@@ -502,3 +503,32 @@ async def test_gamewatch_rect_logic():
     assert covers_monitor((0, 0, 2560, 1440), (0, 0, 2560, 1440))
     assert covers_monitor((-8, -8, 2568, 1448), (0, 0, 2560, 1440))  # borderless overhang
     assert not covers_monitor((0, 0, 1280, 720), (0, 0, 2560, 1440))  # windowed
+
+
+# -- N4: brain surfacing + served audit ---------------------------------------------
+
+
+class AuditDb:
+    def __init__(self):
+        self.rows = []
+
+    async def add_audit(self, channel, tool, args, safety_class, approved, detail):
+        self.rows.append((json.loads(args)["action"], detail))
+
+
+async def test_active_carries_model_and_served_is_audited():
+    import asyncio as _asyncio
+
+    db = AuditDb()
+    primary = NimFake(["cloud reply"])
+    router = CloudRouter(
+        FakeProvider(["local"]), nim_primary=primary, db=db, router_cfg=ROUTER_CFG
+    )
+    assert await collect(router, channel="ui") == "cloud reply"
+    assert router.active["model"] == "fake/nim"
+    await _asyncio.sleep(0)  # let the fire-and-forget audit tasks run
+    served = [r for r in db.rows if r[0] == "served nim_primary"]
+    assert len(served) == 1
+    detail = json.loads(served[0][1])
+    assert detail["channel"] == "ui" and detail["first_token_ms"] >= 0
+    assert router.latency["nim_primary"]

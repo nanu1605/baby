@@ -110,7 +110,13 @@ class AgentCore:
             await self.db.add_message(self.conversation_id, "assistant", reply)
             raise
         finally:
-            self.bus.publish("turn_end", self.channel, reply=reply, status=status)
+            # Snapshot BEFORE maintenance spawns — its internal calls overwrite
+            # the router's active decision within milliseconds. The badge shows
+            # the brain that authored the final answer of this turn.
+            brain = dict(getattr(self.provider, "active", None) or {})
+            self.bus.publish(
+                "turn_end", self.channel, reply=reply, status=status, brain=brain
+            )
             # Router hook (Phase 4): lets the provider arm retry_after_failure
             # escalation for this channel's next turn. No-op for plain providers.
             record = getattr(self.provider, "record_turn_result", None)

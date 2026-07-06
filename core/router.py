@@ -499,8 +499,11 @@ class CloudRouter:
         self.game_mode = False
         self._warm_task = None
         self._active = {"tier": "nim_primary", "reason": "default"}
-        # Per-brain turn counters for the N4 soak (/stats).
+        # Per-brain turn counters + first-token samples for the N4 soak.
+        # Samples are session-local (/stats percentiles); the durable record
+        # is the "served" audit row per completed stream.
         self.turn_counts = {"daily": 0, "nim_primary": 0, "nim_heavy": 0, "backstop": 0}
+        self.latency: dict[str, list[float]] = {}
 
     # -- lifecycle -------------------------------------------------------------------
 
@@ -747,10 +750,14 @@ class CloudRouter:
                 self._note_skip(tier, "backstop unhealthy/cooldown")
                 continue
 
+            import time as _time
+
             self._note_decision(tier, reason if rung_no == 0 else f"fallback from {ladder[0]}")
             payload = messages if tier == "daily" else self._redact_pinned(messages)
             stream = provider.chat(payload, tools=tools, **opts).__aiter__()
             emitted = False
+            t_start = _time.monotonic()
+            ft_ms: float | None = None
             # The final rung must answer — no first-token cutoff for it.
             is_last = not queue
             try:
@@ -770,7 +777,12 @@ class CloudRouter:
                         except StopAsyncIteration:
                             if is_nim:
                                 self.monitor.note_success()
+                            self._record_served(
+                                tier, str(opts.get("channel") or ""), ft_ms
+                            )
                             return
+                    if not emitted:
+                        ft_ms = (_time.monotonic() - t_start) * 1000.0
                     emitted = True
                     yield chunk
             except APIStatusError as exc:
@@ -815,13 +827,29 @@ class CloudRouter:
     # -- reporting ------------------------------------------------------------------------
 
     def _note_decision(self, tier: str, reason: str) -> None:
-        self._active = {"tier": tier, "reason": reason}
+        self._active = {
+            "tier": tier,
+            "reason": reason,
+            "model": getattr(self._provider_for(tier), "model", ""),
+        }
         self.turn_counts[tier] = self.turn_counts.get(tier, 0) + 1
         if self.bus is not None and tier != "nim_primary":
             self.bus.publish(
                 "status", "router", text=f"router: using {tier} ({reason})"
             )
         self._audit_row(f"route {tier}", reason)
+
+    def _record_served(self, tier: str, channel: str, first_token_ms: float | None) -> None:
+        """Durable per-stream record: the soak report reads these audit rows."""
+        if first_token_ms is not None:
+            samples = self.latency.setdefault(tier, [])
+            samples.append(first_token_ms)
+            del samples[:-500]
+        self._audit_row(
+            f"served {tier}",
+            json.dumps({"channel": channel, "first_token_ms":
+                        round(first_token_ms, 1) if first_token_ms is not None else None}),
+        )
 
     def _note_skip(self, tier: str, detail: str) -> None:
         if self.bus is not None:

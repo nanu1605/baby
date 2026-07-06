@@ -413,3 +413,13 @@ Running log of non-obvious choices made during the build. Newest last.
     owner to click through confirmations. The fullscreen auto-detect
     watcher only reverses toggles IT made - a manual "game mode on" is
     never fought when the owner alt-tabs.
+81. **The brain badge shows the FINAL answer's brain**, snapshotted at
+    turn_end publish before the maintenance task's internal calls
+    overwrite router.active. A multi-rung turn (fallbacks mid-loop) is
+    still summarized by whoever wrote the words the owner read.
+82. **Soak metrics live in audit_log, not a new store**: the router
+    already audits every route/skip/state decision; N4 adds one durable
+    "served" row per completed stream (channel + first-token ms). The
+    soak report is a pure read over that trail - restart-proof, no
+    schema change, and the same rows double as the live activity feed's
+    forensic record (they solved the silent-voice-turn bug in minutes).

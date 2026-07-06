@@ -52,6 +52,28 @@ header {
 }
 .gauge .bar > div { height: 100%; width: 0%; background: var(--accent); transition: width .4s; }
 .gauge em { font-style: normal; min-width: 48px; }
+#router-state { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+#router-state .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); display: inline-block;
+}
+#router-state.cloud .dot { background: var(--green); }
+#router-state.degraded .dot { background: var(--amber); }
+#router-state.offline .dot { background: var(--red); }
+#router-state.game .dot { background: var(--accent); }
+#game-btn {
+  background: transparent; border: 1px solid var(--border); border-radius: 12px;
+  color: var(--muted); padding: 2px 10px; cursor: pointer; font-size: .85rem;
+}
+#game-btn.on { color: var(--accent); border-color: var(--accent); }
+.brain-badge {
+  display: inline-block; margin-left: 8px; padding: 0 7px;
+  border-radius: 9px; font-size: .68rem; vertical-align: middle;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.brain-badge.local { color: var(--green); border-color: var(--green); }
+.brain-badge.nim { color: #2dd4bf; border-color: #2dd4bf; }
+.brain-badge.gemini { color: #c084fc; border-color: #c084fc; }
 .spacer { flex: 1; }
 #turn-indicator { font-size: .8rem; color: var(--muted); }
 #turn-indicator.running { color: var(--green); }
