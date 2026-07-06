@@ -40,3 +40,82 @@ def test_get_sensors_never_empty_or_silent():
     else:
         # Real-data path: at least one temperature reading present.
         assert _has_temperature(result), "sensor success must carry temperature data"
+
+
+_LHM_SAMPLE = {
+    "Text": "Sensor",
+    "Value": "",
+    "Children": [
+        {
+            "Text": "DESKTOP",
+            "Value": "",
+            "Children": [
+                {
+                    "Text": "AMD Ryzen 7 5800X",
+                    "Value": "",
+                    "Children": [
+                        {
+                            "Text": "Temperatures",
+                            "Value": "",
+                            "Children": [
+                                {"Text": "Core (Tctl/Tdie)", "Value": "54.9 °C", "Children": []},
+                                {"Text": "CCD1", "Value": "48.2 °C", "Children": []},
+                            ],
+                        },
+                        {
+                            "Text": "Fans",
+                            "Value": "",
+                            "Children": [
+                                {"Text": "CPU Fan", "Value": "1234 RPM", "Children": []}
+                            ],
+                        },
+                        {
+                            "Text": "Voltages",
+                            "Value": "",
+                            "Children": [
+                                {"Text": "Core", "Value": "1.381 V", "Children": []}
+                            ],
+                        },
+                        {
+                            "Text": "Clocks",
+                            "Value": "",
+                            "Children": [
+                                {"Text": "Core #1", "Value": "4200.0 MHz", "Children": []}
+                            ],
+                        },
+                    ],
+                }
+            ],
+        }
+    ],
+}
+
+
+def test_parse_sensor_tree_extracts_by_unit():
+    from tools.sensors import parse_sensor_tree
+
+    out = parse_sensor_tree(_LHM_SAMPLE, detail=True)
+    assert out["unit"] == "celsius"
+    assert out["hottest"]["celsius"] == 54.9  # the hottest reading
+    temps = {t["name"]: t["celsius"] for t in out["temperatures_c"]}
+    assert temps == {"Core (Tctl/Tdie)": 54.9, "CCD1": 48.2}
+    assert out["fans_rpm"] == [{"name": "CPU Fan", "rpm": 1234}]
+    assert out["voltages_v"] == [{"name": "Core", "volts": 1.381}]
+    # Clocks (MHz) must NOT be miscounted as temp/fan/voltage.
+    assert all("MHz" not in t["name"] for t in out["temperatures_c"])
+
+
+def test_parse_sensor_tree_no_temps_is_structured_error():
+    from tools.sensors import parse_sensor_tree
+
+    root = {
+        "Text": "Sensor",
+        "Value": "",
+        "Children": [
+            {"Text": "Clocks", "Value": "", "Children": [
+                {"Text": "Core", "Value": "4200 MHz", "Children": []}
+            ]}
+        ],
+    }
+    out = parse_sensor_tree(root)
+    assert "error" in out and "hint" in out

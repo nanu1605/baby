@@ -32,8 +32,6 @@ dependencies = [
     "pystray>=0.19.5",
     "pillow>=10",
     "sherpa-onnx>=1.13",
-    "wmi>=1.5.1; sys_platform == 'win32'",       # LibreHardwareMonitor sensor reads (P1)
-    "pywin32>=306; sys_platform == 'win32'",      # wmi backend
 ]
 
 [dependency-groups]

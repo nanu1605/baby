@@ -183,10 +183,11 @@ Write-Host "Enroll your voice (one-time, ~2 min):  uv run python scripts\enroll_
 
 # --- 3f. Hardware sensors: LibreHardwareMonitor (P1) ---------------------------
 # Windows exposes no CPU temperature to psutil (that API is Linux-only), so Baby
-# reads LibreHardwareMonitor's WMI publisher at root\LibreHardwareMonitor. Install
-# it and autostart it at login; the one-time WMI + kernel-driver (admin) enable
-# is left to the user in LHM's own Options menu. get_sensors degrades to a
-# structured error until this is done, so setup never blocks on it.
+# reads LibreHardwareMonitor's Remote Web Server (JSON at http://127.0.0.1:8085/
+# data.json; LHM dropped its WMI provider in 0.9.x). Install it and autostart it
+# at login; enabling the web server + the kernel driver (run LHM as admin) is left
+# to the user in LHM's Options menu. get_sensors degrades to a structured error
+# until this is done, so setup never blocks on it.
 $lhmPaths = @(
     "$env:ProgramFiles\LibreHardwareMonitor\LibreHardwareMonitor.exe",
     "${env:ProgramFiles(x86)}\LibreHardwareMonitor\LibreHardwareMonitor.exe"
@@ -208,7 +209,7 @@ if ($lhmExe) {
     Set-ItemProperty "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "LibreHardwareMonitor" `
         -Value "`"$lhmExe`""
     Write-Host "One-time in LibreHardwareMonitor -> Options: enable 'Run on Windows startup'," -ForegroundColor Cyan
-    Write-Host "'Minimize to tray', and 'WMI' publishing; approve its driver (admin) once." -ForegroundColor Cyan
+    Write-Host "'Minimize to tray', and 'Remote Web Server' (Run, port 8085); run LHM as admin so temps populate." -ForegroundColor Cyan
 }
 
 # --- 4. Secrets template -----------------------------------------------------

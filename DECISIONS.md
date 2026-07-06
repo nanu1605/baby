@@ -450,17 +450,21 @@ Running log of non-obvious choices made during the build. Newest last.
 
 ## v2 — Conversational & Reliable (2026-07-06)
 
-85. **CPU temperature comes from LibreHardwareMonitor over WMI, not
-    pythonnet (P1)**: psutil reads no temps on Windows (Linux-only API),
-    so get_sensors queries LHM's `root\LibreHardwareMonitor` namespace
-    via the `wmi` package. The rejected alternative — loading
-    `LibreHardwareMonitorLib.dll` in-process with pythonnet — avoids the
-    tray app but forces the whole of Baby to run elevated (the sensor
-    driver needs admin), which is a far larger blast radius than a tray
-    app the user approves once. LHM runs minimized at login (setup.ps1
-    3f); when it is absent get_sensors returns a structured
-    `{"error", "hint"}` naming the fix instead of nothing. GPU temp/power
-    stays on pynvml (already present, no dependency added).
+85. **CPU temperature comes from LibreHardwareMonitor's HTTP web server,
+    not WMI or pythonnet (P1)**: psutil reads no temps on Windows
+    (Linux-only API). The first cut used LHM's WMI provider
+    (`root\LibreHardwareMonitor`), but LHM dropped WMI in the 0.9.x line
+    (owner hit it live), so get_sensors now GETs LHM's Remote Web Server
+    JSON (`http://127.0.0.1:8085/data.json`, `LHM_URL`-overridable) and
+    walks the node tree by unit suffix (°C / RPM / V). This uses the
+    already-present `httpx` and drops the `wmi`/`pywin32` deps. The
+    rejected alternative — loading `LibreHardwareMonitorLib.dll`
+    in-process with pythonnet — avoids the extra process but forces the
+    whole of Baby to run elevated (the sensor driver needs admin), a far
+    larger blast radius than an LHM the user runs elevated once. LHM runs
+    minimized at login (setup.ps1 3f) with the web server on; when it is
+    absent get_sensors returns a structured `{"error", "hint"}` naming the
+    fix instead of nothing. GPU temp/power stays on pynvml (already present).
 86. **The tool contract is enforced once, in dispatch (P1)**: a tool
     returning `None` / `""` / `{}` used to read as success — agent.py
     counts any result not prefixed `{"error"` as a win — so silence

@@ -5,11 +5,12 @@
 - P0 (2026-07-06): failing repros committed first — `tests/test_sensors.py`,
   `tests/test_db_hygiene.py`, `tests/test_loop_guard.py`. Version → `2.0.0-dev`.
 - P1 (2026-07-06): sensors + tool contract (#6). New `get_sensors` tool reads
-  CPU/GPU temps, fans and voltages from LibreHardwareMonitor over WMI, degrading
-  to a structured `{error, hint}` when LHM is absent; `setup.ps1` installs +
-  autostarts LHM (`wmi`/`pywin32` deps). `registry.dispatch` now wraps empty
-  tool returns (`None`/`""`/`{}`) as an error, and the agent serves an honest
-  audited line instead of the literal `"(no response)"` on empty output.
+  CPU/GPU temps, fans and voltages from LibreHardwareMonitor's Remote Web Server
+  (JSON at `http://127.0.0.1:8085/data.json`; LHM dropped WMI in 0.9.x),
+  degrading to a structured `{error, hint}` when LHM is absent; `setup.ps1`
+  installs + autostarts LHM. `registry.dispatch` now wraps empty tool returns
+  (`None`/`""`/`{}`) as an error, and the agent serves an honest audited line
+  instead of the literal `"(no response)"` on empty output.
 - P2 (2026-07-06): DB hygiene — never feed poison (#7). `messages` gains
   `turn_id` + `status`; a turn that errors is quarantined whole and never
   reloads; a hard-kill leftover (no assistant row) is failed at boot;
