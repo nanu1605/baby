@@ -115,8 +115,10 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
     """Drive the real browser window. Actions: goto (value=url), read (whole
     page, or selector), click (selector), type (value=text; finds the search
     box itself when selector is empty), press (value=key, e.g. Enter — submits
-    a search), screenshot. Easiest web search: goto
-    "https://www.google.com/search?q=your+query" then read — no typing needed."""
+    a search), screenshot. Easiest search ON ANY site: goto its query URL —
+    "https://www.google.com/search?q=your+query" or
+    "https://duckduckgo.com/?q=your+query" — then read. Or: type the query
+    (search box auto-found), then press Enter."""
     action = action.lower().strip()
     if action not in ("goto", "read", "click", "type", "press", "screenshot"):
         return json.dumps({"error": f"unknown browser action {action!r}"})
@@ -134,6 +136,15 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
             target = selector or "body"
             text = await page.inner_text(target, timeout=_ACTION_TIMEOUT_MS)
             text = " ".join(text.split())
+            if not text:
+                # JS-hydrated pages (duckduckgo.com homepage, observed live)
+                # serve an empty body first paint — give hydration a moment
+                # and read once more before reporting emptiness.
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                except Exception:  # noqa: BLE001 — busy pages never go idle; read anyway
+                    pass
+                text = " ".join((await page.inner_text(target, timeout=_ACTION_TIMEOUT_MS)).split())
             truncated = len(text) > _READ_CAP
             return json.dumps(
                 {"url": page.url, "text": text[:_READ_CAP], "truncated": truncated},
