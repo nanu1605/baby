@@ -34,14 +34,25 @@ def _num(value: str) -> float | None:
         return None
 
 
+# LHM lists thresholds/config next to live readings under the same group, tagged
+# with the same units (e.g. "Thermal Sensor Critical High Limit" 85 °C). Skipping
+# these keeps them out of the readings — and, crucially, out of "hottest".
+_CONFIG_WORDS = ("limit", "resolution", "warning", "critical")
+
+
+def _is_config(name: str) -> bool:
+    low = name.lower()
+    return any(word in low for word in _CONFIG_WORDS)
+
+
 def _walk(node: dict, temps: list, fans: list, volts: list) -> None:
     """Collect leaf sensor readings from LHM's nested node tree by unit suffix."""
     value = node.get("Value") or ""
     children = node.get("Children") or []
     if value and not children:
         number = _num(value)
-        if number is not None:
-            name = node.get("Text", "")
+        name = node.get("Text", "")
+        if number is not None and not _is_config(name):
             text = str(value)
             if "°C" in text:
                 temps.append({"name": name, "celsius": round(number, 1)})
