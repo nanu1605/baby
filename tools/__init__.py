@@ -14,6 +14,7 @@ def register_all() -> None:
         memory_tools,
         projects,
         screen,
+        sensors,
         shell,
         system_stats,
         tasks,

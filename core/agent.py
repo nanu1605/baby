@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 
 MAX_TOOL_ITERATIONS = 8
 
+# Served when a generation comes back empty even after the _final_answer retry.
+# Silence is never an acceptable reply, and the bare "(no response)" placeholder
+# read to owners as a dead assistant — this asks for a redo instead.
+_EMPTY_REPLY_FALLBACK = "I hit a snag generating a response — mind trying that once more?"
+
 # "I'll open Yahoo and run that search for you." — full stop, zero tool calls
 # (observed live, repeatedly, after cancelled turns). A promise of action with
 # no action gets ONE deterministic retry telling the model to act now.
@@ -236,11 +241,30 @@ class AgentCore:
                         }
                     )
                     continue
-                reply = text or "(no response)"
+                if text.strip():
+                    reply = text
+                else:
+                    # Empty even after the _final_answer retry above: serve an
+                    # honest line, never the bare "(no response)" placeholder,
+                    # and record the silence so it is visible in the audit trail.
+                    reply = _EMPTY_REPLY_FALLBACK
+                    await self.db.add_audit(
+                        self.channel,
+                        "generation",
+                        "{}",
+                        "allow",
+                        1,
+                        "empty model output — served honest fallback",
+                    )
                 # Skip when the model already wrote a "Next:" line itself —
                 # it mimics suggestions seen in history, and appending a real
                 # one produced double "Next:" lines (observed live).
-                if self.suggest_next_step and tools_succeeded > 0 and "Next:" not in text:
+                if (
+                    self.suggest_next_step
+                    and text.strip()
+                    and tools_succeeded > 0
+                    and "Next:" not in text
+                ):
                     suggestion = await self._suggest_next_step(messages, text)
                     if suggestion:
                         reply = f"{reply}\n\nNext: {suggestion}"

@@ -447,3 +447,27 @@ Running log of non-obvious choices made during the build. Newest last.
     when models.heavy.model exists, so rollback = daily + Gemini cloud
     (regression-tested). The RAM-gate machinery in RouterProvider stays
     (harmless, exercised by tests) for anyone who re-adds a local heavy.
+
+## v2 — Conversational & Reliable (2026-07-06)
+
+85. **CPU temperature comes from LibreHardwareMonitor over WMI, not
+    pythonnet (P1)**: psutil reads no temps on Windows (Linux-only API),
+    so get_sensors queries LHM's `root\LibreHardwareMonitor` namespace
+    via the `wmi` package. The rejected alternative — loading
+    `LibreHardwareMonitorLib.dll` in-process with pythonnet — avoids the
+    tray app but forces the whole of Baby to run elevated (the sensor
+    driver needs admin), which is a far larger blast radius than a tray
+    app the user approves once. LHM runs minimized at login (setup.ps1
+    3f); when it is absent get_sensors returns a structured
+    `{"error", "hint"}` naming the fix instead of nothing. GPU temp/power
+    stays on pynvml (already present, no dependency added).
+86. **The tool contract is enforced once, in dispatch (P1)**: a tool
+    returning `None` / `""` / `{}` used to read as success — agent.py
+    counts any result not prefixed `{"error"` as a win — so silence
+    reached the user as "(no response)". `registry._finalize` now wraps
+    those as `{"error": "tool returned no data"}` for the whole tool
+    surface; non-empty lists (a legitimate "no matches" → `[]`) pass
+    through as data. Paired with the loop guard: an empty generation,
+    even after the one _final_answer retry, is served as an honest
+    "try that once more?" line and audited (tool="generation"), never
+    the bare placeholder. The literal "(no response)" is gone.
