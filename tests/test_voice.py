@@ -690,6 +690,13 @@ def test_strip_markdown_plain_and_hindi_untouched():
     assert strip_markdown("**ठीक है** boss") == "ठीक है boss"
 
 
+def test_strip_markdown_drops_leaked_think_tags():
+    from voice.tts import strip_markdown
+
+    assert strip_markdown("</think>The answer is 42.") == "The answer is 42."
+    assert strip_markdown("<think> hm </think> okay") == "hm okay"
+
+
 def test_synth_strips_markdown_before_kokoro():
     import numpy as np
 

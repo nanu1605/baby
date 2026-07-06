@@ -69,7 +69,11 @@ const chat = reconnectingSocket("/ws/chat", (msg) => {
   } else if (msg.type === "turn_end") {
     if (streamingBubble) {
       streamingBubble.classList.remove("streaming");
-      if (!streamingBubble.textContent) streamingBubble.textContent = msg.reply || "…";
+      // The final reply is the scrubbed truth: raw streamed tokens can carry
+      // leaked <think> reasoning, and the "Next:" suggestion arrives after
+      // the stream — prefer the server's reply over the accumulated text.
+      if (msg.reply) streamingBubble.textContent = msg.reply;
+      else if (!streamingBubble.textContent) streamingBubble.textContent = "…";
       addBrainBadge(streamingBubble, msg.brain);
       streamingBubble = null;
     }

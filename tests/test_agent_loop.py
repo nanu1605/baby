@@ -219,6 +219,27 @@ async def test_empty_reply_without_tools_stays_placeholder(db):
     assert len(provider.requests) == 1  # no retry when no tool ran
 
 
+# -- leaked reasoning: qwen /v1 sometimes omits the opening <think> tag --------------
+
+
+async def test_unpaired_think_close_drops_leaked_reasoning(db):
+    # Observed live (E2E battery T04): reasoning streamed as content, then a
+    # stray </think>, then the restated answer — only the answer survives.
+    agent, _, conv_id = await _make_agent(
+        db, ['Your probe word is "kumquat". 🍈\n</think>The probe word is kumquat.']
+    )
+    reply = await agent.run_turn("what is my probe word?")
+    assert reply == "The probe word is kumquat."
+    rows = await db.get_messages(conv_id)
+    assert "</think>" not in rows[-1]["content"]  # history stays clean too
+
+
+async def test_paired_think_block_stripped(db):
+    agent, _, _ = await _make_agent(db, ["<think>secret chain of thought</think>Hi!"])
+    reply = await agent.run_turn("hey")
+    assert reply == "Hi!"
+
+
 # -- stopped turns must read as closed; promises must become actions ----------------
 
 

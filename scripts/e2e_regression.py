@@ -8,10 +8,15 @@ Usage (Baby must be up at 127.0.0.1:8765):
     uv run python scripts/e2e_regression.py --with-project       # + orchestrator E2E (slow)
     uv run python scripts/e2e_regression.py --rollback-check     # + local_primary flip
 
-Safety: only ALLOW-class actions (goto/read/screenshot, file reads on a probe
-file this script creates, time, memory, game-mode toggles). The safety gate
-stays in enforce mode and is NEVER bypassed. The browser window will open and
-announcements may speak — warn the owner before a full run.
+Safety: only ALLOW-class actions run (goto/read/screenshot, file reads on a
+probe file this script creates, time, memory, game-mode toggles). The safety
+gate stays in enforce mode and is NEVER bypassed. T10's start_background_task
+is CONFIRM class: by default the battery watches for its OWN confirm dialog
+and DENIES it — proving the model→tool→gate pipeline without executing a
+confirm-class action unattended. --approve-confirms (attended runs, e.g. the
+N5 full course) approves that one dialog through the same POST /confirm
+endpoint the UI button uses and asserts the task runs to done. The browser
+window will open and announcements may speak — warn the owner before a run.
 
 Assertions come from three sources: the ws turn events, the REST endpoints,
 and baby.db's audit_log read read-only. Results → bench_results/E2E_REPORT.md;
@@ -40,6 +45,13 @@ PROBE = Path(os.path.expandvars(r"%TEMP%")) / "baby_e2e_probe.txt"
 PROBE_SECRET = "PROBE-SECRET-73"
 
 RESULTS: list[tuple[str, str, bool, str]] = []  # (id, name, ok, note)
+
+# Tests that under-read THIS run because the model never even called the tool
+# under test (9B discipline on a dirty/degraded window) — excluded from the
+# exit code like the static BRAIN_DEPENDENT set, but still printed as FAIL.
+RUNTIME_BRAIN_DEPENDENT: set[str] = set()
+
+APPROVE_CONFIRMS = False  # set from --approve-confirms
 
 
 def record(test_id: str, name: str, ok: bool, note: str = "") -> None:
@@ -158,10 +170,20 @@ async def t05_privacy_pin():
     PROBE.write_text(f"The probe word is {PROBE_SECRET}.", encoding="utf-8")
     marker = audit_marker()
     reply, _, brain, _ = await ws_turn(f"Read the file {PROBE} and tell me the probe word.")
-    actions = router_actions(audit_since(marker))
-    pinned = any("privacy pin" in detail for _, detail in actions)
-    record("T05", "privacy pin (read_file)", pinned and brain.get("tier") == "daily",
-           f"pinned={pinned} brain={brain.get('tier')}")
+    rows = audit_since(marker)
+    called = any(r["tool"] == "read_file" for r in rows)
+    pinned = any("privacy pin" in detail for _, detail in router_actions(rows))
+    if not called:
+        # No read_file call → nothing for the pin to act on. That's model
+        # discipline, not a pin regression: with a pinned tool result present
+        # the pin either fires or the pipeline is genuinely broken (the hard
+        # FAIL below). Observed in the 2026-07-06 run on a 50-message history.
+        RUNTIME_BRAIN_DEPENDENT.add("T05")
+        record("T05", "privacy pin (read_file)", False,
+               "model never called read_file — brain-dependent under-read, not a pin failure")
+    else:
+        record("T05", "privacy pin (read_file)", pinned and brain.get("tier") == "daily",
+               f"pinned={pinned} brain={brain.get('tier')}")
     PROBE.unlink(missing_ok=True)
 
 
@@ -201,16 +223,69 @@ async def t09_screen():
     record("T09", "screen awareness", ok, reply[:60])
 
 
+async def _answer_own_confirm(approve: bool, window_s: float = 180.0) -> str:
+    """Watch /ws/activity for the battery's OWN start_background_task confirm
+    and answer it through the same POST /confirm endpoint the UI button uses.
+
+    The gate stays in enforce mode and classifies as usual — this only stands
+    in for the click on a dialog the battery itself raised, matched strictly
+    on tool name + this battery's task text. Default answer is DENY.
+    """
+    try:
+        async with websockets.connect("ws://127.0.0.1:8765/ws/activity") as ws:
+            deadline = time.monotonic() + window_s
+            while time.monotonic() < deadline:
+                raw = await asyncio.wait_for(
+                    ws.recv(), timeout=max(1.0, deadline - time.monotonic())
+                )
+                event = json.loads(raw)
+                if (
+                    event.get("type") == "confirm_request"
+                    and event.get("tool") == "start_background_task"
+                    and "electric cars" in event.get("command", "")
+                ):
+                    httpx.post(f"{BASE}/confirm/{event['confirm_id']}",
+                               json={"approved": approve}, timeout=5)
+                    return "approved" if approve else "denied"
+    except Exception:  # noqa: BLE001 — no dialog appeared; t10 reports the truth
+        pass
+    return ""
+
+
 async def t10_background_task():
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     before = con.execute("SELECT COALESCE(MAX(id), 0) FROM tasks").fetchone()[0]
     con.close()
+    marker = audit_marker()
+    # start_background_task is CONFIRM class — without an answer the gate
+    # times out after 60s and the task never queues (observed 2026-07-06).
+    watcher = asyncio.create_task(_answer_own_confirm(APPROVE_CONFIRMS))
     # Explicit tool naming: the 9B answers research inline otherwise (observed
     # twice) — this test verifies the QUEUE pipeline, not model initiative.
     await ws_turn(
         "Use the start_background_task tool to queue this as a background "
         "task: research the top 3 electric cars under 15 lakh and summarize."
     )
+    if not watcher.done():
+        watcher.cancel()
+    try:
+        answered = await watcher
+    except asyncio.CancelledError:
+        answered = ""
+    called = any(r["tool"] == "start_background_task" for r in audit_since(marker))
+    if not called:
+        RUNTIME_BRAIN_DEPENDENT.add("T10")
+        record("T10", "background task", False,
+               "model never called start_background_task — brain-dependent under-read")
+        return
+    if not APPROVE_CONFIRMS:
+        # Dialog raised and denied by the battery itself: model→tool→gate
+        # pipeline proven without executing a confirm-class action unattended.
+        dialog = ("answered: " + answered) if answered else "not seen"
+        record("T10", "background task (to gate)", answered == "denied",
+               f"tool called, confirm dialog {dialog} — run with "
+               "--approve-confirms to execute through to done")
+        return
     deadline = time.monotonic() + 300
     status = ""
     while time.monotonic() < deadline:
@@ -223,7 +298,8 @@ async def t10_background_task():
         if status in ("done", "failed", "cancelled"):
             break
         await asyncio.sleep(10)
-    record("T10", "background task", status == "done", f"status={status or 'never queued'}")
+    record("T10", "background task", status == "done",
+           f"status={status or 'never queued'} confirm={answered or 'not seen'}")
 
 
 async def t11_game_mode_cycle():
@@ -325,6 +401,10 @@ def write_report(state: str) -> None:
         "Score the N5 full course in a `cloud` window; the remaining tests are",
         "deterministic pipeline checks.",
         "",
+        *([f"Runtime under-reads this run (model never called the tool under "
+           f"test — excluded from the exit code): "
+           f"{', '.join(sorted(RUNTIME_BRAIN_DEPENDENT))}", ""]
+          if RUNTIME_BRAIN_DEPENDENT else []),
         "| # | test | result | note |",
         "|---|---|---|---|",
     ]
@@ -377,7 +457,8 @@ async def main(args) -> int:
             record(test.__name__[:3].upper(), test.__name__, False,
                    f"{type(exc).__name__}: {exc}")
     write_report(state)
-    hard_fails = [t for t, _, ok, _ in RESULTS if not ok and t not in BRAIN_DEPENDENT]
+    soft = BRAIN_DEPENDENT | RUNTIME_BRAIN_DEPENDENT
+    hard_fails = [t for t, _, ok, _ in RESULTS if not ok and t not in soft]
     if not hard_fails and state != "cloud":
         print("note: only brain-dependent tests failed under a degraded window — "
               "pipelines green; re-score in a cloud window for the record")
@@ -392,7 +473,11 @@ if __name__ == "__main__":
                         help="(run separately) flip router.mode local_primary and back — see docs")
     parser.add_argument("--skip-restart-tests", action="store_true",
                         help="skip the game-mode VRAM cycle (owner mid-use)")
+    parser.add_argument("--approve-confirms", action="store_true",
+                        help="approve the battery's OWN T10 confirm dialog and "
+                             "run the background task through to done (attended runs)")
     args = parser.parse_args()
+    APPROVE_CONFIRMS = args.approve_confirms
     if args.rollback_check:
         print("rollback check is a guided manual step at N5 (config flip + restart x2); "
               "see tests/manual/full_regression_checklist.md §8")

@@ -51,6 +51,24 @@ def _valid_args(arguments: str) -> str:
         return "{}"
 
 
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _scrub_think(text: str) -> str:
+    """Reasoning-channel text that leaked into content, removed.
+
+    Qwen over /v1 sometimes omits the opening <think> tag — Ollama then can't
+    split the reasoning channel, so the reasoning streams as content followed
+    by a stray </think> and a restated answer (observed live in the E2E
+    battery's memory test). Everything before an unpaired close is reasoning,
+    not answer; paired blocks are dropped whole.
+    """
+    text = _THINK_BLOCK_RE.sub("", text)
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[1]
+    return text.strip()
+
+
 def _render_command(tool: str, kwargs: dict) -> str:
     """Human-readable action line for confirmation prompts."""
     if tool == "run_shell":
@@ -189,7 +207,7 @@ class AgentCore:
                     self.bus.publish("token", self.channel, text=chunk.delta)
                 if chunk.tool_calls:
                     tool_calls = chunk.tool_calls
-            text = "".join(text_parts)
+            text = _scrub_think("".join(text_parts))
 
             if not tool_calls:
                 # Thinking models can spend the whole generation window in the
@@ -285,7 +303,7 @@ class AgentCore:
                     self.bus.publish("token", self.channel, text=chunk.delta)
         except Exception:  # noqa: BLE001 — fall back to the "(no response)" placeholder
             return ""
-        return "".join(parts).strip()
+        return _scrub_think("".join(parts))
 
     async def _suggest_next_step(self, messages: list[dict], final_text: str) -> str:
         """Feature #8: one extra no-tools call proposing the next action.

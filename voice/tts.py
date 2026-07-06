@@ -71,6 +71,7 @@ def split_sentences(buf: str, *, final: bool = False) -> tuple[list[str], str]:
 # replies, announcements, and the briefing. Order matters: paired constructs
 # first, then a sweep for unpaired leftovers.
 _MD_RULES: tuple[tuple[re.Pattern, str], ...] = (
+    (re.compile(r"</?think>"), " "),  # leaked reasoning tags are never speakable
     (re.compile(r"```[^\n]*"), " "),  # code-fence lines
     (re.compile(r"`([^`\n]*)`"), r"\1"),  # inline code
     (re.compile(r"\[([^\]]+)\]\([^)\s]*\)"), r"\1"),  # [text](url) → text
