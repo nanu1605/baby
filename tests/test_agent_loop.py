@@ -274,3 +274,28 @@ async def test_promise_push_happens_only_once(db):
     reply = await agent.run_turn("open yahoo")
     assert reply == "I'll open it right away."  # second promise accepted, no loop
     assert len(provider.requests) == 2
+
+
+# -- empty reply after a FAILED/DENIED tool must still produce an answer -------------
+# (observed live: voice turn, web_search denied by the speaker gate, model went
+# silent, owner heard nothing)
+
+
+async def test_empty_reply_after_failed_tool_still_retries(db):
+    script = [_tc("no_such_tool", {}), "", "I could not run that tool."]
+    agent, provider, _ = await _make_agent(db, script)
+    reply = await agent.run_turn("do the thing")
+    assert reply == "I could not run that tool."
+    assert provider.request_tools[-1] is None  # finalize call carries no tools
+
+
+async def test_malformed_tool_args_sanitized_in_history(db):
+    bad = [ToolCall(id="c1", name="echo_tool", arguments="{\"broken")]
+    agent, provider, _ = await _make_agent(db, [bad, "done"])
+    reply = await agent.run_turn("go")
+    assert reply == "done"
+    second = provider.requests[1]
+    assistant = next(m for m in second if m.get("tool_calls"))
+    assert assistant["tool_calls"][0]["function"]["arguments"] == "{}"
+    tool_msg = next(m for m in second if m["role"] == "tool")
+    assert "invalid arguments JSON" in tool_msg["content"]

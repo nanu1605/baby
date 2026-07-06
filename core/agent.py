@@ -42,6 +42,15 @@ def _summarize(text: str, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _valid_args(arguments: str) -> str:
+    """Tool-call arguments, coerced to valid JSON for the message history."""
+    try:
+        json.loads(arguments or "{}")
+        return arguments or "{}"
+    except (ValueError, TypeError):
+        return "{}"
+
+
 def _render_command(tool: str, kwargs: dict) -> str:
     """Human-readable action line for confirmation prompts."""
     if tool == "run_shell":
@@ -155,6 +164,7 @@ class AgentCore:
         ]
 
         tools_succeeded = 0
+        tools_attempted = 0
         intent_retried = False
         for _ in range(self.max_iterations):
             text_parts: list[str] = []
@@ -177,8 +187,11 @@ class AgentCore:
                 # reasoning channel after a long tool loop and emit no content
                 # (observed live on the first background task). One no-tools
                 # retry with thinking off forces a plain answer from the tool
-                # results already in context.
-                if not text.strip() and tools_succeeded > 0:
+                # results already in context. Attempted (not just succeeded)
+                # tools count: a denied/failed call still leaves a result the
+                # owner deserves to hear about — "(no response)" after a
+                # safety-gate denial was observed live on a voice turn.
+                if not text.strip() and tools_attempted > 0:
                     text = await self._final_answer(messages) or text
                 # A promise with no action ("I'll open Yahoo…", zero tool
                 # calls) leaves the request undone and the owner repeating
@@ -217,13 +230,19 @@ class AgentCore:
                         {
                             "id": tc.id,
                             "type": "function",
-                            "function": {"name": tc.name, "arguments": tc.arguments},
+                            # Malformed arguments (models DO emit garbage) are
+                            # replayed to every later rung of the router ladder
+                            # and strict backends 400 on them (Gemini, Ollama —
+                            # both observed live). The dispatch error result
+                            # already tells the story; history stays wire-valid.
+                            "function": {"name": tc.name, "arguments": _valid_args(tc.arguments)},
                         }
                         for tc in tool_calls
                     ],
                 }
             )
             for tc in tool_calls:
+                tools_attempted += 1
                 result = await self._execute_tool(tc, user_text)
                 if not result.lstrip().startswith('{"error"'):
                     tools_succeeded += 1
