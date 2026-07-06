@@ -1,7 +1,18 @@
-"""Async SQLite wrapper: WAL mode, schema bootstrap, conversation/message CRUD."""
+"""Async SQLite wrapper: WAL mode, schema bootstrap, conversation/message CRUD.
+
+Concurrency: the whole app shares ONE aiosqlite connection (UI turn, voice
+turn, task workers, orchestrator, memory maintenance). aiosqlite serializes
+individual statements, but every read has an await gap between execute() and
+fetchall() — a commit() from another coroutine landing in that gap raises
+"cannot commit transaction - SQL statements in progress" (observed live while
+a background task ran during an E2E battery turn). self.lock closes the gap:
+every execute→fetch→commit sequence holds it. MemoryStore shares the same
+lock for its direct connection access.
+"""
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import aiosqlite
@@ -15,6 +26,9 @@ class Database:
     def __init__(self, path: str | Path = "baby.db") -> None:
         self.path = Path(path)
         self._conn: aiosqlite.Connection | None = None
+        # NOT re-entrant: a method holding it must never call another that
+        # takes it. connect()/_migrate() run unlocked (serial boot).
+        self.lock = asyncio.Lock()
 
     @property
     def conn(self) -> aiosqlite.Connection:
@@ -53,19 +67,45 @@ class Database:
             await self._conn.close()
             self._conn = None
 
+    # -- locked primitives ----------------------------------------------------
+
+    async def _write(self, sql: str, params: tuple | list = ()) -> int:
+        """INSERT/UPDATE + commit as one uninterruptible sequence."""
+        async with self.lock:
+            cur = await self.conn.execute(sql, params)
+            await self.conn.commit()
+            return cur.lastrowid
+
+    async def _write_returning(self, sql: str, params: tuple | list = ()):
+        """UPDATE … RETURNING + commit (atomic claim pattern)."""
+        async with self.lock:
+            cur = await self.conn.execute(sql, params)
+            row = await cur.fetchone()
+            await self.conn.commit()
+            return row
+
+    async def _fetchone(self, sql: str, params: tuple | list = ()):
+        async with self.lock:
+            cur = await self.conn.execute(sql, params)
+            return await cur.fetchone()
+
+    async def _fetchall(self, sql: str, params: tuple | list = ()):
+        async with self.lock:
+            cur = await self.conn.execute(sql, params)
+            return await cur.fetchall()
+
     # -- conversations ------------------------------------------------------
 
     async def create_conversation(self, channel: str) -> int:
-        cur = await self.conn.execute("INSERT INTO conversations (channel) VALUES (?)", (channel,))
-        await self.conn.commit()
-        return cur.lastrowid
+        return await self._write(
+            "INSERT INTO conversations (channel) VALUES (?)", (channel,)
+        )
 
     async def latest_conversation(self, channel: str) -> int | None:
-        cur = await self.conn.execute(
+        row = await self._fetchone(
             "SELECT id FROM conversations WHERE channel = ? ORDER BY id DESC LIMIT 1",
             (channel,),
         )
-        row = await cur.fetchone()
         return row["id"] if row else None
 
     # -- audit ---------------------------------------------------------------
@@ -79,23 +119,19 @@ class Database:
         approved: int,
         result_summary: str,
     ) -> int:
-        cur = await self.conn.execute(
+        return await self._write(
             "INSERT INTO audit_log (channel, tool, args, safety_class, approved,"
             " result_summary) VALUES (?, ?, ?, ?, ?, ?)",
             (channel, tool, args, safety_class, approved, result_summary),
         )
-        await self.conn.commit()
-        return cur.lastrowid
 
     # -- messages -----------------------------------------------------------
 
     async def add_message(self, conversation_id: int, role: str, content: str) -> int:
-        cur = await self.conn.execute(
+        return await self._write(
             "INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)",
             (conversation_id, role, content),
         )
-        await self.conn.commit()
-        return cur.lastrowid
 
     async def get_messages(
         self,
@@ -117,8 +153,7 @@ class Database:
             params.append(after_id)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
-        cur = await self.conn.execute(query, params)
-        rows = await cur.fetchall()
+        rows = await self._fetchall(query, params)
         return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
     async def messages_since(
@@ -128,84 +163,73 @@ class Database:
         roles: tuple[str, ...] = ("user", "assistant"),
     ) -> list[dict]:
         """All matching messages with ids, oldest first — watermark scans."""
-        cur = await self.conn.execute(
+        rows = await self._fetchall(
             "SELECT id, role, content FROM messages WHERE conversation_id = ?"
             f" AND id > ? AND role IN ({','.join('?' * len(roles))}) ORDER BY id",
             (conversation_id, after_id, *roles),
         )
-        rows = await cur.fetchall()
         return [{"id": r["id"], "role": r["role"], "content": r["content"]} for r in rows]
 
     # -- memory bookkeeping ---------------------------------------------------
 
     async def get_summary_state(self, conversation_id: int) -> tuple[str | None, int]:
-        cur = await self.conn.execute(
+        row = await self._fetchone(
             "SELECT summary, summarized_upto FROM conversations WHERE id = ?",
             (conversation_id,),
         )
-        row = await cur.fetchone()
         if row is None:
             return None, 0
         return row["summary"], row["summarized_upto"] or 0
 
     async def set_summary(self, conversation_id: int, summary: str, upto: int) -> None:
-        await self.conn.execute(
+        await self._write(
             "UPDATE conversations SET summary = ?, summarized_upto = ? WHERE id = ?",
             (summary, upto, conversation_id),
         )
-        await self.conn.commit()
 
     async def get_extracted_upto(self, conversation_id: int) -> int:
-        cur = await self.conn.execute(
+        row = await self._fetchone(
             "SELECT extracted_upto FROM conversations WHERE id = ?", (conversation_id,)
         )
-        row = await cur.fetchone()
         return (row["extracted_upto"] or 0) if row else 0
 
     async def set_extracted_upto(self, conversation_id: int, upto: int) -> None:
-        await self.conn.execute(
+        await self._write(
             "UPDATE conversations SET extracted_upto = ? WHERE id = ?",
             (upto, conversation_id),
         )
-        await self.conn.commit()
 
     # -- background tasks -----------------------------------------------------
 
     async def add_task(
         self, title: str, spec: str, notify: int = 1, project_id: int | None = None
     ) -> int:
-        cur = await self.conn.execute(
+        return await self._write(
             "INSERT INTO tasks (title, spec, notify, project_id) VALUES (?, ?, ?, ?)",
             (title, spec, notify, project_id),
         )
-        await self.conn.commit()
-        return cur.lastrowid
 
     async def claim_next_task(self) -> dict | None:
         """Atomically claim the oldest queued task (single writer connection,
         UPDATE…RETURNING) so two workers can never grab the same row."""
-        cur = await self.conn.execute(
+        row = await self._write_returning(
             "UPDATE tasks SET status = 'running', started_at = datetime('now')"
             " WHERE id = (SELECT id FROM tasks WHERE status = 'queued' ORDER BY id LIMIT 1)"
             " RETURNING *"
         )
-        row = await cur.fetchone()
-        await self.conn.commit()
         return dict(row) if row else None
 
     async def update_task(self, task_id: int, *, status: str, result: str | None = None) -> None:
         terminal = status in ("done", "failed", "cancelled")
-        await self.conn.execute(
+        await self._write(
             "UPDATE tasks SET status = ?, result = COALESCE(?, result),"
             " finished_at = CASE WHEN ? THEN datetime('now') ELSE finished_at END"
             " WHERE id = ?",
             (status, result, terminal, task_id),
         )
-        await self.conn.commit()
 
     async def get_task(self, task_id: int) -> dict | None:
-        cur = await self.conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
-        row = await cur.fetchone()
+        row = await self._fetchone("SELECT * FROM tasks WHERE id = ?", (task_id,))
         return dict(row) if row else None
 
     async def list_tasks(self, limit: int = 50, status: str | None = None) -> list[dict]:
@@ -215,47 +239,42 @@ class Database:
             params.append(status)
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
-        cur = await self.conn.execute(query, params)
-        return [dict(r) for r in await cur.fetchall()]
+        return [dict(r) for r in await self._fetchall(query, params)]
 
     async def count_tasks(self, status: str) -> int:
-        cur = await self.conn.execute("SELECT COUNT(*) AS n FROM tasks WHERE status = ?", (status,))
-        return (await cur.fetchone())["n"]
+        row = await self._fetchone(
+            "SELECT COUNT(*) AS n FROM tasks WHERE status = ?", (status,)
+        )
+        return row["n"]
 
     async def add_task_event(self, task_id: int, kind: str, payload: str) -> int:
-        cur = await self.conn.execute(
+        return await self._write(
             "INSERT INTO task_events (task_id, kind, payload) VALUES (?, ?, ?)",
             (task_id, kind, payload),
         )
-        await self.conn.commit()
-        return cur.lastrowid
 
     async def list_task_events(self, task_id: int, limit: int = 100) -> list[dict]:
-        cur = await self.conn.execute(
+        rows = await self._fetchall(
             "SELECT * FROM task_events WHERE task_id = ? ORDER BY id LIMIT ?",
             (task_id, limit),
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [dict(r) for r in rows]
 
     # -- projects (Phase 5 orchestrator) -----------------------------------------
 
     async def add_project(self, title: str, spec: str, notify: int = 1) -> int:
-        cur = await self.conn.execute(
+        return await self._write(
             "INSERT INTO projects (title, spec, notify) VALUES (?, ?, ?)",
             (title, spec, notify),
         )
-        await self.conn.commit()
-        return cur.lastrowid
 
     async def claim_next_project(self) -> dict | None:
         """Atomically claim the oldest queued project (same pattern as tasks)."""
-        cur = await self.conn.execute(
+        row = await self._write_returning(
             "UPDATE projects SET status = 'planning', started_at = datetime('now')"
             " WHERE id = (SELECT id FROM projects WHERE status = 'queued' ORDER BY id LIMIT 1)"
             " RETURNING *"
         )
-        row = await cur.fetchone()
-        await self.conn.commit()
         return dict(row) if row else None
 
     async def update_project(
@@ -267,37 +286,35 @@ class Database:
         result: str | None = None,
     ) -> None:
         terminal = status in ("done", "failed", "cancelled")
-        await self.conn.execute(
+        await self._write(
             "UPDATE projects SET status = ?, plan = COALESCE(?, plan),"
             " result = COALESCE(?, result),"
             " finished_at = CASE WHEN ? THEN datetime('now') ELSE finished_at END"
             " WHERE id = ?",
             (status, plan, result, terminal, project_id),
         )
-        await self.conn.commit()
 
     async def get_project(self, project_id: int) -> dict | None:
-        cur = await self.conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,))
-        row = await cur.fetchone()
+        row = await self._fetchone("SELECT * FROM projects WHERE id = ?", (project_id,))
         return dict(row) if row else None
 
     async def list_projects(self, limit: int = 20) -> list[dict]:
-        cur = await self.conn.execute(
+        rows = await self._fetchall(
             "SELECT * FROM projects ORDER BY id DESC LIMIT ?", (limit,)
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [dict(r) for r in rows]
 
     async def list_project_tasks(self, project_id: int) -> list[dict]:
-        cur = await self.conn.execute(
+        rows = await self._fetchall(
             "SELECT * FROM tasks WHERE project_id = ? ORDER BY id", (project_id,)
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [dict(r) for r in rows]
 
     async def count_projects(self, status: str) -> int:
-        cur = await self.conn.execute(
+        row = await self._fetchone(
             "SELECT COUNT(*) AS n FROM projects WHERE status = ?", (status,)
         )
-        return (await cur.fetchone())["n"]
+        return row["n"]
 
     # -- schedules --------------------------------------------------------------
 
@@ -305,24 +322,21 @@ class Database:
         query = "SELECT * FROM schedules"
         if enabled_only:
             query += " WHERE enabled = 1"
-        cur = await self.conn.execute(query + " ORDER BY id")
-        return [dict(r) for r in await cur.fetchall()]
+        return [dict(r) for r in await self._fetchall(query + " ORDER BY id")]
 
     async def set_schedule_last_run(self, schedule_id: int, ts: str) -> None:
-        await self.conn.execute(
+        await self._write(
             "UPDATE schedules SET last_run = ? WHERE id = ?", (ts, schedule_id)
         )
-        await self.conn.commit()
 
     async def get_history(self, conversation_id: int, limit: int = 50) -> list[dict]:
         """User/assistant messages with timestamps, oldest first — UI backfill."""
-        cur = await self.conn.execute(
+        rows = await self._fetchall(
             "SELECT role, content, created_at FROM messages"
             " WHERE conversation_id = ? AND role IN ('user', 'assistant')"
             " ORDER BY id DESC LIMIT ?",
             (conversation_id, limit),
         )
-        rows = await cur.fetchall()
         return [
             {"role": r["role"], "content": r["content"], "created_at": r["created_at"]}
             for r in reversed(rows)

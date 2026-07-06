@@ -83,15 +83,17 @@ class MemoryStore:
         if n <= 0:
             return []
         if self.available:
-            cur = await self.db.conn.execute(
-                "SELECT fact_id, distance FROM fact_vectors"
-                " WHERE embedding MATCH ? AND k = ? ORDER BY distance",
-                (_pack(vector), n),
-            )
-            rows = await cur.fetchall()
+            async with self.db.lock:
+                cur = await self.db.conn.execute(
+                    "SELECT fact_id, distance FROM fact_vectors"
+                    " WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                    (_pack(vector), n),
+                )
+                rows = await cur.fetchall()
             return [(r["fact_id"], 1.0 - r["distance"]) for r in rows]
-        cur = await self.db.conn.execute("SELECT fact_id, embedding FROM fact_embeddings")
-        rows = await cur.fetchall()
+        async with self.db.lock:
+            cur = await self.db.conn.execute("SELECT fact_id, embedding FROM fact_embeddings")
+            rows = await cur.fetchall()
         scored = [
             (r["fact_id"], sum(a * b for a, b in zip(vector, _unpack(r["embedding"]), strict=True)))
             for r in rows
@@ -100,6 +102,7 @@ class MemoryStore:
         return scored[:n]
 
     async def _insert_vector(self, fact_id: int, vector: list[float]) -> None:
+        # Caller holds db.lock (add_fact's insert block) — never take it here.
         table = "fact_vectors" if self.available else "fact_embeddings"
         await self.db.conn.execute(
             f"INSERT INTO {table}(fact_id, embedding) VALUES (?, ?)",
@@ -122,11 +125,12 @@ class MemoryStore:
         candidates = await self._nearest(vector, 3)
         if candidates:
             ids = [fid for fid, _ in candidates]
-            cur = await self.db.conn.execute(
-                f"SELECT id, text, active FROM facts WHERE id IN ({','.join('?' * len(ids))})",
-                ids,
-            )
-            rows = {r["id"]: r for r in await cur.fetchall()}
+            async with self.db.lock:
+                cur = await self.db.conn.execute(
+                    f"SELECT id, text, active FROM facts WHERE id IN ({','.join('?' * len(ids))})",
+                    ids,
+                )
+                rows = {r["id"]: r for r in await cur.fetchall()}
             for fid, sim in candidates:  # best-first
                 row = rows.get(fid)
                 if row is None:
@@ -135,24 +139,26 @@ class MemoryStore:
                     return {"stored": False, "duplicate_of": fid, "existing": row["text"]}
                 if not row["active"]:
                     if source == "explicit" and sim >= self.dedup_similarity:
-                        await self.db.conn.execute(
-                            "UPDATE facts SET active = 1, last_used_at = datetime('now')"
-                            " WHERE id = ?",
-                            (fid,),
-                        )
-                        await self.db.conn.commit()
+                        async with self.db.lock:
+                            await self.db.conn.execute(
+                                "UPDATE facts SET active = 1, last_used_at = datetime('now')"
+                                " WHERE id = ?",
+                                (fid,),
+                            )
+                            await self.db.conn.commit()
                         return {"stored": True, "id": fid, "reactivated": True}
                     if source == "extracted" and sim >= self.min_similarity:
                         return {
                             "stored": False,
                             "reason": "matches a fact the user asked to forget",
                         }
-        cur = await self.db.conn.execute(
-            "INSERT INTO facts (text, source) VALUES (?, ?)", (text, source)
-        )
-        fact_id = cur.lastrowid
-        await self._insert_vector(fact_id, vector)
-        await self.db.conn.commit()
+        async with self.db.lock:
+            cur = await self.db.conn.execute(
+                "INSERT INTO facts (text, source) VALUES (?, ?)", (text, source)
+            )
+            fact_id = cur.lastrowid
+            await self._insert_vector(fact_id, vector)
+            await self.db.conn.commit()
         return {"stored": True, "id": fact_id}
 
     async def search(
@@ -166,11 +172,13 @@ class MemoryStore:
         if not candidates:
             return []
         ids = [fid for fid, _ in candidates]
-        cur = await self.db.conn.execute(
-            f"SELECT id, text FROM facts WHERE id IN ({','.join('?' * len(ids))}) AND active = 1",
-            ids,
-        )
-        texts = {r["id"]: r["text"] for r in await cur.fetchall()}
+        async with self.db.lock:
+            cur = await self.db.conn.execute(
+                f"SELECT id, text FROM facts WHERE id IN ({','.join('?' * len(ids))})"
+                " AND active = 1",
+                ids,
+            )
+            texts = {r["id"]: r["text"] for r in await cur.fetchall()}
         hits = [
             {"id": fid, "text": texts[fid], "similarity": round(sim, 4)}
             for fid, sim in candidates
@@ -178,12 +186,13 @@ class MemoryStore:
         ][:limit]
         if hits and update_last_used:
             hit_ids = [h["id"] for h in hits]
-            await self.db.conn.execute(
-                "UPDATE facts SET last_used_at = datetime('now')"
-                f" WHERE id IN ({','.join('?' * len(hit_ids))})",
-                hit_ids,
-            )
-            await self.db.conn.commit()
+            async with self.db.lock:
+                await self.db.conn.execute(
+                    "UPDATE facts SET last_used_at = datetime('now')"
+                    f" WHERE id IN ({','.join('?' * len(hit_ids))})",
+                    hit_ids,
+                )
+                await self.db.conn.commit()
         return hits
 
     async def forget(self, query: str) -> dict:
@@ -200,21 +209,26 @@ class MemoryStore:
         if not matches:
             return {"error": "no stored fact matches that closely enough to forget"}
         ids = [m["id"] for m in matches]
-        await self.db.conn.execute(
-            f"UPDATE facts SET active = 0 WHERE id IN ({','.join('?' * len(ids))})", ids
-        )
-        await self.db.conn.commit()
+        async with self.db.lock:
+            await self.db.conn.execute(
+                f"UPDATE facts SET active = 0 WHERE id IN ({','.join('?' * len(ids))})", ids
+            )
+            await self.db.conn.commit()
         return {"forgotten": [m["text"] for m in matches]}
 
     async def list_facts(self, limit: int = 200) -> list[dict]:
-        cur = await self.db.conn.execute(
-            "SELECT id, text, source, created_at, last_used_at, active FROM facts"
-            " ORDER BY id DESC LIMIT ?",
-            (limit,),
-        )
-        return [dict(r) for r in await cur.fetchall()]
+        async with self.db.lock:
+            cur = await self.db.conn.execute(
+                "SELECT id, text, source, created_at, last_used_at, active FROM facts"
+                " ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+            return [dict(r) for r in await cur.fetchall()]
 
     async def count_active(self) -> int:
-        cur = await self.db.conn.execute("SELECT COUNT(*) AS n FROM facts WHERE active = 1")
-        row = await cur.fetchone()
+        async with self.db.lock:
+            cur = await self.db.conn.execute(
+                "SELECT COUNT(*) AS n FROM facts WHERE active = 1"
+            )
+            row = await cur.fetchone()
         return row["n"]

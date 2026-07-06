@@ -7,6 +7,7 @@ surface consumes and submits messages to the same AgentCore.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -174,6 +175,14 @@ def create_app(ctx: UIContext) -> FastAPI:
         line = await provider.set_game_mode(bool(body.get("on", False)))
         return {"game_mode": provider.game_mode, "status": line}
 
+    def _report_turn_crash(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return  # kill switch — already reported as a cancelled turn
+        exc = task.exception()
+        if exc is not None:
+            logging.getLogger("baby.ui").error("ui turn crashed", exc_info=exc)
+            ctx.bus.publish("status", "ui", text=f"turn failed: {exc}")
+
     async def _pump(ws: WebSocket, kinds: set[str], ui_only: bool) -> None:
         """Forward filtered bus events to a websocket until it closes."""
         q = ctx.bus.subscribe()
@@ -220,6 +229,12 @@ def create_app(ctx: UIContext) -> FastAPI:
                     await ws.send_json({"type": "busy"})
                     continue
                 ctx.current_turn = asyncio.create_task(ctx.agent.run_turn(text))
+                # Fire-and-forget task: without this, a crash mid-turn only
+                # surfaces as "Task exception was never retrieved" on stderr
+                # (observed live: a DB commit race). turn_end still arrives
+                # (run_turn's finally), but the cause belongs in the log and
+                # the activity feed.
+                ctx.current_turn.add_done_callback(_report_turn_crash)
         except WebSocketDisconnect:
             pass
         finally:
