@@ -372,23 +372,50 @@ async def t15_get_endpoints():
     record("T15", "GET endpoints", not bad, f"failing={bad}" if bad else "all 200")
 
 
+def _project_progress(before: int) -> tuple[str, str]:
+    """(project status, human progress line) for the newest project row."""
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    row = con.execute(
+        "SELECT id, status FROM projects WHERE id > ? ORDER BY id DESC LIMIT 1", (before,)
+    ).fetchone()
+    if row is None:
+        con.close()
+        return "", "no project row yet"
+    pid, status = row
+    counts = con.execute(
+        "SELECT COUNT(*), SUM(status = 'done') FROM tasks WHERE project_id = ?", (pid,)
+    ).fetchone()
+    con.close()
+    total, done = counts[0] or 0, counts[1] or 0
+    return status, f"project #{pid} {status} — subtasks {done}/{total} done"
+
+
 async def t16_project():
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     before = con.execute("SELECT COALESCE(MAX(id), 0) FROM projects").fetchone()[0]
     con.close()
+    marker = audit_marker()
     await ws_turn(
-        "Start a project: write a two-line haiku about Indore and a two-line "
-        "haiku about monsoon rain, as two separate subtasks."
+        "Use the start_project tool to start a project: write a two-line haiku "
+        "about Indore and a two-line haiku about monsoon rain, as two separate "
+        "subtasks."
     )
+    if not any(r["tool"] == "start_project" for r in audit_since(marker)):
+        # Same discipline gap as T05/T10 — don't sit through the 30-minute
+        # poll window for a project that was never started (observed live:
+        # the battery looked hung for half an hour).
+        RUNTIME_BRAIN_DEPENDENT.add("T16")
+        record("T16", "orchestrator project (--with-project)", False,
+               "model never called start_project — brain-dependent under-read")
+        return
     deadline = time.monotonic() + 1900
-    status = ""
+    t0 = time.monotonic()
+    status, last_line = "", ""
     while time.monotonic() < deadline:
-        con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-        row = con.execute(
-            "SELECT status FROM projects WHERE id > ? ORDER BY id DESC LIMIT 1", (before,)
-        ).fetchone()
-        con.close()
-        status = row[0] if row else ""
+        status, line = _project_progress(before)
+        if line != last_line:
+            print(f"    T16 progress: {line} ({int(time.monotonic() - t0)}s)")
+            last_line = line
         if status in ("done", "failed", "cancelled"):
             break
         await asyncio.sleep(20)
