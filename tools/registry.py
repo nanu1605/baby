@@ -52,6 +52,23 @@ def schemas() -> list[dict]:
     return [entry["schema"] for entry in _TOOLS.values()]
 
 
+def _finalize(result: object) -> str:
+    """Enforce the tool contract: every result is a non-empty string or JSON.
+
+    core/agent.py counts any result not prefixed ``{"error"`` as a success, so
+    a ``None`` / ``""`` / ``{}`` return used to read as a silent win and reach
+    the user as "(no response)". One wrapper closes that hole for the whole
+    tool surface: empty returns become a structured error the model can react
+    to. Non-empty lists/objects (e.g. "no search matches" → ``[]``) pass
+    through untouched — those are data, not silence.
+    """
+    if isinstance(result, str):
+        return result if result.strip() else json.dumps({"error": "tool returned no data"})
+    if result is None or result == {}:
+        return json.dumps({"error": "tool returned no data"})
+    return json.dumps(result)
+
+
 async def dispatch(name: str, arguments: str) -> str:
     """Run a tool by name with JSON-string arguments.
 
@@ -75,6 +92,6 @@ async def dispatch(name: str, arguments: str) -> str:
             result = await asyncio.to_thread(func, **kwargs)
         if asyncio.iscoroutine(result):
             result = await result
-        return result if isinstance(result, str) else json.dumps(result)
+        return _finalize(result)
     except Exception as exc:  # noqa: BLE001 — tools must never kill the loop
         return json.dumps({"error": f"{type(exc).__name__}: {exc}"})

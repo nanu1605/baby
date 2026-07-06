@@ -40,9 +40,13 @@ class Database:
         self._conn = await aiosqlite.connect(self.path)
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA journal_mode=WAL")
+        # A second connection (a stray CLI boot, the migration script) must wait
+        # for a writer rather than erroring "database is locked" immediately.
+        await self._conn.execute("PRAGMA busy_timeout=5000")
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         await self._migrate()
+        await self._reconcile_incomplete_turns()
         await self._conn.commit()
 
     async def _migrate(self) -> None:
@@ -61,6 +65,40 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE tasks ADD COLUMN project_id INTEGER REFERENCES projects(id)"
             )
+        # P2 DB hygiene: group rows by turn and quarantine failed/poison turns.
+        cur = await self.conn.execute("PRAGMA table_info(messages)")
+        have = {row["name"] for row in await cur.fetchall()}
+        if "turn_id" not in have:
+            await self.conn.execute("ALTER TABLE messages ADD COLUMN turn_id INTEGER")
+        if "status" not in have:
+            # Existing rows become 'ok' (the column default) — no history lost.
+            await self.conn.execute(
+                "ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'ok'"
+            )
+
+    async def _reconcile_incomplete_turns(self) -> None:
+        """Fail turns a hard crash left without a final assistant row (P2).
+
+        A clean turn ends with an assistant message (reply / capped / cancelled
+        marker). A process killed mid-turn leaves a user (+ maybe tool) row and
+        no assistant — replaying that dangles the conversation. Runs at boot,
+        before this process's own turns start. Legacy rows (turn_id IS NULL,
+        pre-P2) are never touched.
+
+        The "has a completed turn" test is correlated to conversation_id:
+        turn_ids restart at 1 per conversation (next_turn_id), so a global check
+        would spare a hard-killed turn whenever any OTHER conversation had a
+        completed turn with the same id. A turn another live connection is
+        streaming right now can be transiently flipped here, but run_turn marks
+        the whole turn 'ok' again the moment it finishes (concurrency repair).
+        """
+        await self.conn.execute(
+            "UPDATE messages SET status = 'failed' WHERE status = 'ok'"
+            " AND turn_id IS NOT NULL AND turn_id NOT IN ("
+            "   SELECT turn_id FROM messages m2"
+            "   WHERE m2.role = 'assistant' AND m2.turn_id IS NOT NULL"
+            "   AND m2.conversation_id = messages.conversation_id)"
+        )
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -127,11 +165,56 @@ class Database:
 
     # -- messages -----------------------------------------------------------
 
-    async def add_message(self, conversation_id: int, role: str, content: str) -> int:
+    async def add_message(
+        self,
+        conversation_id: int,
+        role: str,
+        content: str,
+        turn_id: int | None = None,
+        status: str = "ok",
+    ) -> int:
+        """Store one message. Agent turns pass turn_id so a failed turn can be
+        quarantined atomically (P2); other callers keep the plain 'ok' default."""
         return await self._write(
-            "INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)",
-            (conversation_id, role, content),
+            "INSERT INTO messages (conversation_id, role, content, turn_id, status)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (conversation_id, role, content, turn_id, status),
         )
+
+    async def next_turn_id(self, conversation_id: int) -> int:
+        """The next per-conversation turn id (groups a run_turn's rows)."""
+        row = await self._fetchone(
+            "SELECT COALESCE(MAX(turn_id), 0) + 1 AS n FROM messages WHERE conversation_id = ?",
+            (conversation_id,),
+        )
+        return row["n"]
+
+    async def mark_turn(self, conversation_id: int, turn_id: int, status: str) -> None:
+        """Set the status of every row of one turn (quarantine on failure)."""
+        await self._write(
+            "UPDATE messages SET status = ? WHERE conversation_id = ? AND turn_id = ?",
+            (status, conversation_id, turn_id),
+        )
+
+    async def quarantine_messages(self, ids: list[int]) -> None:
+        """Mark specific message rows quarantined (self-heal / migration)."""
+        if not ids:
+            return
+        await self._write(
+            f"UPDATE messages SET status = 'quarantined' WHERE id IN ({','.join('?' * len(ids))})",
+            tuple(ids),
+        )
+
+    async def list_messages_by_status(
+        self, conversation_id: int, status: str, limit: int = 200
+    ) -> list[dict]:
+        """Rows in one status (e.g. the UI's 'quarantined' forensic filter)."""
+        rows = await self._fetchall(
+            "SELECT id, role, content, turn_id, status FROM messages"
+            " WHERE conversation_id = ? AND status = ? ORDER BY id DESC LIMIT ?",
+            (conversation_id, status, limit),
+        )
+        return [dict(r) for r in reversed(rows)]
 
     async def get_messages(
         self,
@@ -140,10 +223,11 @@ class Database:
         roles: tuple[str, ...] | None = None,
         after_id: int = 0,
     ) -> list[dict]:
-        """Latest messages, oldest first. roles filters in SQL so tool rows
+        """Latest OK messages, oldest first. roles filters in SQL so tool rows
         don't consume history slots that would then be discarded client-side.
-        after_id skips messages already folded into the rolling summary."""
-        query = "SELECT role, content FROM messages WHERE conversation_id = ?"
+        after_id skips messages already folded into the rolling summary. Failed
+        and quarantined rows never load (P2)."""
+        query = "SELECT role, content FROM messages WHERE conversation_id = ? AND status = 'ok'"
         params: list = [conversation_id]
         if roles:
             query += f" AND role IN ({','.join('?' * len(roles))})"
@@ -162,10 +246,11 @@ class Database:
         after_id: int,
         roles: tuple[str, ...] = ("user", "assistant"),
     ) -> list[dict]:
-        """All matching messages with ids, oldest first — watermark scans."""
+        """All matching OK messages with ids, oldest first — watermark scans."""
         rows = await self._fetchall(
             "SELECT id, role, content FROM messages WHERE conversation_id = ?"
-            f" AND id > ? AND role IN ({','.join('?' * len(roles))}) ORDER BY id",
+            f" AND id > ? AND status = 'ok' AND role IN ({','.join('?' * len(roles))})"
+            " ORDER BY id",
             (conversation_id, after_id, *roles),
         )
         return [{"id": r["id"], "role": r["role"], "content": r["content"]} for r in rows]
@@ -334,7 +419,7 @@ class Database:
         rows = await self._fetchall(
             "SELECT role, content, created_at FROM messages"
             " WHERE conversation_id = ? AND role IN ('user', 'assistant')"
-            " ORDER BY id DESC LIMIT ?",
+            " AND status = 'ok' ORDER BY id DESC LIMIT ?",
             (conversation_id, limit),
         )
         return [

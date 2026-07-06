@@ -181,6 +181,37 @@ if (-not (Test-Path $spkModel)) {
 }
 Write-Host "Enroll your voice (one-time, ~2 min):  uv run python scripts\enroll_voice.py"
 
+# --- 3f. Hardware sensors: LibreHardwareMonitor (P1) ---------------------------
+# Windows exposes no CPU temperature to psutil (that API is Linux-only), so Baby
+# reads LibreHardwareMonitor's Remote Web Server (JSON at http://127.0.0.1:8085/
+# data.json; LHM dropped its WMI provider in 0.9.x). Install it and autostart it
+# at login; enabling the web server + the kernel driver (run LHM as admin) is left
+# to the user in LHM's Options menu. get_sensors degrades to a structured error
+# until this is done, so setup never blocks on it.
+$lhmPaths = @(
+    "$env:ProgramFiles\LibreHardwareMonitor\LibreHardwareMonitor.exe",
+    "${env:ProgramFiles(x86)}\LibreHardwareMonitor\LibreHardwareMonitor.exe"
+)
+$lhmExe = $lhmPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $lhmExe) {
+    Write-Host "Installing LibreHardwareMonitor via winget..." -ForegroundColor Yellow
+    try {
+        winget install --id LibreHardwareMonitor.LibreHardwareMonitor -e `
+            --accept-package-agreements --accept-source-agreements
+    } catch {
+        Write-Host "LibreHardwareMonitor install skipped - CPU temps stay unavailable until it is installed." -ForegroundColor Yellow
+    }
+    $lhmExe = $lhmPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+} else {
+    Write-Host "LibreHardwareMonitor: OK ($lhmExe)"
+}
+if ($lhmExe) {
+    Set-ItemProperty "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "LibreHardwareMonitor" `
+        -Value "`"$lhmExe`""
+    Write-Host "One-time in LibreHardwareMonitor -> Options: enable 'Run on Windows startup'," -ForegroundColor Cyan
+    Write-Host "'Minimize to tray', and 'Remote Web Server' (Run, port 8085); run LHM as admin so temps populate." -ForegroundColor Cyan
+}
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"

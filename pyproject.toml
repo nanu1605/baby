@@ -1,6 +1,6 @@
 [project]
 name = "baby"
-version = "0.1.0"
+version = "1.1.1"
 description = "Baby — local-first personal AI assistant for Windows 11"
 requires-python = ">=3.11"
 dependencies = [

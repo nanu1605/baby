@@ -14,6 +14,7 @@ import re
 from typing import TYPE_CHECKING
 
 from core.bus import EventBus
+from core.context import sanitize_messages
 from core.prompts import detect_language, system_prompt
 from core.providers.base import ChatProvider, ToolCall
 from core.safety import SafetyClass, SafetyConfig, SafetyGate
@@ -24,6 +25,32 @@ if TYPE_CHECKING:
     from memory import Memory
 
 MAX_TOOL_ITERATIONS = 8
+
+# Served when a generation comes back empty even after the _final_answer retry.
+# Silence is never an acceptable reply, and the bare "(no response)" placeholder
+# read to owners as a dead assistant — this asks for a redo instead.
+_EMPTY_REPLY_FALLBACK = "I hit a snag generating a response — mind trying that once more?"
+
+# Substrings that mark a provider 4xx/context rejection (as opposed to a network
+# blip). A match triggers the P2 self-heal: rebuild from the rolling summary and
+# retry once, rather than failing the turn on replayed DB debris.
+_CONTEXT_ERROR_HINTS = (
+    "invalid_request",
+    "tool_call",
+    "tool_calls",
+    "must be a response to",
+    "must be followed by",
+    "did not have response messages",
+    "unexpected role",
+    "messages with role",
+)
+
+
+def _looks_like_context_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    if "400" in text and "message" in text:
+        return True
+    return any(hint in text for hint in _CONTEXT_ERROR_HINTS)
 
 # "I'll open Yahoo and run that search for you." — full stop, zero tool calls
 # (observed live, repeatedly, after cancelled turns). A promise of action with
@@ -111,12 +138,15 @@ class AgentCore:
 
     async def run_turn(self, user_text: str) -> str:
         """Process one user message; returns the final assistant reply."""
-        await self.db.add_message(self.conversation_id, "user", user_text)
+        # Every row of this turn shares a turn_id so a failure can quarantine
+        # the whole turn atomically and keep its debris out of future context.
+        turn_id = await self.db.next_turn_id(self.conversation_id)
+        await self.db.add_message(self.conversation_id, "user", user_text, turn_id=turn_id)
         self.bus.publish("turn_start", self.channel, conversation_id=self.conversation_id)
         status = "error"
         reply = ""
         try:
-            reply, status = await self._loop(user_text)
+            reply, status = await self._loop(user_text, turn_id)
             return reply
         except asyncio.CancelledError:
             # The marker must read as CLOSURE to the model: a bare "(cancelled)"
@@ -125,9 +155,24 @@ class AgentCore:
                 "(stopped by the user — request abandoned, do not answer or resume it)",
                 "cancelled",
             )
-            await self.db.add_message(self.conversation_id, "assistant", reply)
+            await self.db.add_message(self.conversation_id, "assistant", reply, turn_id=turn_id)
             raise
         finally:
+            # A turn that errored is debris: quarantine every row so it never
+            # re-enters context (P2). Cancelled turns keep their closure marker.
+            if status == "error":
+                try:
+                    await self.db.mark_turn(self.conversation_id, turn_id, "failed")
+                except Exception:  # noqa: BLE001 — never mask the original failure
+                    pass
+            elif status in ("ok", "capped"):
+                # Concurrency repair: another connection's boot reconcile may have
+                # flipped this turn's user row to 'failed' while we were streaming.
+                # A completed turn is all-'ok', so restore the whole turn.
+                try:
+                    await self.db.mark_turn(self.conversation_id, turn_id, "ok")
+                except Exception:  # noqa: BLE001 — best-effort repair
+                    pass
             # Snapshot BEFORE maintenance spawns — its internal calls overwrite
             # the router's active decision within milliseconds. The badge shows
             # the brain that authored the final answer of this turn.
@@ -143,7 +188,7 @@ class AgentCore:
             if self.memory is not None and status == "ok":
                 self._schedule_maintenance()
 
-    async def _loop(self, user_text: str) -> tuple[str, str]:
+    async def _loop(self, user_text: str, turn_id: int) -> tuple[str, str]:
         summary: str | None = None
         memories: list[str] = []
         after_id = 0
@@ -190,24 +235,45 @@ class AgentCore:
             },
         ]
 
+        # Strict gate (P2): whatever the DB or a half-written turn held, the
+        # payload we send is OpenAI-valid. Rows it drops are audited once.
+        dropped: list[dict] = []
+        messages = sanitize_messages(messages, dropped)
+        if dropped:
+            await self.db.add_audit(
+                self.channel,
+                "context_sanitizer",
+                "{}",
+                "allow",
+                1,
+                f"dropped {len(dropped)} poisoned context row(s)",
+            )
+
         tools_succeeded = 0
         tools_attempted = 0
         intent_retried = False
-        for _ in range(self.max_iterations):
-            text_parts: list[str] = []
-            tool_calls: list[ToolCall] = []
-            # channel rides along for the router's per-channel first-token
-            # timeout (voice falls to local faster than text); plain providers
-            # ignore unknown opts.
-            async for chunk in self.provider.chat(
-                messages, tools=registry.schemas(), channel=self.channel
-            ):
-                if chunk.delta:
-                    text_parts.append(chunk.delta)
-                    self.bus.publish("token", self.channel, text=chunk.delta)
-                if chunk.tool_calls:
-                    tool_calls = chunk.tool_calls
-            text = _scrub_think("".join(text_parts))
+        healed = False
+        for _idx in range(self.max_iterations):
+            try:
+                text, tool_calls = await self._stream(messages)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — self-heal a rejected context once
+                # Only the FIRST generation self-heals: a rejection after tool
+                # calls have run would discard their results, so re-raise (the
+                # turn is quarantined) rather than silently rebuild from summary.
+                if healed or _idx > 0 or not _looks_like_context_error(exc):
+                    raise
+                healed = True
+                self.bus.publish(
+                    "status",
+                    self.channel,
+                    text="Context was rejected — rebuilding from summary and retrying.",
+                )
+                messages = sanitize_messages(
+                    self._recovery_context(summary, memories, language, user_text)
+                )
+                text, tool_calls = await self._stream(messages)
 
             if not tool_calls:
                 # Thinking models can spend the whole generation window in the
@@ -236,15 +302,36 @@ class AgentCore:
                         }
                     )
                     continue
-                reply = text or "(no response)"
+                if text.strip():
+                    reply = text
+                else:
+                    # Empty even after the _final_answer retry above: serve an
+                    # honest line, never the bare "(no response)" placeholder,
+                    # and record the silence so it is visible in the audit trail.
+                    reply = _EMPTY_REPLY_FALLBACK
+                    await self.db.add_audit(
+                        self.channel,
+                        "generation",
+                        "{}",
+                        "allow",
+                        1,
+                        "empty model output — served honest fallback",
+                    )
                 # Skip when the model already wrote a "Next:" line itself —
                 # it mimics suggestions seen in history, and appending a real
                 # one produced double "Next:" lines (observed live).
-                if self.suggest_next_step and tools_succeeded > 0 and "Next:" not in text:
+                if (
+                    self.suggest_next_step
+                    and text.strip()
+                    and tools_succeeded > 0
+                    and "Next:" not in text
+                ):
                     suggestion = await self._suggest_next_step(messages, text)
                     if suggestion:
                         reply = f"{reply}\n\nNext: {suggestion}"
-                await self.db.add_message(self.conversation_id, "assistant", reply)
+                await self.db.add_message(
+                    self.conversation_id, "assistant", reply, turn_id=turn_id
+                )
                 return reply, "ok"
 
             messages.append(
@@ -275,6 +362,7 @@ class AgentCore:
                     self.conversation_id,
                     "tool",
                     json.dumps({"name": tc.name, "result": result}),
+                    turn_id=turn_id,
                 )
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
@@ -282,8 +370,38 @@ class AgentCore:
             "I hit my tool-step limit for this request. Here's where I got to: "
             "several tool calls ran (see activity above). Want me to continue?"
         )
-        await self.db.add_message(self.conversation_id, "assistant", capped)
+        await self.db.add_message(self.conversation_id, "assistant", capped, turn_id=turn_id)
         return capped, "capped"
+
+    async def _stream(self, messages: list[dict]) -> tuple[str, list[ToolCall]]:
+        """One provider generation → (scrubbed text, tool calls), tokens on the bus."""
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        # channel rides along for the router's per-channel first-token timeout
+        # (voice falls to local faster than text); plain providers ignore it.
+        async for chunk in self.provider.chat(
+            messages, tools=registry.schemas(), channel=self.channel
+        ):
+            if chunk.delta:
+                text_parts.append(chunk.delta)
+                self.bus.publish("token", self.channel, text=chunk.delta)
+            if chunk.tool_calls:
+                tool_calls = chunk.tool_calls
+        return _scrub_think("".join(text_parts)), tool_calls
+
+    def _recovery_context(
+        self, summary: str | None, memories: list[str], language: str, user_text: str
+    ) -> list[dict]:
+        """Last-known-good context: the rolling summary + memories + this turn.
+
+        Used by the self-heal path when a provider rejects the replayed history.
+        Dropping the raw history and leaning on the summary keeps the turn alive
+        without the debris that triggered the rejection.
+        """
+        return [
+            {"role": "system", "content": system_prompt(summary, memories, language)},
+            {"role": "user", "content": user_text},
+        ]
 
     async def _final_answer(self, messages: list[dict]) -> str:
         """Force a plain-text answer when the final model call came back empty."""

@@ -447,3 +447,52 @@ Running log of non-obvious choices made during the build. Newest last.
     when models.heavy.model exists, so rollback = daily + Gemini cloud
     (regression-tested). The RAM-gate machinery in RouterProvider stays
     (harmless, exercised by tests) for anyone who re-adds a local heavy.
+
+## v2 — Conversational & Reliable (2026-07-06)
+
+85. **CPU temperature comes from LibreHardwareMonitor's HTTP web server,
+    not WMI or pythonnet (P1)**: psutil reads no temps on Windows
+    (Linux-only API). The first cut used LHM's WMI provider
+    (`root\LibreHardwareMonitor`), but LHM dropped WMI in the 0.9.x line
+    (owner hit it live), so get_sensors now GETs LHM's Remote Web Server
+    JSON (`http://127.0.0.1:8085/data.json`, `LHM_URL`-overridable) and
+    walks the node tree by unit suffix (°C / RPM / V). This uses the
+    already-present `httpx` and drops the `wmi`/`pywin32` deps. The
+    rejected alternative — loading `LibreHardwareMonitorLib.dll`
+    in-process with pythonnet — avoids the extra process but forces the
+    whole of Baby to run elevated (the sensor driver needs admin), a far
+    larger blast radius than an LHM the user runs elevated once. LHM runs
+    minimized at login (setup.ps1 3f) with the web server on; when it is
+    absent get_sensors returns a structured `{"error", "hint"}` naming the
+    fix instead of nothing. GPU temp/power stays on pynvml (already present).
+86. **The tool contract is enforced once, in dispatch (P1)**: a tool
+    returning `None` / `""` / `{}` used to read as success — agent.py
+    counts any result not prefixed `{"error"` as a win — so silence
+    reached the user as "(no response)". `registry._finalize` now wraps
+    those as `{"error": "tool returned no data"}` for the whole tool
+    surface; non-empty lists (a legitimate "no matches" → `[]`) pass
+    through as data. Paired with the loop guard: an empty generation,
+    even after the one _final_answer retry, is served as an honest
+    "try that once more?" line and audited (tool="generation"), never
+    the bare placeholder. The literal "(no response)" is gone.
+87. **DB hygiene: tag-and-quarantine per turn, not one held transaction
+    (P2)**: the spec asked for "transactional turns", but a transaction
+    held open across a whole run_turn would re-open the exact
+    shared-connection hazard the db.lock was added to close — a commit from
+    a background coroutine landing in the turn's read gap. Instead every row
+    of a turn shares a `turn_id`; a turn that errors is marked
+    `status='failed'` in one UPDATE (excluded from every context load), a
+    cancelled turn keeps its closure marker (NOT quarantined, so later
+    turns do not re-answer it), and a hard-kill leftover (a turn with no
+    assistant row) is failed at boot by `_reconcile_incomplete_turns`.
+    Legacy rows (turn_id NULL, pre-P2) are never touched — the ALTER
+    default backfills them 'ok', so no history is lost. Three more layers
+    back this: `core/context.py::sanitize_messages` is applied to every
+    assembled array (drops orphaned tool rows, repairs malformed tool-call
+    args to `{}`, drops empty content — audited as context_sanitizer, and
+    idempotent so it never mangles a valid multi-tool turn); a provider
+    that still 4xx-rejects the context self-heals once from the rolling
+    summary + current turn; and `scripts/migrate_v2_db.py` sweeps the
+    existing DB. The sanitizer running on every assembly is what makes
+    persistent poison impossible — the next turn is already clean, so the
+    same debris can never re-break a call.

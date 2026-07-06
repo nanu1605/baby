@@ -64,6 +64,16 @@ async def wait_for_status(db, task_id, statuses, timeout_s=3.0):
     raise AssertionError(f"task {task_id} never reached {statuses}: {task['status']}")
 
 
+async def wait_for_calls(notifier, count=1, timeout_s=3.0):
+    """Notify fires just after the task status flips — poll for it rather than
+    reading notifier.calls the instant wait_for_status returns (race)."""
+    for _ in range(int(timeout_s / 0.01)):
+        if len(notifier.calls) >= count:
+            return notifier.calls
+        await asyncio.sleep(0.01)
+    raise AssertionError(f"notifier got {len(notifier.calls)} calls, expected {count}")
+
+
 async def test_task_lifecycle_done(db):
     pool, bus, notifier = make_pool(db, FakeProvider(["Research finished. EVs listed."]))
     events = bus.subscribe()
@@ -74,8 +84,9 @@ async def test_task_lifecycle_done(db):
         task = await wait_for_status(db, task_id, ("done",))
         assert "Research finished" in task["result"]
         assert task["finished_at"] is not None
-        assert notifier.calls and notifier.calls[0]["ok"] is True
-        assert "Research finished" in notifier.calls[0]["result_line"]
+        calls = await wait_for_calls(notifier)
+        assert calls[0]["ok"] is True
+        assert "Research finished" in calls[0]["result_line"]
         kinds = []
         while not events.empty():
             kinds.append(events.get_nowait().kind)
@@ -92,7 +103,8 @@ async def test_task_failure_marks_failed_and_notifies(db):
     try:
         task = await wait_for_status(db, task_id, ("failed",))
         assert "RuntimeError" in task["result"]
-        assert notifier.calls[0]["ok"] is False
+        calls = await wait_for_calls(notifier)
+        assert calls[0]["ok"] is False
     finally:
         await pool.stop()
 
@@ -185,7 +197,8 @@ async def test_two_tasks_both_complete(db):
     try:
         await wait_for_status(db, first, ("done",))
         await wait_for_status(db, second, ("done",))
-        assert len(notifier.calls) == 2
+        calls = await wait_for_calls(notifier, count=2)
+        assert len(calls) == 2
     finally:
         await pool.stop()
 
