@@ -6,12 +6,12 @@ Bug fixes cherry-picked ahead of the v2 features: dead sensors, silent
 replies, and DB poison that broke model calls.
 
 - Sensors + tool contract (#6). New `get_sensors` tool reads CPU/GPU temps,
-  fans and voltages from LibreHardwareMonitor over WMI (psutil reads no temps
-  on Windows), degrading to a structured `{error, hint}` when LHM is absent;
-  `setup.ps1` installs + autostarts LHM (`wmi`/`pywin32` deps). `registry.dispatch`
-  now wraps empty tool returns (`None`/`""`/`{}`) as an error, and the agent
-  serves an honest audited line instead of the literal `"(no response)"` on
-  empty output.
+  fans and voltages from LibreHardwareMonitor's Remote Web Server (JSON at
+  `http://127.0.0.1:8085/data.json`; LHM dropped WMI in 0.9.x), degrading to a
+  structured `{error, hint}` when LHM is absent; `setup.ps1` installs +
+  autostarts LHM. `registry.dispatch` now wraps empty tool returns
+  (`None`/`""`/`{}`) as an error, and the agent serves an honest audited line
+  instead of the literal `"(no response)"` on empty output.
 - DB hygiene — never feed poison (#7). `messages` gains `turn_id` + `status`;
   a turn that errors is quarantined whole and never reloads; a hard-kill
   leftover (no assistant row) is failed at boot (conversation-scoped);
