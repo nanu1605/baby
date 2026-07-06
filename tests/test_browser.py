@@ -376,4 +376,26 @@ async def test_read_unreadable_page_returns_hint_not_error(monkeypatch):
     result = _json.loads(await browser.browser_act("read"))
     assert "error" not in result
     assert result["text"] == ""
-    assert "type" in result["hint"] and "press Enter" in result["hint"]
+    assert 'action="type"' in result["hint"] and 'action="press"' in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_read_with_query_in_value_teaches_type_press(page):
+    """gpt-4o-mini passed its search query as read's value 3x in one turn
+    (observed live) — read must teach the exact type+press calls, never type
+    itself (type is CONFIRM-class, read is ALLOW: silent redirect = gate
+    bypass)."""
+    result = json.loads(await browser.browser_act(
+        "read", selector="input[name='q']", value="mobile phones"
+    ))
+    assert "cannot type" in result["error"]
+    assert 'action="type"' in result["error"]
+    assert "mobile phones" in result["error"]  # their own query, ready to copy
+
+
+@pytest.mark.asyncio
+async def test_read_with_selector_in_value_slot_forgiven(page):
+    page.selectors_present.add("h1")
+    result = json.loads(await browser.browser_act("read", value="h1"))
+    assert "error" not in result
+    assert "headline" in result["text"]
