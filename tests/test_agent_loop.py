@@ -221,10 +221,20 @@ async def test_empty_reply_without_tools_retries_once(db):
     assert len(provider.requests) == 2  # one forced-answer retry
 
 
-async def test_empty_reply_and_empty_retry_stays_placeholder(db):
-    agent, provider, _ = await _make_agent(db, ["", ""])
+async def test_empty_reply_and_empty_retry_serves_honest_line(db):
+    # After the single retry still comes back empty, the user gets an honest
+    # failure line, never the bare "(no response)" placeholder (P1 loop guard).
+    from core.agent import _EMPTY_REPLY_FALLBACK
+
+    agent, provider, conv_id = await _make_agent(db, ["", ""])
     reply = await agent.run_turn("hi")
-    assert reply == "(no response)"
+    assert reply == _EMPTY_REPLY_FALLBACK
+    assert "(no response)" not in reply
+    # The silence is recorded for the audit trail.
+    row = await db._fetchone(
+        "SELECT tool FROM audit_log WHERE channel = 'cli' ORDER BY id DESC LIMIT 1"
+    )
+    assert row["tool"] == "generation"
 
 
 # -- leaked reasoning: qwen /v1 sometimes omits the opening <think> tag --------------
