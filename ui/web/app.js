@@ -37,7 +37,10 @@ function addBubble(role, text) {
    model name + routing reason on hover. */
 const BRAIN_LABELS = {
   daily: ["local", "local"],
-  nim_primary: ["NIM", "nim"],
+  // Tier name is historical; the primary slot can serve from any
+  // OpenAI-compatible host (OpenRouter since 2026-07-06) — the tooltip
+  // carries the exact model.
+  nim_primary: ["cloud", "nim"],
   nim_heavy: ["NIM heavy", "nim"],
   backstop: ["Gemini", "gemini"],
 };

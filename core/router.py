@@ -908,16 +908,17 @@ class CloudRouter:
 def build_nim_providers(config: dict) -> dict:
     """{"nim_primary": NvidiaProvider|None, "nim_heavy": ...} from config + env.
 
-    A slot is built only when its model is set (N1 bench winner) AND
-    NVIDIA_API_KEY is present — absent either, the slot is None and the
-    cloud-primary ladder (Phase N2) simply skips it.
+    A slot is built only when its model is set (bench winner) AND its key env
+    var (api_key_env, default NVIDIA_API_KEY) holds a value — absent either,
+    the slot is None and the cloud-primary ladder (Phase N2) simply skips it.
+    Slots can point at any OpenAI-compatible host via base_url + api_key_env
+    (NvidiaProvider is a generic client): NIM served zero completions on the
+    2026-07-06 soak day, so the primary moved to OpenRouter while heavy
+    stayed on NIM.
     """
     import os
 
-    key = os.environ.get("NVIDIA_API_KEY", "")
     slots: dict = {"nim_primary": None, "nim_heavy": None}
-    if not key:
-        return slots
     from core.providers.nvidia import NIM_OPENAI_URL, NvidiaProvider
 
     models = config.get("models", {})
@@ -926,7 +927,8 @@ def build_nim_providers(config: dict) -> dict:
     )
     for slot in slots:
         cfg = models.get(slot, {})
-        if cfg.get("model"):
+        key = os.environ.get(cfg.get("api_key_env") or "NVIDIA_API_KEY", "")
+        if cfg.get("model") and key:
             slots[slot] = NvidiaProvider(
                 model=cfg["model"],
                 api_key=key,
@@ -969,9 +971,10 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
         if nim["nim_primary"] is None:
             # No key or no model set — cloud-primary is impossible; fail loud
             # instead of silently degrading to a local-only ladder.
+            key_env = models.get("nim_primary", {}).get("api_key_env") or "NVIDIA_API_KEY"
             raise ValueError(
-                "router.mode: cloud_primary needs NVIDIA_API_KEY in .env and "
-                "models.nim_primary.model set (N1 bench winner)"
+                f"router.mode: cloud_primary needs {key_env} in .env and "
+                "models.nim_primary.model set (bench winner)"
             )
         return CloudRouter(
             daily,

@@ -222,6 +222,37 @@ async def test_build_nim_providers_skips_empty_model(monkeypatch):
     assert slots["nim_heavy"].model == "org/heavy"
 
 
+async def test_build_nim_providers_per_slot_api_key_env(monkeypatch):
+    # Primary on OpenRouter, heavy on NIM — each slot reads its own env var.
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    models = {
+        "nim_primary": {
+            "model": "minimax/minimax-m2",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key_env": "OPENROUTER_API_KEY",
+        },
+        "nim_heavy": {"model": "z-ai/glm-5.2"},
+    }
+    slots = build_nim_providers({"models": models})
+    assert slots["nim_primary"].api_key == "sk-or-test"
+    assert slots["nim_primary"].base_url == "https://openrouter.ai/api/v1"
+    assert slots["nim_heavy"].api_key == "nvapi-test"
+    assert slots["nim_heavy"].base_url == NIM_OPENAI_URL
+
+
+async def test_build_nim_providers_missing_slot_env_skips_slot(monkeypatch):
+    monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    models = {
+        "nim_primary": {"model": "minimax/minimax-m2", "api_key_env": "OPENROUTER_API_KEY"},
+        "nim_heavy": {"model": "z-ai/glm-5.2"},
+    }
+    slots = build_nim_providers({"models": models})
+    assert slots["nim_primary"] is None  # its env var is empty
+    assert slots["nim_heavy"] is not None  # default NVIDIA_API_KEY still works
+
+
 async def test_cloud_primary_without_key_or_model_fails_loud(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     config = {
@@ -229,4 +260,20 @@ async def test_cloud_primary_without_key_or_model_fails_loud(monkeypatch):
         "router": {"mode": "cloud_primary"},
     }
     with pytest.raises(ValueError, match="cloud_primary"):
+        build_provider(config)
+
+
+async def test_cloud_primary_error_names_configured_env_var(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    config = {
+        "models": {
+            "daily": {"model": "qwen3.5:9b-q4_K_M"},
+            "nim_primary": {
+                "model": "minimax/minimax-m2",
+                "api_key_env": "OPENROUTER_API_KEY",
+            },
+        },
+        "router": {"mode": "cloud_primary"},
+    }
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
         build_provider(config)
