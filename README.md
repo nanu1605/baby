@@ -1,10 +1,13 @@
 # Baby
 
-A Jarvis-style, voice-enabled, **local-first** personal AI assistant for Windows 11.
-Local models by default (privacy, zero cost); free cloud tier only as a fallback brain.
+A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
+**Cloud-primary brains, local-first guarantees**: fast cloud models serve by
+default, but privacy-pinned turns never leave the PC, and the warm local 9B
+keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **Phase 5 — Multi-Agent & Advanced Awareness** ✅
-> Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md)
+> Status: **v1.1.0 — cloud-primary brain migration shipped** ✅
+> Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
+> change spec: [NIM_MIGRATION_PLAN.md](NIM_MIGRATION_PLAN.md)
 
 ## What works right now
 
@@ -18,10 +21,16 @@ Local models by default (privacy, zero cost); free cloud tier only as a fallback
   Gemini vision steps in only if the local path fails, and the feed says
   so out loud. `screen.allow_cloud_fallback: false` keeps screenshots
   on-machine, always.
-- **Speaker verification**: enroll once (`scripts\enroll_voice.py`, ~2 min)
-  and only YOUR voice can trigger actions — anyone else gets polite chat
-  with every tool denied at the safety gate (or silence, per config).
-  "baby stop" still works for any voice; push-to-talk bypasses the check.
+- **Speaker verification** (off by default): enroll once
+  (`scripts\enroll_voice.py`, ~2 min) and only YOUR voice can trigger
+  actions — anyone else gets polite chat with every tool denied at the
+  safety gate. Disabled in the stock config after real-world testing
+  (CAM++ false-rejected natural speech); the code and enrollment stay for
+  a future retry. "baby stop" works for any voice; PTT bypasses the check.
+- **Game mode**: fullscreen app detected (or "game mode on") → the local 9B
+  unloads, VRAM goes to your game, and cloud brains carry every turn. Even
+  privacy-pinned turns stay honest: they load the local model just for that
+  answer and evict it immediately. Alt-tab out and Baby re-warms itself.
 - **Phone access**: [docs/TAILSCALE.md](docs/TAILSCALE.md) — the UI on your
   phone over a private tailnet, HTTPS, zero exposed ports.
 - **Background tasks**: "in the background, research the top 3 EVs under
@@ -172,4 +181,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | 3 ✅ | Voice: wake word, Whisper STT, Kokoro TTS, EN/HI/Hinglish |
 | 4 ✅ | Background tasks, notifications, browser control, Telegram, autostart |
 | 5 ✅ | Multi-agent projects, screen awareness, speaker verification, Tailscale doc |
-| NIM 🔄 | Cloud-primary brains (NVIDIA NIM + Gemini backstop), health-aware router, pins, game mode — `feature/nim-cloud-primary-router` |
+| v1.1.0 ✅ | Cloud-primary brains (OpenRouter primary + NIM heavy + Gemini backstop), health-aware router, privacy/language pins, game mode, live E2E battery, soak-report tooling |
