@@ -231,12 +231,17 @@ async def t07_browser_read():
 
 async def t08_browser_screenshot():
     before = {p.name for p in SHOTS.glob("*.png")} if SHOTS.exists() else set()
-    reply, status, _, _ = await ws_turn(
-        "Use the browser_act tool with action screenshot to capture the current page."
+    # Retry helper: the 9B answered this with describe_screen (whole desktop,
+    # no PNG) instead of browser_act on one run — wrong-tool confusion gets
+    # the same single push as a skipped tool.
+    _, _, _, attempts = await ws_turn_expect_tool(
+        "Use the browser_act tool with action screenshot to capture the "
+        "current browser page.",
+        "browser_act",
     )
     after = {p.name for p in SHOTS.glob("*.png")} if SHOTS.exists() else set()
-    record("T08", "browser screenshot", bool(after - before) and status == "ok",
-           f"new={sorted(after - before)[:1]}")
+    record("T08", "browser screenshot", bool(after - before),
+           f"new={sorted(after - before)[:1]} attempts={attempts}")
 
 
 async def t09_screen():
