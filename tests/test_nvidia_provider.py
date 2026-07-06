@@ -195,13 +195,13 @@ NIM_MODELS = {
 }
 
 
-def test_build_nim_providers_needs_key(monkeypatch):
+async def test_build_nim_providers_needs_key(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     slots = build_nim_providers({"models": NIM_MODELS})
     assert slots == {"nim_primary": None, "nim_heavy": None}
 
 
-def test_build_nim_providers_builds_configured_slots(monkeypatch):
+async def test_build_nim_providers_builds_configured_slots(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     config = {
         "models": NIM_MODELS,
@@ -214,7 +214,7 @@ def test_build_nim_providers_builds_configured_slots(monkeypatch):
     assert slots["nim_primary"].cooldown_s == 42.0
 
 
-def test_build_nim_providers_skips_empty_model(monkeypatch):
+async def test_build_nim_providers_skips_empty_model(monkeypatch):
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")
     models = {"nim_primary": {"model": ""}, "nim_heavy": {"model": "org/heavy"}}
     slots = build_nim_providers({"models": models})
@@ -222,7 +222,8 @@ def test_build_nim_providers_skips_empty_model(monkeypatch):
     assert slots["nim_heavy"].model == "org/heavy"
 
 
-def test_build_provider_rejects_cloud_primary_until_n2():
+async def test_cloud_primary_without_key_or_model_fails_loud(monkeypatch):
+    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     config = {
         "models": {"daily": {"model": "qwen3.5:9b-q4_K_M"}},
         "router": {"mode": "cloud_primary"},
