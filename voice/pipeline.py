@@ -240,6 +240,23 @@ class VoicePipeline:
     def _cancel_turn(self) -> None:
         if self._turn_future is not None and not self._turn_future.done():
             self._turn_future.cancel()
+
+    def _toggle_game_mode(self, on: bool) -> None:
+        """Deterministic voice toggle — runs even when every brain is down."""
+        provider = getattr(self.agent, "provider", None)
+        if not hasattr(provider, "set_game_mode"):
+            self.announce("Game mode needs the cloud router.")
+            return
+        future = asyncio.run_coroutine_threadsafe(provider.set_game_mode(on), self.loop)
+        try:
+            line = future.result(timeout=30)
+        except Exception as exc:  # noqa: BLE001 — a failed toggle must be spoken, not silent
+            line = f"game mode toggle failed: {type(exc).__name__}"
+        self._publish("status", text=f"voice: {line}")
+        self.announce(
+            "Game mode on. The cloud answers now."
+            if on else "Game mode off. Reloading my local brain."
+        )
         self._turn_future = None
 
     def _drain_sentences(self) -> None:
@@ -383,6 +400,15 @@ class VoicePipeline:
             self._cancel_turn()
             self._drain_sentences()
             self._publish("status", text="voice: stopped by kill phrase")
+            return
+        # Game-mode escape hatch: a bare "game mode on/off" toggles directly,
+        # no model in the loop — in game mode with the cloud down there is NO
+        # brain left to call the set_game_mode tool (observed live deadlock).
+        from tools.game import parse_game_command
+
+        game = parse_game_command(text)
+        if game is not None:
+            self._toggle_game_mode(game)
             return
         # Speaker verification (Phase 5) — AFTER the kill phrase (anyone may
         # stop Baby) and never for PTT. chat_only turns get their tools denied

@@ -558,8 +558,12 @@ class CloudRouter:
                     "Baby ready — local brain reloaded.",
                     toast_title="Baby — game mode off",
                 )
-        except Exception:  # noqa: BLE001 — a failed rewarm must not kill anything
-            pass
+        except Exception as exc:  # noqa: BLE001 — a failed rewarm must not kill anything
+            if self.bus is not None:
+                self.bus.publish(
+                    "error", "router",
+                    text=f"router: local brain reload failed ({type(exc).__name__}: {exc})",
+                )
 
     # -- compat hooks (duck-typed by AgentCore / readiness / stats) --------------------
 
@@ -820,6 +824,19 @@ class CloudRouter:
                     except Exception:  # noqa: BLE001
                         pass
 
+        if self.game_mode:
+            # Spec §2.5: net gone during game mode → say so plainly and offer
+            # the way out. Raising here left the owner with dead air AND no
+            # model able to run the set_game_mode tool (observed live).
+            honest = (
+                "The cloud is unreachable and my local brain is unloaded "
+                "(game mode). Say 'game mode off' and I'll reload it."
+            )
+            if self.bus is not None:
+                self.bus.publish("status", "router", text="router: game mode offline")
+            yield Chunk(delta=honest)
+            yield Chunk(done=True)
+            return
         if last_error is not None:
             raise last_error
         raise RuntimeError("router: no provider available for this turn")

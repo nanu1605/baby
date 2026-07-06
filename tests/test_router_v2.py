@@ -225,8 +225,8 @@ async def test_game_mode_offline_is_honest_failure():
     primary = NimFake([], fail=[status_error(500)])
     router = make_router(daily=daily, primary=primary)
     router.game_mode = True
-    with pytest.raises(APIStatusError):
-        await collect(router)
+    reply = await collect(router)
+    assert "game mode off" in reply.lower()  # spoken way out, never dead air
     assert daily.requests == []
 
 
@@ -532,3 +532,24 @@ async def test_active_carries_model_and_served_is_audited():
     detail = json.loads(served[0][1])
     assert detail["channel"] == "ui" and detail["first_token_ms"] >= 0
     assert router.latency["nim_primary"]
+
+
+# -- game-mode deadlock fixes (observed live: cloud down + local unloaded) -----------
+
+
+async def test_game_mode_exhaustion_speaks_instead_of_dying():
+    primary = NimFake([], fail=[status_error(500)])
+    router = make_router(daily=FakeProvider(["never"]), primary=primary)
+    router.game_mode = True
+    reply = await collect(router)
+    assert "game mode off" in reply.lower()  # honest way out, no dead air
+
+
+async def test_parse_game_command():
+    from tools.game import parse_game_command
+
+    assert parse_game_command("game mode on") is True
+    assert parse_game_command("Game Mode Off") is False
+    assert parse_game_command("baby, gaming mode on!") is True
+    assert parse_game_command("what is game mode?") is None
+    assert parse_game_command("turn on the lights") is None

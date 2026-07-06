@@ -177,6 +177,20 @@ def create_app(ctx: UIContext) -> FastAPI:
                 text = str(data.get("text", "")).strip()
                 if not text:
                     continue
+                # Game-mode escape hatch: bare "game mode on/off" toggles
+                # WITHOUT a model — in game mode with the cloud down there is
+                # no brain left to call the tool (observed live deadlock).
+                from tools.game import parse_game_command
+
+                game = parse_game_command(text)
+                if game is not None and hasattr(ctx.agent.provider, "set_game_mode"):
+                    line = await ctx.agent.provider.set_game_mode(game)
+                    await ws.send_json({"type": "turn_start"})
+                    await ws.send_json({"type": "token", "text": line})
+                    await ws.send_json(
+                        {"type": "turn_end", "reply": line, "status": "ok", "brain": {}}
+                    )
+                    continue
                 if ctx.turn_running():
                     await ws.send_json({"type": "busy"})
                     continue

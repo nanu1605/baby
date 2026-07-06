@@ -9,10 +9,23 @@ cloud-primary router isn't active.
 from __future__ import annotations
 
 import json
+import re
 
 from tools.registry import tool
 
 _router = None
+
+# Deterministic escape hatch (observed live deadlock: game mode ON + cloud
+# congested + Gemini cooling = no brain left to CALL the tool that turns game
+# mode off). Bare commands toggle directly in the UI/voice layers, no model.
+_GAME_CMD_RE = re.compile(r"^(?:baby[,!]?\s+)?(?:game|gaming)\s*mode\s+(on|off)$")
+
+
+def parse_game_command(text: str) -> bool | None:
+    """True/False for a bare 'game mode on/off' command, None otherwise."""
+    normalized = " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+    match = _GAME_CMD_RE.match(normalized)
+    return None if match is None else match.group(1) == "on"
 
 
 def configure(router) -> None:
