@@ -105,6 +105,33 @@ def test_parse_sensor_tree_extracts_by_unit():
     assert all("MHz" not in t["name"] for t in out["temperatures_c"])
 
 
+def test_parse_sensor_tree_excludes_thresholds():
+    from tools.sensors import parse_sensor_tree
+
+    # LHM lists limits/thresholds under Temperatures with °C units — a Critical
+    # High Limit (85 °C) must never count as a reading or become "hottest".
+    root = {
+        "Text": "Sensor",
+        "Value": "",
+        "Children": [
+            {
+                "Text": "Temperatures",
+                "Value": "",
+                "Children": [
+                    {"Text": "Core (Tctl/Tdie)", "Value": "48.6 °C", "Children": []},
+                    {"Text": "Thermal Sensor Critical High Limit", "Value": "85.0 °C", "Children": []},
+                    {"Text": "Warning Temperature", "Value": "74.0 °C", "Children": []},
+                    {"Text": "Temperature Sensor Resolution", "Value": "0.3 °C", "Children": []},
+                ],
+            }
+        ],
+    }
+    out = parse_sensor_tree(root)
+    names = [t["name"] for t in out["temperatures_c"]]
+    assert names == ["Core (Tctl/Tdie)"]  # only the real reading survives
+    assert out["hottest"]["celsius"] == 48.6  # NOT the 85 °C limit
+
+
 def test_parse_sensor_tree_no_temps_is_structured_error():
     from tools.sensors import parse_sensor_tree
 
