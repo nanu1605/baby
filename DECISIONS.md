@@ -348,3 +348,102 @@ Running log of non-obvious choices made during the build. Newest last.
 73. **Tailscale Serve, never Funnel** for phone access: tailnet-only HTTPS
     proxy onto the localhost bind, zero code change. Funnel would publish
     a login-less UI (with the confirm modal!) to the open internet.
+74. **NIM migration runs on a feature branch behind `router.mode`** (change
+    spec NIM_MIGRATION_PLAN.md): the cloud-primary brain hierarchy lands
+    phase by phase on `feature/nim-cloud-primary-router` with a draft PR,
+    and the old local-primary behavior stays selectable — rollback is one
+    config line at any point, even post-merge. In N0 `cloud_primary` fails
+    loud (ValueError) instead of silently running the legacy ladder under
+    a config that promises different routing; the N2 router replaces it.
+75. **NvidiaProvider keeps `healthy()` cheap and puts the network probe in
+    `probe()`** — the router consults healthy() on every pick, so it must
+    not hit the wire; the 45 s background probe (Phase N2) owns the
+    models-list GET, and the 1-token generation ping runs only on the
+    DEGRADED→CLOUD recovery attempt to avoid burning free-tier quota.
+    reasoning_effort is not forwarded to NIM until the N1 bench measures
+    per-model unknown-parameter tolerance.
+76. **NIM winners (Tanishq, 2026-07-06): minimaxai/minimax-m2.7 primary,
+    z-ai/glm-5.2 heavy** - from the N1 shootout (bench_results/REPORT.md,
+    T1-T9 x5 against Baby's real tool schemas, evening IST). minimax:
+    perfect tool calling and 1.4 s first token (under the 3.5 s voice
+    cutoff); its weaknesses - 60% error honesty, rejects reasoning_effort,
+    0% planning JSON - do not touch the primary slot (internal capped
+    calls stay local; planning is the heavy slot's job). glm-5.2: 5/5
+    valid planning decompositions and 100% on every quality test except
+    error honesty; ~130 s first token is acceptable only because heavy
+    work is background (orchestrator timeout 1800 s). Disqualified:
+    mistral-nemotron (emits pseudo-code instead of native tool_calls),
+    llama-4-maverick (broken on NIM serverless, 79 s first token),
+    kimi-k2.6 (chronic 429 wall on the free tier, 80 rate-hits even
+    off-peak), nemotron-3-super (claims success on failed tools, T4 0%).
+    Bench fidelity note: T9 runs with tools=None exactly like the
+    orchestrator plan call - with tools attached, models called
+    start_project instead of emitting JSON.
+77. **Router v2 keeps three deliberate deviations from a literal spec read**:
+    (a) healthy() on the NIM provider stays cheap (key + cooldown check) and
+    the network probing lives in probe()/HealthMonitor - the ladder consults
+    health on every pick and must not hit the wire; (b) a real successful
+    NIM call counts toward recovery exactly like a probe (spec: "successes
+    count toward recovery") and a full generation IS the generation proof,
+    so the 1-token ping is only spent when recovery rides probes alone;
+    (c) internal capped calls (summary/extraction/suggestion) stay on the
+    warm local 9B even in cloud_primary - free, private, immune to cloud
+    hiccups - EXCEPT tier_hint="best" (orchestrator planning/integration),
+    which outranks the short-circuit because those calls are capped and
+    toolless by design yet want the best brain. Text-based heavy triggers
+    are not consulted for internal calls: a summary containing the word
+    "plan" must not wake the heavy brain.
+78. **Overflow skips the cloud entirely, backstop included**: when the token
+    bucket is empty the ladder jumps straight to local (spec 2.1 "skip cloud
+    entirely; no queueing") - Gemini is not a rate-limit escape valve, it is
+    a failure backstop. In game mode (local unloaded) overflow is an honest
+    error instead.
+79. **Privacy pins live in the ROUTER, not the agent**: the router already
+    sees the full messages array on every call, so it detects pinned tool
+    results in context (tool_call_id -> name map from the assistant
+    entries) and forces the rest of the turn local - zero agent surgery,
+    and the pin can never be forgotten by a future agent refactor. Pins
+    outrank game mode: private bytes never go cloud even if that means
+    reloading the unloaded local brain. Redaction of pinned bytes in
+    cloud-bound payloads stays as defense-in-depth (tool results never
+    reload into later turns - roles filter - so in-turn is the only
+    exposure window).
+80. **Game mode is a plain ALLOW tool** (set_game_mode): VRAM juggling is
+    reversible and touches no data, so gating it would only train the
+    owner to click through confirmations. The fullscreen auto-detect
+    watcher only reverses toggles IT made - a manual "game mode on" is
+    never fought when the owner alt-tabs.
+81. **The brain badge shows the FINAL answer's brain**, snapshotted at
+    turn_end publish before the maintenance task's internal calls
+    overwrite router.active. A multi-rung turn (fallbacks mid-loop) is
+    still summarized by whoever wrote the words the owner read.
+82. **Soak metrics live in audit_log, not a new store**: the router
+    already audits every route/skip/state decision; N4 adds one durable
+    "served" row per completed stream (channel + first-token ms). The
+    soak report is a pure read over that trail - restart-proof, no
+    schema change, and the same rows double as the live activity feed's
+    forensic record (they solved the silent-voice-turn bug in minutes).
+83. **Primary brain moved from NIM to OpenRouter (openai/gpt-4o-mini)**:
+    day-1 soak showed NIM serving 0 of 45 routed attempts - congested
+    the whole window, so cloud-primary delivered no cloud (the ladder
+    hid it; feel stayed local). Re-benched on OpenRouter with the same
+    T1-T8 harness (bench_results/openrouter/): gpt-4o-mini 95.2 (every
+    test 100%, first token p50 1.2 s / p95 4.0 s), deepseek-chat-v3.1
+    90.5, qwen3-32b 73.3, llama-3.3-70b 22.3, and minimaxai/minimax-m2.7
+    - the NIM winner - scored 0 through OpenRouter (200/200 stream
+    errors with tools; fine on plain requests, broken through its
+    provider pool). Heavy stays z-ai/glm-5.2 on NIM: background-only,
+    tolerates congestion, planning benched 5/5. Slots carry api_key_env
+    so each can point at a different host; tier names (nim_primary)
+    kept for audit/report continuity. NIM rollback is three config
+    lines (recorded inline in config.yaml). Tanishq picked the winner.
+84. **Local 35B removed (N5)**: qwen3.6:35b-a3b deleted from config,
+    setup.ps1 and disk (~20 GB reclaimed; `ollama pull qwen3.6:35b-a3b`
+    brings it back if ever wanted). Its every trigger (tier_hint,
+    planning, retry, long context) is served by nim_heavy - z-ai/glm-5.2
+    on NIM, which benched 5/5 on planning and tolerates congestion
+    because it is background-only. The legacy local_primary rollback
+    keeps working without a heavy block: build_provider only wires heavy
+    when models.heavy.model exists, so rollback = daily + Gemini cloud
+    (regression-tested). The RAM-gate machinery in RouterProvider stays
+    (harmless, exercised by tests) for anyone who re-adds a local heavy.

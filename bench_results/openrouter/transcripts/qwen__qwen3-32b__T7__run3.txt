@@ -1,0 +1,23 @@
+model: qwen/qwen3-32b  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 15}
+calls:
+final:
+Aapke liye kuch weekend chill plans:
+
+1. **Movie/Netflix Marathon** - 3-4 connected films watch karo (e.g. The Matrix trilogy, Spiderman: No Way Home + prequels)
+
+2. **Retro Gaming Night** - Old school PC games jaroor andazna, agar nahi khelne ke mana hai toh YouTube pe gaming streams dekho
+
+3. **DIY Projects** - 
+   - Customized USB drive banaye (stickers lagaye)
+   - Coding se simple robot banaye (Arduino ke saath)
+   - 3D modelling (Blender use karo)
+
+4. **Home Spa Session** - 
+   - Face mask + warm shower
+   - Candles + soft music
+   - Tea/coffee brewing experiment
+
+5. **Cooking Challenge** - Ek naya recipe search karo aur try karo (web_search use karte hue)
+
+Chahiye koi specific help? Like movies suggest karna, recipe dhoondhna, ya project setup karna?

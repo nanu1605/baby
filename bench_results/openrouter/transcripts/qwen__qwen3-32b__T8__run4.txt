@@ -1,0 +1,5 @@
+model: qwen/qwen3-32b  test: T8  run: 4
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi is renowned for its diverse and vibrant street food culture, offering iconic delicacies like chaat, kebabs, golgappas, and parathas. Its historical roots as a Mughal capital and a melting pot of Indian cuisines make it a top destination for street food, with famous spots such as Chandni Chowk and Paranthe Wali Gali."}

@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T5  run: 5
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+{"type": "function", "name": "get_system_stats", "parameters": {"detail": {"type": "boolean", "value": true}}}

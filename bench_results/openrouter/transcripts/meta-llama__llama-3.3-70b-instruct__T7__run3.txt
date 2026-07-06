@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T7  run: 3
+score: {"pass": false, "hinglish_hits": 0}
+calls:
+  web_search({"query": "fun things to do at home on weekend"})
+  describe_screen({"question": "kuch mast plan batao na"})
+  write_file({"path": "weekend_plan.txt", "content": "fun things to do at home on weekend", "mode": "w"})
+  read_file({"path": "weekend_plan.txt", "max_kb": "10"})
+  get_time({})
+final:
+

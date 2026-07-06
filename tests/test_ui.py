@@ -72,6 +72,21 @@ def test_kill_without_turn(ui):
     assert client.post("/kill").json() == {"cancelled": False}
 
 
+def test_conversation_new_rotates_and_clears_history(ui):
+    client, ctx, provider = ui
+    provider.script = ["first reply"]
+    with client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "user_message", "text": "hello"})
+        while ws.receive_json()["type"] != "turn_end":
+            pass
+    assert len(client.get("/history").json()) == 2  # user + assistant
+    old_id = ctx.agent.conversation_id
+    resp = client.post("/conversation/new")
+    assert resp.status_code == 200
+    assert ctx.agent.conversation_id != old_id
+    assert client.get("/history").json() == []  # fresh context
+
+
 def test_chat_round_trip_streams(ui):
     client, _, provider = ui
     provider.script = ["hello from baby"]
@@ -149,3 +164,22 @@ def test_activity_kinds_include_projects():
     from ui.server import _ACTIVITY_KINDS
 
     assert {"project_started", "project_done"} <= _ACTIVITY_KINDS
+
+
+def test_ws_game_command_bypasses_model(ui):
+    """Escape hatch: bare game-mode text toggles with ZERO model calls."""
+    client, ctx, provider = ui
+    calls = []
+
+    async def fake_set(on):
+        calls.append(on)
+        return "game mode ON - local brain unloaded, cloud answers now"
+
+    provider.set_game_mode = fake_set
+    provider.game_mode = True
+    with client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "user_message", "text": "game mode on"})
+        msgs = [ws.receive_json() for _ in range(3)]
+    assert calls == [True]
+    assert [m["type"] for m in msgs] == ["turn_start", "token", "turn_end"]
+    assert provider.requests == []  # the model never ran

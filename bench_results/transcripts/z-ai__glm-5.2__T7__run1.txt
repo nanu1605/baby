@@ -1,0 +1,33 @@
+model: z-ai/glm-5.2  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 43}
+calls:
+final:
+Haha ekdum! Weekend pe ghar pe chill karna bhi apna hi maza hai 😎 Chal tujhe ek solid "ghar pe chill" weekend plan banake deta hu:
+
+---
+
+## 🏠 Weekend Chill Plan
+
+### 🎬 Saturday
+- **Morning:** Der tak so ke uth, fir achhi coffee bana
+- **Afternoon:** Koi web series ya movie marathon karo — thriller/comedy ya koi pending watchlist wali cheez complete karo
+- **Evening:** Gaming session (agar PC pe khit-pit karta hai toh) ya fir YouTube/k podcast sun ke relax
+- **Night:** Koi acchi movie dekh ke lights off, blanket, aur snacks 🍿
+
+### 🛋️ Sunday
+- **Morning:** Late breakfast — kuch accha order kar ya khud try kar (Maggi toh banti hogi 😂)
+- **Afternoon:** Music sun ke chill, ya koi book/podcast — dimaag thoda relax karo
+- **Evening:** Koi recipe try kar (cooking therapy bhi mast hai), ya fir online shopping window-shopping 😏
+- **Night:** Monday ke liye thoda prep — early sleep taaki Monday blues zyada na ho
+
+---
+
+### 💡 Extra tips:
+1. **Snacks stock:** Chips, cold drink, ice cream — ye sab pehle se rakho
+2. **Playlist ready:** Lo-fi/chill beats pe YouTube pe bana lo
+3. **No work mode:** Office ka koi kaam nahi dekhna hai, phone ka work mode off 🔕
+4. **AC + blanket combo:** Ultimate comfort combo hai ye 😄
+
+---
+
+Kya abhi kuch specific chahiye — jaise **movie recommendation**, **web series suggestion**, ya **gaming ke liye kuch setup**? Bata de, main arrange kar dunga 😎💯

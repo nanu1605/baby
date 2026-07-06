@@ -1,0 +1,13 @@
+model: mistralai/mistral-nemotron  test: T1  run: 1
+score: {"pass": false, "correct_tools": false, "args_ok": false, "mentions_cpu": false}
+calls:
+final:
+Here you go.
+
+```python
+{'chrome': {'action': 'close'}}
+```
+
+```python
+{'detail': False}
+```

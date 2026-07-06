@@ -1,0 +1,17 @@
+model: z-ai/glm-5.2  test: T2  run: 5
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query":"quarterly_report.pdf"})
+  read_file({"path":"C:\\Users\\tanis\\Documents\\quarterly_report.pdf"})
+final:
+Here's what I found:
+
+📄 **File:** `quarterly_report.pdf` (located in `C:\Users\tanis\Documents\`)
+
+💰 **Revenue:** **$4.2M** (for Q2)
+
+The report also mentions:
+- **Costs:** $3.1M
+- **Margin** improved by 6%
+
+Let me know if you need anything else from this report!

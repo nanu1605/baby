@@ -19,6 +19,40 @@ GEMINI_OPENAI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 COOLDOWN_S = 300.0
 
 
+def sanitize_history(messages: list[dict]) -> list[dict]:
+    """Flatten foreign tool exchanges to plain text for Gemini.
+
+    Gemini 3 rejects replayed functionCall parts that lack a
+    thought_signature — i.e. every tool call born on another model — with
+    HTTP 400 ("Function call is missing a thought_signature", observed
+    live), which is exactly the shape a mid-tool-loop router fallback
+    sends. Textualizing the exchange keeps the backstop useful: the model
+    still sees what was called and what came back, just not as native
+    tool-call parts.
+    """
+    out: list[dict] = []
+    for message in messages:
+        if message.get("role") == "assistant" and message.get("tool_calls"):
+            lines = [
+                f"[called {tc['function']['name']}"
+                f"({tc['function'].get('arguments') or '{}'})]"
+                for tc in message["tool_calls"]
+            ]
+            text = message.get("content") or ""
+            out.append(
+                {"role": "assistant",
+                 "content": (text + "\n" if text else "") + "\n".join(lines)}
+            )
+        elif message.get("role") == "tool":
+            out.append(
+                {"role": "user",
+                 "content": f"[tool result] {message.get('content') or ''}"}
+            )
+        else:
+            out.append(message)
+    return out
+
+
 class GeminiProvider:
     """Drives a Gemini model through the OpenAI-compat chat-completions API."""
 
@@ -49,7 +83,7 @@ class GeminiProvider:
         try:
             stream = await self._client.chat.completions.create(
                 model=self.model,
-                messages=messages,
+                messages=sanitize_history(messages),
                 tools=tools or None,
                 temperature=opts.get("temperature", self.temperature),
                 max_tokens=opts.get("max_tokens"),

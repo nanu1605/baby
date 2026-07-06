@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T7  run: 2
+score: {"pass": false, "hinglish_hits": 0}
+calls:
+final:
+{"type": "function", "name": "start_project", "parameters": {"spec": "chilling at home", "title": "Weekend chill plan"}}

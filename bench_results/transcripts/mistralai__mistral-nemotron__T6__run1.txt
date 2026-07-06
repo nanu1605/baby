@@ -1,0 +1,8 @@
+model: mistralai/mistral-nemotron  test: T6  run: 1
+score: {"pass": true, "devanagari_ratio": 0.897}
+calls:
+final:
+```markdown
+प्रेरणादायक बात:
+
+"अगले दिन का सेफार एक अच्छा आरंभ से होता है। आज जो भी काम कर रहे हैं, उसमें अपना बेस्ट दें और अपने सपनों की ओर एक कदम आगे बढ़ें। यपूका हर प्रयास成功 प्रकाशित करें।"

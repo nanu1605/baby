@@ -1,0 +1,37 @@
+model: z-ai/glm-5.2  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 37}
+calls:
+final:
+Arey waah! Weekend pe ghar pe chill karna best idea hai! 😎 Chal kuch mast ghar-pe options deta hu — tu choose kar le:
+
+---
+
+### 🎬 1. Movie / Series Binge Marathon
+- Koi epic series start kar — jaise *Breaking Bad*, *Peaky Blinders*, ya *Money Heist*
+- Ya fir "comfort watch" — *Friends*, *The Office*, *Brooklyn Nine-Nine*
+- Popcorn banao, AC on karo, blanket lo aur marathon shuru 🍿
+
+### 🎮 2. Gaming Night
+- PC/console pe koi open-world game khelo — *GTA V*, *Cyberpunk*, *Minecraft*
+- Ya multiplayer games friends ke saath online — *Valorant*, *BGMI*, *Ludo King* 😂
+
+### 🍳 3. Cooking Experiment
+- YouTube pe koi naya recipe try karo — pasta, biryani, ya fir easy mug cake
+- Khud ka banaya hua khana alag hi maza deta hai 👨‍🍳
+
+### 🎵 4. Music + Chill Vibes
+- Apna playlist banao, headphones lagao, aur aankhein band karke relax
+- Ya fir naye artists/songs explore karo — lo-fi, indie, ya Bollywood retro
+
+### 📚 5. "Me Time" — Something Different
+- Koi book padho jo long se pending hai
+- Ya fir koi new skill try karo — sketching, origami, coding side project
+
+### 🧘 6. Pure Relax Mode
+- Long shower lo, face mask lagao (haan, boys bhi karte hain 😏)
+- Meditation / stretching — body ko reset kar do
+- Early sleep = Monday ko fresh vibe 🛌
+
+---
+
+Bata mere bhai, tujhe kaunsa vibe lag raha hai? Ya fir tu bol tu kya mood mein hai, main us hisaab se aur specific plan bana du! 💪

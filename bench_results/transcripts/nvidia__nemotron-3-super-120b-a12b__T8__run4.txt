@@ -1,0 +1,5 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T8  run: 4
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Known for its diverse and iconic street food like chaat, parathas, kebabs, and chole bhature, offering a rich culinary experience across markets like Chandni Chowk and Karol Bagh."}

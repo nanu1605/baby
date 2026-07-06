@@ -1,0 +1,21 @@
+model: openai/gpt-4o-mini  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 36}
+calls:
+final:
+Chalo, weekend pe ghar pe chill karne ke liye kuch mast plans karte hain! Yahan kuch ideas hain:
+
+1. **Movie Marathon:** Apne favorite movies ya naye releases ka ek marathon karo. Snacks ke saath badi screen ka maza lo!
+
+2. **Game Night:** Board games ya video games khelne ka plan banao. Doston ko bula lo, ya family ke saath competition rakh lo.
+
+3. **Cooking/Baking Session:** Ek naya dish ya dessert try karo. YouTube pe recipes dekh kar maza aayega.
+
+4. **DIY Project:** Kuch creative karne ka socho, jaise ki painting, crafts, ya ghar ko decorate karna.
+
+5. **Chill Music Session:** Apne favorite playlists suno ya kisi nayi genre ko explore karo. Dance party bhi ho sakta hai!
+
+6. **Reading Time:** Ek achhi kitab le lo aur usme kho jao. 
+
+7. **Virtual Hangout:** Doston se video call karo aur kuch games ya activities online kar lo.
+
+Agar tumhe kisi ek plan pe focus karna hai, to batao, main uske liye aur details de sakta hoon!

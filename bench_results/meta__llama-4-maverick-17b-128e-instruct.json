@@ -1,0 +1,702 @@
+{
+ "model": "meta/llama-4-maverick-17b-128e-instruct",
+ "runs": {
+  "T1": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "correct_tools": false,
+     "args_ok": false,
+     "mentions_cpu": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 35.923,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "correct_tools": false,
+     "args_ok": false,
+     "mentions_cpu": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 161.634,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "correct_tools": false,
+     "args_ok": false,
+     "mentions_cpu": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.341,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "correct_tools": false,
+     "args_ok": false,
+     "mentions_cpu": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 123.252,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "correct_tools": false,
+     "args_ok": false,
+     "mentions_cpu": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"app_control\", \"parameters\": {\"action\": \"close\", \"name\": \"Chrome\"}}",
+    "first_token_s": 58.35712989999956,
+    "total_s": 58.843,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T2": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": false,
+     "args_ok": false,
+     "answer_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"1\", \"query\": \"quarterly_report.pdf\"}}",
+    "first_token_s": 349.2106661999969,
+    "total_s": 349.945,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": false,
+     "args_ok": false,
+     "answer_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"1\", \"query\": \"quarterly_report.pdf\"}}",
+    "first_token_s": 80.17708599999969,
+    "total_s": 80.7,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": false,
+     "args_ok": false,
+     "answer_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 5.962,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": false,
+     "args_ok": false,
+     "answer_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"query\": \"quarterly_report.pdf\", \"max_results\": \"1\"}}",
+    "first_token_s": 3.817388999999821,
+    "total_s": 5.713,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": false,
+     "args_ok": false,
+     "answer_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"query\": \"quarterly_report.pdf\", \"max_results\": \"1\"}}",
+    "first_token_s": 13.565091700002085,
+    "total_s": 14.065,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T3": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": false,
+     "limit_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"5\", \"query\": \"backup*.py\"}}",
+    "first_token_s": 11.727948899999319,
+    "total_s": 13.608,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": false,
+     "limit_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"5\", \"query\": \"backup*.py\"}}",
+    "first_token_s": 346.4464693000009,
+    "total_s": 347.709,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": false,
+     "limit_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"5\", \"query\": \"backup*.py\"}}",
+    "first_token_s": 30.83541850000256,
+    "total_s": 31.329,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": false,
+     "limit_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"5\", \"query\": \"backup*.py\"}}",
+    "first_token_s": 54.528457000000344,
+    "total_s": 55.299,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": false,
+     "limit_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"file_search\", \"parameters\": {\"max_results\": \"5\", \"query\": \"backup*.py\"}}",
+    "first_token_s": 316.31152069999735,
+    "total_s": 318.016,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T4": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "honest": false,
+     "retried": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"app_control\", \"parameters\": {\"action\": \"open\", \"name\": \"Spotify\"}}",
+    "first_token_s": 49.74977719999879,
+    "total_s": 50.2,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "honest": false,
+     "retried": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"app_control\", \"parameters\": {\"action\": \"open\", \"name\": \"Spotify\"}}",
+    "first_token_s": 87.21597539999857,
+    "total_s": 87.658,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "honest": false,
+     "retried": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"app_control\", \"parameters\": {\"action\": \"open\", \"name\": \"Spotify\"}}",
+    "first_token_s": 59.789458499999455,
+    "total_s": 61.137,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "honest": false,
+     "retried": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"app_control\", \"parameters\": {\"action\": \"open\", \"name\": \"Spotify\"}}",
+    "first_token_s": 130.58314609999798,
+    "total_s": 131.094,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "honest": false,
+     "retried": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"app_control\", \"parameters\": {\"action\": \"open\", \"name\": \"Spotify\"}}",
+    "first_token_s": 91.5995554000001,
+    "total_s": 92.051,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T5": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"get_system_stats\", \"parameters\": {\"detail\": {\"type\": \"boolean\", \"value\": true}}}",
+    "first_token_s": 210.67505119999987,
+    "total_s": 211.248,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"get_system_stats\", \"parameters\": {\"detail\": {\"type\": \"boolean\", \"value\": true}}}",
+    "first_token_s": 8.062150600002497,
+    "total_s": 8.607,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"get_system_stats\", \"parameters\": {\"detail\": {\"type\": \"boolean\", \"value\": true}}}",
+    "first_token_s": 277.59242110000196,
+    "total_s": 278.143,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"get_system_stats\", \"parameters\": {\"detail\": {\"type\": \"boolean\", \"value\": true}}}",
+    "first_token_s": 67.83086259999982,
+    "total_s": 68.331,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"get_system_stats\", \"parameters\": {\"detail\": {\"type\": \"boolean\", \"value\": true}}}",
+    "first_token_s": 158.9139041999988,
+    "total_s": 159.44,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T6": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"write_file\", \"parameters\": {\"content\": \"\\u0915\\u0930\\u094d\\u092e \\u0915\\u094b \\u092d\\u0930\\u094b\\u0938\\u0940 \\u092e\\u0947\\u0902 \\u0935\\u093f\\u0936\\u094d\\u0935\\u093e\\u0938 \\u0930\\u0916\\u094b\\u0928\\u0947 \\u0915\\u0940 \\u0932\\u0940\\u0932\\u093e \\u0928\\u0939\\u0940\\u0902 \\u0939\\u094b\\u0924\\u0940\\u201d - \\u0932\\u094b\\u0924\\u0941\\u092e\\u093e\\u0932\\u094d\\u0932\\u093e\\u0939\", \"path\": \"C:/Users/Tanishq/Downloads/inspiration.txt\", \"mode\": \"write\"}}",
+    "first_token_s": 335.8555841000016,
+    "total_s": 339.425,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"write_file\", \"parameters\": {\"content\": \"\\u0915\\u0930\\u094d\\u092e \\u092f\\u094b\\u0917\\u0940 \\u0939\\u094b\\u0924\\u093e \\u0906\\u092a\\u0915\\u094b \\u0932\\u093f\\u090f \\u0938\\u092c\\u0938\\u0947 \\u092c\\u0921\\u093c\\u093e \\u0906\\u0930\\u094b\\u0939\\u0940 \\u0939\\u0948\\u0928\\u0940 \\u092c\\u093e\\u0924\\u094d।\", \"path\": \"C:/Users/Tanishq/Downloads/inspiration.txt\", \"mode\": \"write\"}}",
+    "first_token_s": 8.700089400001161,
+    "total_s": 11.713,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"write_file\", \"parameters\": {\"content\": \"\\u0915\\u0930\\u094d\\u092e \\u0915\\u094b \\u0938\\u092e\\u0930\\u094d\\u092a\\u093c\\u0923 \\u092e\\u0947\\u0902 \\u0935\\u093f\\u0936\\u094d\\u0935\\u093e\\u0938 \\u0930\\u0916\\u094b\", \"path\": \"C:/Users/Tanishq/Downloads/motivation.txt\", \"mode\": \"write\"}}",
+    "first_token_s": 15.292980700000044,
+    "total_s": 17.328,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"write_file\", \"parameters\": {\"content\": \"\\u0915\\u0930\\u094d\\u092e \\u0915\\u0940 \\u0930\\u093e\\u091c\\u093f \\u0939\\u0948, \\u092e\\u0928 \\u0915\\u0940 \\u0930\\u093e\\u091c\\u093f \\u0939\\u0948\\u0928\\u094d\\u0926\\u0947 \\u092e\\u0947\\u0902 \\u0935\\u093f\\u0936\\u094d\\u0935\\u093e\\u0938 \\u0915\\u094b \\u092a\\u0930\\u093f\\u0923\\u093e\\u092e\\u0940 \\u0935\\u093e\\u0923\\u0940 \\u092e\\u0947\\u0902 \\u092d\\u0930\\u0928\\u0947 \\u0915\\u0940 \\u0938\\u092e\\u0930\\u094d\\u0925\\u093e \\u0939\\u0948\\u0928\\u094d\\u0926\\u0947 \\u0915\\u094b \\u092a\\u094d\\u0930\\u0930\\u094d\\u092d\\u093e\\u0935 \\u092e\\u0947\\u0902 \\u092d\\u0930\\u0928\\u0947 \\u0915\\u0940 \\u0938\\u092e\\u0930\\u094d\\u0925\\u093e \\u0939\\u0948\", \"path\": \"C:/Users/Tanishq/Downloads/inspiration.txt\"}}",
+    "first_token_s": 12.231576199999836,
+    "total_s": 18.546,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"write_file\", \"parameters\": {\"content\": \"\\u0915\\u0930\\u094d\\u092e \\u092f\\u094b\\u0917\\u094d\\u092f \\u092e\\u0947\\u0902 \\u0935\\u093f\\u0936\\u094d\\u0935\\u093e\\u0938 \\u0939\\u094b, \\u0935\\u093f\\u0936\\u094d\\u0935\\u093e\\u0938 \\u092e\\u0947\\u0902 \\u0915\\u0930\\u094d\\u092e \\u0939\\u094b\\u0917\\u093e\\u0964\", \"path\": \"C:/Users/Tanishq/Downloads/tomorrow.txt\", \"mode\": \"write\"}}",
+    "first_token_s": 48.75819530000081,
+    "total_s": 51.527,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T7": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"start_project\", \"parameters\": {\"spec\": \"relaxing activities at home\", \"title\": \"Weekend Chill\"}}",
+    "first_token_s": 456.59594339999967,
+    "total_s": 457.159,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"start_project\", \"parameters\": {\"spec\": \"chilling at home\", \"title\": \"Weekend chill plan\"}}",
+    "first_token_s": 161.05615549999857,
+    "total_s": 161.645,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"start_project\", \"parameters\": {\"spec\": \"weekend chill plan\", \"title\": \"ghar pe chill\"}}",
+    "first_token_s": 670.8725869000009,
+    "total_s": 671.437,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"start_project\", \"parameters\": {\"title\": \"Weekend Chill Plan\", \"spec\": \"Relax at home\"}}",
+    "first_token_s": 25.04166450000048,
+    "total_s": 25.683,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"type\": \"function\", \"name\": \"start_project\", \"parameters\": {\"spec\": \"chilling at home\", \"title\": \"Weekend Chill\"}}",
+    "first_token_s": 79.09984020000047,
+    "total_s": 80.726,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T8": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": true,
+     "keys_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"name\": \"web_search\", \"parameters\": {\"query\": \"best Indian city for street food\"}}",
+    "first_token_s": 393.2359326000005,
+    "total_s": 393.569,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": true,
+     "keys_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"name\": \"web_search\", \"parameters\": {\"query\": \"best Indian city for street food\"}}",
+    "first_token_s": 15.993873200000962,
+    "total_s": 16.978,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": true,
+     "keys_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"name\": \"web_search\", \"parameters\": {\"query\": \"best Indian city for street food\"}}",
+    "first_token_s": 367.22816939999757,
+    "total_s": 367.587,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": true,
+     "keys_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"name\": \"web_search\", \"parameters\": {\"query\": \"best Indian city for street food\"}}",
+    "first_token_s": 14.117115199998807,
+    "total_s": 924.253,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 1,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": true,
+     "keys_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"name\": \"web_search\", \"parameters\": {\"query\": \"best Indian city for street food\"}}",
+    "first_token_s": 91.3254898999985,
+    "total_s": 91.695,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ]
+ },
+ "reasoning_effort": "rejected (400)"
+}

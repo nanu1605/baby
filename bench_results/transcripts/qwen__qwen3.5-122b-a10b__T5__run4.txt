@@ -1,0 +1,7 @@
+model: qwen/qwen3.5-122b-a10b  test: T5  run: 4
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Sab badhiya Tanishq! 😊 Main yahi hoon, aapke PC par ready.
+
+Bataiye, aaj kya karna hai? Koi app kholni hai, files dhundhni hain, ya bas aise hi baat karni hai?

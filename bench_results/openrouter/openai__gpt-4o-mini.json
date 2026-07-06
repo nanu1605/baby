@@ -1,0 +1,842 @@
+{
+ "model": "openai/gpt-4o-mini",
+ "runs": {
+  "T1": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "I've closed Chrome. The current CPU usage is **34.2%**. If you need more information, just let me know!",
+    "first_token_s": 1.4443956000031903,
+    "total_s": 2.538,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. The current CPU usage is 34.2%. If you need any more information, just let me know!",
+    "first_token_s": 1.6102546000038274,
+    "total_s": 3.024,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. The current CPU usage is 34.2%.",
+    "first_token_s": 1.517425700003514,
+    "total_s": 2.477,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. The current CPU usage is 34.2%, and the RAM usage is 61.0%. If you need more information, feel free to ask!",
+    "first_token_s": 1.8039290000015171,
+    "total_s": 3.407,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. The current CPU usage is 34.2%. If you need any more information, just let me know!",
+    "first_token_s": 1.5733621999970637,
+    "total_s": 2.804,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T2": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is **$4.2M**.",
+    "first_token_s": 0.9911050999944564,
+    "total_s": 4.456,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is **$4.2M**.",
+    "first_token_s": 1.6022483999986434,
+    "total_s": 4.803,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is **$4.2M**.",
+    "first_token_s": 1.638403200005996,
+    "total_s": 30.367,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is $4.2 million.",
+    "first_token_s": 1.748294299992267,
+    "total_s": 8.712,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is **$4.2 million**.",
+    "first_token_s": 1.4643572000059066,
+    "total_s": 4.208,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T3": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found the following Python scripts named \"backup\":\n\n1. **Path:** C:\\Users\\tanis\\scripts\\backup.py  \n   **Size:** 4 KB\n\n2. **Path:** C:\\Users\\tanis\\old\\backup_v2.py  \n   **Size:** 6 KB\n\nIf you need anything else, let me know!",
+    "first_token_s": 1.0432501000032062,
+    "total_s": 3.115,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found the following Python scripts named \"backup\":\n\n1. **C:\\Users\\tanis\\scripts\\backup.py** - Size: 4 KB\n2. **C:\\Users\\tanis\\old\\backup_v2.py** - Size: 6 KB",
+    "first_token_s": 1.5299685999925714,
+    "total_s": 3.039,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found 2 Python scripts named \"backup\":\n\n1. **Path:** `C:\\Users\\tanis\\scripts\\backup.py` - Size: 4 KB\n2. **Path:** `C:\\Users\\tanis\\old\\backup_v2.py` - Size: 6 KB\n\nLet me know if you need anything else!",
+    "first_token_s": 1.1773159000003943,
+    "total_s": 3.34,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found 2 Python scripts named \"backup\":\n\n1. **C:\\Users\\tanis\\scripts\\backup.py** (Size: 4 KB)\n2. **C:\\Users\\tanis\\old\\backup_v2.py** (Size: 6 KB)\n\nIf you need anything else, let me know!",
+    "first_token_s": 1.4901039999967907,
+    "total_s": 3.544,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found the following Python scripts named \"backup\":\n\n1. **Path:** C:\\Users\\tanis\\scripts\\backup.py - **Size:** 4 KB\n2. **Path:** C:\\Users\\tanis\\old\\backup_v2.py - **Size:** 6 KB",
+    "first_token_s": 4.772066100005759,
+    "total_s": 6.364,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T4": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "It seems that Spotify is not installed on your PC. Would you like me to help you with something else?",
+    "first_token_s": 1.160692099991138,
+    "total_s": 2.134,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "It seems that Spotify is not installed on your PC. Would you like me to help you install it?",
+    "first_token_s": 1.1022357000038028,
+    "total_s": 25.66,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "It seems that Spotify is not installed on this PC. Would you like help with something else or perhaps to install Spotify?",
+    "first_token_s": 2.0281735000025947,
+    "total_s": 7.683,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "It seems that Spotify is not installed on your PC. Would you like to install it?",
+    "first_token_s": 1.1117465999996057,
+    "total_s": 2.304,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "It looks like Spotify is not installed on your PC. Would you like help installing it?",
+    "first_token_s": 1.1952461000037147,
+    "total_s": 2.823,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T5": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab theek hai! Aap kaise hain? Aaj kya karne ka plan hai?",
+    "first_token_s": 1.301134200009983,
+    "total_s": 1.921,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab theek hai! Aap kaise hain? Aaj kya karne ka mann hai?",
+    "first_token_s": 1.0600601000041934,
+    "total_s": 1.323,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab theek hai! Aap kaise hain? Kya aaj kuch khaas karne ka mann hai?",
+    "first_token_s": 4.008241000003181,
+    "total_s": 4.348,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab theek hai! Tumhara kya haal hai? Kuch khaas karna hai aaj?",
+    "first_token_s": 0.874981500004651,
+    "total_s": 1.177,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab theek hai! Aap kaise hain? Kya aapko kisi cheez ki madad chahiye?",
+    "first_token_s": 0.8766864000062924,
+    "total_s": 1.261,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T6": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "\"हर नया दिन एक नई शुरुआत है। अपने सपनों की दिशा में एक कदम और बढ़ाएं, क्योंकि आपकी मेहनत ही आपको सफलता की ऊँचाइयों तक पहुँचाएगी।\"",
+    "first_token_s": 1.0573162999935448,
+    "total_s": 1.686,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "\"हर नया दिन एक नई शुरुआत है। अपने सपनों की ओर बढ़ते रहो, क्योंकि मेहनत और उम्मीद से ही सफलता की सीढ़ी चढ़ी जा सकती है।\"",
+    "first_token_s": 2.5243213000067044,
+    "total_s": 3.074,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "\"कल का दिन एक नई शुरुआत है। अपने सपनों की ओर कदम बढ़ाओ, क्योंकि हर नया दिन तुम्हारे लिए नई संभावनाएँ लेकर आता है। सकारात्मक सोच के साथ आगे बढ़ो!\"",
+    "first_token_s": 0.8097691000002669,
+    "total_s": 1.336,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "\"हर नया दिन एक नई शुरुआत है। अपने सपनों की ओर एक कदम और बढ़ाएं। विश्वास रखो, मेहनत का फल मीठा होता है।\"",
+    "first_token_s": 0.7919069999916246,
+    "total_s": 1.231,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "\"हर दिन एक नई शुरुआत है। अपनी मेहनत और सकारात्मक सोच के साथ आगे बढ़ें, और सपनों को सच करने का प्रयास करें। कल आपके लिए नई संभावनाएं लेकर आएगा!\"",
+    "first_token_s": 0.8226648999989266,
+    "total_s": 1.719,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T7": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 36
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Chalo, weekend pe ghar pe chill karne ke liye kuch mast plans karte hain! Yahan kuch ideas hain:\n\n1. **Movie Marathon:** Apne favorite movies ya naye releases ka ek marathon karo. Snacks ke saath badi screen ka maza lo!\n\n2. **Game Night:** Board games ya video games khelne ka plan banao. Doston ko bula lo, ya family ke saath competition rakh lo.\n\n3. **Cooking/Baking Session:** Ek naya dish ya dessert try karo. YouTube pe recipes dekh kar maza aayega.\n\n4. **DIY Project:** Kuch creative karne ka socho, jaise ki painting, crafts, ya ghar ko decorate karna.\n\n5. **Chill Music Session:** Apne favorite playlists suno ya kisi nayi genre ko explore karo. Dance party bhi ho sakta hai!\n\n6. **Reading Time:** Ek achhi kitab le lo aur usme kho jao. \n\n7. **Virtual Hangout:** Doston se video call karo aur kuch games ya activities online kar lo.\n\nAgar tumhe kisi ek plan pe focus karna hai, to batao, main uske liye aur details de sakta hoon!",
+    "first_token_s": 0.7954840999882435,
+    "total_s": 4.211,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 36
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Weekend pe ghar pe chill karne ke liye kuch mast plans ye ho sakte hain:\n\n1. **Movie Marathon**: Apne favorite movies ya series ka marathon karo. Popcorn aur snacks ke saath enjoy karo!\n\n2. **Game Night**: Agar aapko games pasand hain, toh board games ya video games khel sakte ho doston ya family ke saath.\n\n3. **Cooking Session**: Ek naya recipe try karo ya apne favorite dish banane ka plan banao. Cooking ke saath saath thoda baking bhi kar lo!\n\n4. **DIY Projects**: Koi creative project shuru karo, jaise ki painting, crafting ya gardening. Yeh relaxing bhi hota hai.\n\n5. **Virtual Hangout**: Doston ke saath online meeting arrange karo, games khelne ya movie dekhne ke liye.\n\n6. **Reading Time**: Agar aapko padhne ka shauk hai, toh ek achhi kitab le lo aur aaram se padhne ka time nikalo.\n\n7. **Home Spa Day**: Apne liye ek spa day plan karo. Face masks, aromatherapy, aur relaxation ke liye time nikalo.\n\nAapko inme se koi plan kaisa laga?",
+    "first_token_s": 2.4241374999983236,
+    "total_s": 4.018,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 51
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Weekend pe chill karne ke liye yeh kuch mast plans hain:\n\n1. **Movie Marathon**: Apne favorite movies ya series ka marathon rakh sakte ho. Popcorn aur snacks ke saath ghar par cinema ka maza lo.\n\n2. **Game Night**: Doston ya family ke saath board games ya video games khelne ka plan banao. Thoda competition aur maza, dono hoga!\n\n3. **Cooking/Baking**: Kuch naya try karo, jaise homemade pizza ya yummy desserts. Isse kuch tasty bhi milega aur fun bhi hoga.\n\n4. **Outdoor Picnic**: Agar weather achha hai to kisi nearby park ya garden mein picnic plan karo. Snacks pack karo aur nature ka maza lo.\n\n5. **DIY Projects**: Agar creative feel kar rahe ho, to kuch DIY projects ya crafts karo. Yeh relax bhi karega aur kuch naya seekhne ka mauka bhi dega.\n\n6. **Book Reading**: Apni favorite book utha lo aur shanti se padhne ka maza lo. Ek cozy corner banao aur chai ya coffee ke saath enjoy karo.\n\n7. **Virtual Hangout**: Doston se video call karke virtual hangout ka plan banao. Games khel sakte ho ya bas gossip kar sakte ho.\n\nKya inme se kuch plan pasand aaya?",
+    "first_token_s": 0.8124485000007553,
+    "total_s": 14.12,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 33
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Weekend pe chill karne ke liye kuch mast plans ye ho sakte hain:\n\n1. **Movie Marathon**: Apne favorite movies ya series ka marathon plan karo. Popcorn aur snacks ka jugaad kar lo!\n\n2. **Game Night**: Koi board games ya video games khelne ka plan banao. Doston ko invite kar lo, maza aayega!\n\n3. **Cooking/Baking Session**: Koi naya dish ya dessert try karo. Cooking karte waqt music suno aur chill karo.\n\n4. **Outdoor Picnic**: Agar weather accha hai, toh kisi nearby park ya beach pe picnic plan karo. Khaas snacks le jao!\n\n5. **Home Spa Day**: Relaxation ke liye ghar par spa day plan karo. Face masks, aromatic oils aur relaxation music ka istemal karo.\n\n6. **Reading**: Kuch achi kitaabein padhne ka time nikalo, ya phir audiobooks suno.\n\n7. **Virtual Hangout**: Doston ke saath online games ya video call par hangout karo.\n\nKya lagta hai? Inme se koi plan pasand aaya?",
+    "first_token_s": 1.2017315999983111,
+    "total_s": 9.783,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 38
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Weekend pe ghar pe chill karne ke liye kuch mast plans:\n\n1. **Movie Marathon**: Apne favorite movies ya series ka marathon rakho. Popcorn aur snacks ke saath baithein aur enjoy karein.\n   \n2. **Cooking Session**: Koi naya dish ya dessert try karo. Cooking karte waqt music suno aur enjoy karo.\n\n3. **Game Night**: Koi board games ya video games khelo doston ya family ke saath. Thoda competition bhi ho sakta hai!\n\n4. **DIY Spa Day**: Ghar pe hi ek spa day plan karo. Face masks, foot soaks aur relaxation ke liye time nikaalo.\n\n5. **Reading Time**: Agar aapko padhne ka shauk hai, toh apne favorite kitab le lo aur shaanti se padhai karo.\n\n6. **Art & Craft**: Kuch creative activities jaise painting ya scrapbooking karo. Yeh stress relief ka bhi achha tareeqa hai.\n\n7. **Outdoor Fun**: Agar weather achha hai, toh terrace ya garden me thoda time bita sakte ho. Chai ya coffee ke saath relax karo.\n\nInme se koi plan pasand aaye toh aur detail mein bata sakta hoon!",
+    "first_token_s": 1.295070799998939,
+    "total_s": 9.497,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T8": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Delhi\",\"why\":\"Delhi is renowned for its diverse and vibrant street food scene, offering a wide variety of flavors, from spicy chaat to savory kebabs, catering to all tastes and preferences.\"}",
+    "first_token_s": 1.0517228999960935,
+    "total_s": 1.752,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Delhi\",\"why\":\"Delhi is renowned for its diverse and vibrant street food scene, offering a wide variety of dishes such as chaat, parathas, and kebabs, reflecting the rich culinary heritage of India.\"}",
+    "first_token_s": 1.2754701999947429,
+    "total_s": 1.943,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Delhi\",\"why\":\"Delhi is renowned for its diverse and vibrant street food scene, offering a wide variety of dishes from different cultures, including chaat, parathas, and kebabs, making it a haven for food lovers.\"}",
+    "first_token_s": 0.8402089000010164,
+    "total_s": 1.443,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is renowned for its diverse and vibrant street food scene, offering a wide variety of flavors and dishes from different regions of India, making it a food lover's paradise.\"}",
+    "first_token_s": 0.9295653000008315,
+    "total_s": 1.843,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi offers a diverse range of street food that reflects its rich culture, from spicy chaat to delicious parathas, making it a paradise for food lovers.\"}",
+    "first_token_s": 0.9033161999977892,
+    "total_s": 1.488,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ]
+ },
+ "reasoning_effort": "accepted"
+}

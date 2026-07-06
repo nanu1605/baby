@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased — NIM cloud-primary migration (feature/nim-cloud-primary-router)
+
+- N0 (2026-07-05): `core/providers/nvidia.py` — NVIDIA NIM provider on the
+  same OpenAI wire as Ollama/Gemini (streaming, tool passthrough, 90 s
+  cooldown on 429/5xx, cheap `healthy()`, network `probe()` with optional
+  1-token generation ping). Config gains `models.nim_primary`/`nim_heavy`,
+  the full `router:` cloud-primary block (inert) and `game_mode:`;
+  `router.mode: local_primary` keeps behavior identical — `cloud_primary`
+  is rejected until the N2 router lands. `.env.example` += `NVIDIA_API_KEY`.
+  Acceptance one-off: `scripts/nim_smoke.py --model <catalog-id>`.
+- N1 (2026-07-06): `scripts/pick_nim_model.py` shootout — T1–T9 battery ×5
+  against Baby's real tool schemas, 36 RPM bucket (`core/ratelimit.py`),
+  429 backoff, resumable caches, transcripts. Winners (Tanishq):
+  `minimaxai/minimax-m2.7` primary (tools 100%, 1.4 s first token),
+  `z-ai/glm-5.2` heavy (planning 5/5). Full data in
+  `bench_results/REPORT.md`; rationale in DECISIONS.md #76.
+- N2 (2026-07-06): Router v2 — `CloudRouter` + `HealthMonitor` in
+  `core/router.py`, default `router.mode: cloud_primary`. Ladder per spec
+  §2.1 (pins → offline → overflow → normal/heavy/game-mode), health state
+  machine (1 failure → DEGRADED, DNS → OFFLINE, 3 probes + 1-token gen
+  ping to recover, 90 s 429 cooldown, 45 s background probe), shared
+  36 RPM token bucket (probes ride as background traffic), per-request
+  mid-loop fallback resending the identical messages array, per-channel
+  first-token timeouts (voice 3.5 s / text 8 s — AgentCore now passes
+  `channel`), every transition/skip audited + on the activity feed.
+  `/stats` gains `router.state` + `brain_turns`. Legacy `RouterProvider`
+  untouched — `router.mode: local_primary` is the one-line rollback.
+  Live-verified: boot green, real turn answered by minimax via the full
+  stack (1.0 s first token), internal calls stayed local.
+- N3 (2026-07-06): Pins + game mode. Privacy pins (`router.privacy_pins`,
+  default `read_file`/`run_shell`) detected ROUTER-side: a pinned tool
+  result in the context forces the rest of the turn local — outranking
+  even game mode — and a redaction layer masks pinned bytes in any
+  cloud-bound payload as defense-in-depth (capture-tested). Language pin:
+  ≥30% Devanagari routes local (Roman Hinglish flows to NIM). Game mode:
+  `set_game_mode` tool (safety ALLOW) + `POST /game_mode` — ON unloads
+  the local 9B (~5.5 GB VRAM freed, all-cloud routing, honest failure if
+  the net dies), OFF rewarns in the background and announces "Baby
+  ready"; optional fullscreen auto-detect (`game_mode.auto_detect`,
+  default off, `ui/gamewatch.py`). Live-verified VRAM swing via
+  nvidia-smi.
+- N4 (2026-07-06): Routing made visible + soak tooling. Per-message
+  **brain badge** (local / NIM / Gemini, model + routing reason on
+  hover — the brain that authored the final answer), header router-state
+  dot (cloud/degraded/offline/game) and a game-mode toggle button.
+  Router records a durable `served` audit row per completed stream
+  (channel + first-token ms) — `scripts/soak_report.py` turns the audit
+  trail into the PR soak summary (turns/brain, skip reasons, state
+  transitions, first-token p50/p95, voice dead-air count, traceback
+  count). `/stats` += per-brain `latency_ms` percentiles. README gains
+  the cloud-primary architecture diagram.
+- N5 (2026-07-06): **Local 35B removed** — `models.heavy`
+  (qwen3.6:35b-a3b, ~20 GB on disk, >22 GB RAM to run) deleted from
+  config and setup; its role is fully served by `nim_heavy`
+  (z-ai/glm-5.2 on NIM). The one-line rollback
+  (`router.mode: local_primary`) now escalates daily → Gemini only and
+  is regression-tested without a heavy block.
+- OR (2026-07-06): **Primary brain moved to OpenRouter** —
+  `openai/gpt-4o-mini` (day-1 soak caught NIM serving 0/45 attempts;
+  re-benched on OpenRouter: every test 100%, first token p50 1.2 s —
+  see DECISIONS #83). Cloud slots gain `api_key_env` so primary
+  (OpenRouter) and heavy (glm-5.2, still NIM) use separate hosts/keys;
+  bench harness gains `--base-url/--key-env/--rpm/--tag`. Same-day
+  hardening from the live E2E battery: shared-DB-connection lock
+  (commit race), leaked `<think>`-tag scrub (reply/history/TTS/UI),
+  empty replies always retried once, `POST /conversation/new` for
+  clean scored runs, Playwright Ctrl+C teardown noise silenced.
+
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 
 - Multi-agent orchestrator (feature #9, `workers/orchestrator.py`): "start a

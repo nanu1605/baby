@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T6  run: 5
+score: {"pass": false, "devanagari_ratio": 0.0}
+calls:
+  write_file({"path": "motivation_hindi.txt", "content": "कल के ले आगे ब्धाउ की कोशिश करो", "mode": "w"})
+  write_file({"path": "motivation_hindi.txt", "content": "कल के ले आगे बधाक की कोशिश करो", "mode": "w"})
+  write_file({"path": "motivation_hindi.txt", "content": "कल के ले आगे बदहाक की कोशिश करो", "mode": "w"})
+  write_file({"path": "motivation_hindi.txt", "content": "कल के ले आगे बदहाक की कोशिश करो", "mode": "w"})
+  write_file({"path": "motivation_hindi.txt", "content": "कल के लिए एक छोटी सी प्रेरणादायक बात: कल के ले आगे बधाक की कोशिश करो", "mode": "w"})
+final:
+

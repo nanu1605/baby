@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T5  run: 5
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Arre bhai, sab mast! 😄 Bas yahan baitha tere PC pe ready hoon, tere aadesh ka intezaar mein. Bata, kya plan hai aaj? Koi kaam ho toh bol, main haazir hoon! 🚀

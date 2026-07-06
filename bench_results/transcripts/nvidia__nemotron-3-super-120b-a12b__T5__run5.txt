@@ -1,0 +1,6 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T5  run: 5
+score: {"pass": false, "zero_tools": false}
+calls:
+  get_time({})
+final:
+Hey Tanishq! Main Baby, har waqt tayyar. Kya plan hai aaj ka? Koi kaam, game, ya bas chill karna? Batao, main help karne ke liye yahan hoon! 😊

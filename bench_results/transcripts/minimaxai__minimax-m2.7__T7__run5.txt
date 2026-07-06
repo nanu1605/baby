@@ -1,0 +1,35 @@
+model: minimaxai/minimax-m2.7  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 27}
+calls:
+final:
+
+
+Arre yaar, weekend vibes toh mast! 🏠✨ Ghar pe rehke bhi bohot sahi plan bana sakte hain. Dekh le kya suit karega:
+
+## 🎬 Movie/Series Marathon
+- Koi bada franchise shuru kar - *Harry Potter*, *Lord of the Rings*, *Marvel* ya *Panchayat* (if you haven't seen it yet!)
+- Popcorn, cold drink, blanket - perfect setup
+
+## 🎮 Gaming Night
+- Friends ya family ke saath multiplayer games
+- GTA, FIFA, Valorant - jo bhi aapka scene ho!
+
+## 🍳 Cooking/Baking Experiment
+- Koi naya recipe try karo - biryani, pasta, ya brownies
+- Actually fun hota hai jab saath mein koi help kare!
+
+## 🎵 Mini House Party
+- Good music, thoda drinks setup, lights matke
+- Dancing + snacks = 10/10 weekend
+
+## 🧠 Chill but Productive
+- Koi interesting documentary dekho (*Planet Earth*, *Our Planet*)
+- Ya phir koi book shuru karo jo kabhi start nahi ki thi
+
+## 🃏 Board Games/Card Games
+- UNO, Ludo King, ya poker with friends
+- Thoda competition hamesha fun hota hai!
+
+---
+
+Tumhara mood kaisa hai yaar? Kuch specific direction mein jaana hai toh batao - food, movies, games, ya mix of everything? 😄

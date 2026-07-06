@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T5  run: 1
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Arre boss! 😄 Sab mast chal raha hai yahan. Tum batao, kya plan hai? Koi kaam hai, ya bas aise hi check kar rahe ho? Bolo, kaise help karu! 🚀

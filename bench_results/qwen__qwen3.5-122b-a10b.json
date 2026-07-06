@@ -1,0 +1,916 @@
+{
+ "model": "qwen/qwen3.5-122b-a10b",
+ "runs": {
+  "T1": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"name\":\"Chrome\",\"action\":\"close\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Your CPU usage is currently at 34.2%.",
+    "first_token_s": 22.262784999998985,
+    "total_s": 35.283,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Your current CPU usage is 34.2%.",
+    "first_token_s": 108.9373517999993,
+    "total_s": 131.544,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"name\":\"Chrome\",\"action\":\"close\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Your current CPU usage is 34.2%.",
+    "first_token_s": 2.835667500003183,
+    "total_s": 14.89,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Your current CPU usage is 34.2%.",
+    "first_token_s": 72.33191100000113,
+    "total_s": 79.216,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"name\":\"Chrome\",\"action\":\"close\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. The current CPU usage is 34.2%.",
+    "first_token_s": 309.0891771000024,
+    "total_s": 311.324,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T2": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the `quarterly_report.pdf` is **$4.2M**.",
+    "first_token_s": 2.901134199997614,
+    "total_s": 5.196,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is **$4.2M**.",
+    "first_token_s": 37.59340769999835,
+    "total_s": 52.532,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number in the `quarterly_report.pdf` is **$4.2M**.",
+    "first_token_s": 2.801627200002258,
+    "total_s": 6.516,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the `quarterly_report.pdf` is **$4.2M**.",
+    "first_token_s": 1.57821469999908,
+    "total_s": 57.811,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number in the quarterly_report.pdf is **$4.2M**.",
+    "first_token_s": 5.351084099998843,
+    "total_s": 8.977,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T3": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"max_results\":5,\"query\":\"backup*.py\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found 2 Python scripts named \"backup\" on your system:\n\n1.  **C:\\Users\\tanis\\scripts\\backup.py** (4 KB)\n2.  **C:\\Users\\tanis\\old\\backup_v2.py** (6 KB)",
+    "first_token_s": 2.478352999998606,
+    "total_s": 22.543,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup*.py\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "",
+    "first_token_s": 11.581990800001222,
+    "total_s": 20.164,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"max_results\":5,\"query\":\"backup*.py\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found 2 Python scripts named \"backup\" on your PC:\n\n1. `C:\\Users\\tanis\\scripts\\backup.py` (4 KB)\n2. `C:\\Users\\tanis\\old\\backup_v2.py` (6 KB)",
+    "first_token_s": 2.103187100001378,
+    "total_s": 4.376,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"max_results\":5,\"query\":\"backup*.py\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found 2 Python scripts named \"backup\" on your PC:\n\n1. `C:\\Users\\tanis\\scripts\\backup.py` (4 KB)\n2. `C:\\Users\\tanis\\old\\backup_v2.py` (6 KB)",
+    "first_token_s": 2.904079800002364,
+    "total_s": 7.624,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": false,
+     "limit_ok": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 2.536,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T4": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"name\":\"Spotify\",\"action\":\"open\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify is not installed on your PC. Would you like me to help you download and install it?",
+    "first_token_s": 3.007905100002972,
+    "total_s": 4.971,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"name\":\"Spotify\",\"action\":\"open\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify is not installed on your PC. Would you like me to help you download and install it?",
+    "first_token_s": 1.2958689000006416,
+    "total_s": 3.212,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify is not installed on your PC. Would you like me to help you download and install it?",
+    "first_token_s": 1.7024113000006764,
+    "total_s": 3.111,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify is not installed on your PC. Would you like me to help you download and install it?",
+    "first_token_s": 1.3197407000006933,
+    "total_s": 3.514,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 24.899,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T5": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab badhiya Tanishq! Main yahi hoon, taiyaar. \n\nBatao, aaj kya kaam hai? Koi file dhundhni hai, browser kholna hai, ya koi naya project shuru karna hai? Bas bolo!",
+    "first_token_s": 4.074218099998689,
+    "total_s": 4.685,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 1.182,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab badhiya Tanishq! Main yahi hoon, taiyaar. \n\nBatao, aaj kya plan hai? Koi specific kaam karna hai, kuch search karna hai, ya bas aise hi baatein karni hain?",
+    "first_token_s": 5.033084899998357,
+    "total_s": 35.515,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab badhiya Tanishq! 😊 Main yahi hoon, aapke PC par ready.\n\nBataiye, aaj kya karna hai? Koi app kholni hai, files dhundhni hain, ya bas aise hi baat karni hai?",
+    "first_token_s": 15.291820599999483,
+    "total_s": 16.128,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Sab badhiya Tanishq! Main yahi hoon, taiyaar hai aapke kaam ke liye. \n\nAap sunao, kya chal raha hai? Koi specific task hai jo abhi karna hai, ya bas aise hi haal-chaal pooch rahe ho? 😊",
+    "first_token_s": 5.03110359999846,
+    "total_s": 6.033,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T6": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "ज़रूर, कल के लिए यह रही एक छोटी सी प्रेरणादायक बात:\n\n\"हर नया दिन एक नई शुरुआत है। कल के सूरज के साथ, अपनी पुरानी चिंताओं को पीछे छोड़कर, नई ऊर्जा और आशा के साथ आगे बढ़ो। याद रखो, छोटे कदम भी आपको बड़े लक्ष्य तक पहुँचा सकते हैं।\"\n\nक्या आप चाहते हैं कि मैं इसे किसी विशेष फ़ाइल में सेव कर दूँ?",
+    "first_token_s": 6.033586199999263,
+    "total_s": 7.538,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "ज़रूर, कल के लिए एक छोटी सी प्रेरणादायक बात यहाँ है:\n\n\"कल एक नई शुरुआत का दिन है। याद रखें, आपकी मेहनत और सकारात्मक सोच हर मुश्किल को आसान बना सकती है। बस आगे बढ़ते रहें, सफलता आपका इंतज़ार कर रही है!\"",
+    "first_token_s": 3.754894699999568,
+    "total_s": 5.157,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "ज़रूर, कल के लिए एक छोटी सी प्रेरणादायक बात:\n\n\"कल एक नई सुबह और नए अवसर लेकर आएगा। पिछले दिन की सफलताओं को याद रखो और हर छोटे कदम में अपनी ताकत ढूँढो। तुम्हारी मेहनत निश्चित रूप से फल देगी। आगे बढ़ते रहो और खुद पर भरोसा रखो!\" 🌟",
+    "first_token_s": 0.6507796000005328,
+    "total_s": 2.222,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "खूबसूरत! अगर आज का दिन अच्छा रहा, तो कल के लिए मैं यह लिखकर देता हूँ:\n\n\"हर नया दिन एक नई शुरुआत लाता है। आज की खुशियों को याद रखो और कल को उसी उमंग और जोश से गले लगाओ। तुम्हारी मेहनत और सकारात्मक सोच तुम्हें और भी ऊंचाइयों पर ले जाएगी। कल का दिन तुम्हारे लिए और भी बेहतर होने वाला है!\"\n\nक",
+    "first_token_s": 1.1314990999999281,
+    "total_s": 2.92,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "खुशी की बात है कि आपका दिन अच्छा रहा! यह रहा कल के लिए एक छोटी सी प्रेरणादायक बात:\n\n\"नए दिन की शुरुआत हमेशा नई उम्मीदों और खूबसूरत मौकों के साथ होती है। कल के लिए खुद को तैयार रखो, क्योंकि जो चीजें अभी संभव नहीं लग रहीं, वे अगले पल आपके करीब हो सकती हैं। आगे बढ़ते रहो, क्योंकि आपारी मेहनत का परिणाम जरूर मिले",
+    "first_token_s": 33.541896599999745,
+    "total_s": 35.354,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T7": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 15
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan Tanishq, weekend ghar pe chill karne ka plan toh best hai! 😎\n\nKuch ideas deta hoon, tu dekh ke bata kya mood hai:\n\n1.  **Movie/Binge-Watch Marathon:** Koi purani favorite series ya nayi Netflix movie daal le. Popcorn ready rakhna! 🍿🎬\n2.  **Gaming Session:** Agar PC pe koi game install hai ya cloud gaming chal raha hai, toh thoda time de. 🎮\n3.  **Cooking/Chai Time:** Khud",
+    "first_token_s": 54.81832360000044,
+    "total_s": 57.129,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 17
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan yaar, weekend ka plan toh perfect hona chahiye! Ghar pe chill karte hue kuch fun aur relaxing ideas ye rahe:\n\n1.  **Movie Marathon:** Koi purani classic ya nayi series ka season bina interrupt kiye dekho. Popcorn aur comfy couch ready rakho.\n2.  **Cooking Challenge:** Kuch naya aur tasty banake try karo, jaise homemade pizza ya chocolate cake. Music chalao aur enjoy karo.\n3.  **Gaming Session:** Agar friends available hain toh online multiplayer games khelo,",
+    "first_token_s": 14.0167208999992,
+    "total_s": 19.627,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 17
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Bilkul Tanishq! Weekend ko ghar pe chill karna ek badhiya idea hai. 😌\n\nChalo kuch alag-alag vibes ka plan banate hain, tum batao kya mood hai:\n\n**1. Movie & Snack Marathon 🍿🎬**\n*   **Plan:** Ek purani favorite series ya koi new movie select karo.\n*   **Snacks:** Ghar pe hi popcorn, chips aur cold drink ki setup karo.\n*   **Vibe:** Room lights dim karo aur blanket ke neeche let jao.\n\n",
+    "first_token_s": 0.5468027000024449,
+    "total_s": 2.359,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 16
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan bhai, weekend ghar pe chill karna kisi vacation se kam nahi hota! 🏠✨\n\nKuch mast ideas hain jo try kar sakte ho:\n\n1.  **Movie/Binge-Watch Marathon:** Koi purani favorite movie ya naya series (Netflix/Prime) set karo, snacks (popcorn, chips) arrange karo aur blanket ke neeche chup jao. 🍿🎬\n2.  **Gaming Session:** Agar PC pe games hain, toh koi multiplayer ya single-player game khel ke time pass",
+    "first_token_s": 0.673671499996999,
+    "total_s": 2.495,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 16
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan bhai, weekend ghar pe chill karna toh best option hai! 😎 Kuch mast plans hain:\n\n1. **Movie Marathon**: Koi classic ya trending series set karo. Popcorn, chips, aur cozy blanket ke saath perfect raat ban jayegi.\n\n2. **Cooking Experiment**: Koi naya recipe try karo jo ghar pe ban sake. Maybe pizza ya pasta? Khud banaya khana taste bhi acha aata hai!\n\n3. **Gaming Session**: Agar games pasand hai toh koi multiplayer game ya single-player adventure",
+    "first_token_s": 0.7439307000022382,
+    "total_s": 2.602,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T8": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Mumbai\", \"why\": \"Mumbai is widely recognized as the street food capital of India, offering an unparalleled variety of iconic dishes like Vada Pav, Pav Bhaji, Bhel Puri, and Pani Puri at affordable prices across the city.\"}",
+    "first_token_s": 0.8818471999984467,
+    "total_s": 1.769,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Mumbai\", \"why\": \"Mumbai is widely regarded as the street food capital of India, famous for its diverse and iconic dishes like Vada Pav, Pav Bhaji, Bhel Puri, and Pani Puri, available everywhere from street stalls to beachside vendors.\"}",
+    "first_token_s": 2.2011514000005263,
+    "total_s": 3.133,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is widely considered the street food capital of India, offering an unparalleled variety of iconic dishes like Chole Bhature, Parathas from Paranthe Wali Gali, Kebabs, and Kulcha across diverse neighborhoods.\"}",
+    "first_token_s": 0.5632241999992402,
+    "total_s": 1.414,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is widely regarded as the street food capital of India, famous for its diverse and iconic dishes like chole bhature, paranthas, chaat, and kebabs available in historic markets like Chandni Chowk.\"}",
+    "first_token_s": 9.200402999998914,
+    "total_s": 43.206,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Mumbai\", \"why\": \"Mumbai is widely regarded as the street food capital of India, offering iconic and diverse dishes like Vada Pav, Pav Bhaji, Bhel Puri, Sevpuri, and Kebabs at affordable prices across the city.\"}",
+    "first_token_s": 67.28206280000086,
+    "total_s": 68.131,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T9": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "plan_valid": true,
+     "subtasks": 4
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"subtasks\": [{\"title\": \"Frontend UI Implementation\", \"spec\": \"Create the HTML structure and CSS styling for the personal finance tracker web app. This includes building the expense entry form with input fields for date, category, amount, and description, as well as the layout for the monthly charts section and the CSV export button. Ensure the design is responsive and user-friendly. Do not implement any backend logic or data persistence in this step.\"}, {\"title\": \"Data Visualization Module\", \"spec\": \"Develop the JavaScript module responsible for rendering monthly expense charts. This module should accept expense data as a parameter, aggregate it by month and category, and render bar or pie charts using a library like Chart.js. The module must function independently and should not handle data input forms or file exports.\"}, {\"title\": \"CSV Export Functionality\", \"spec\": \"Implement the JavaScript logic to handle CSV export. This function should take a list of expense objects, format them into a CSV string, and trigger a browser download of a file named 'expenses.csv'. This module must operate independently of the charting logic and the form submission process.\"}, {\"title\": \"Documentation and Setup Guide\", \"spec\": \"Write the README.md file for the project. This document should include a project overview, installation instructions, usage guide covering the form, charts, and export features, and a file structure explanation. Ensure the content is clear for a new user setting up the web app locally.\"}]}",
+    "first_token_s": 16.388497600000846,
+    "total_s": 21.044,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "plan_valid": true,
+     "subtasks": 4
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"subtasks\": [{\"title\": \"Develop Expense Entry Form Component\", \"spec\": \"Create a React component named ExpenseForm.jsx that includes input fields for amount, category, date, and description. Implement client-side validation to ensure amount is positive and required fields are filled. The component should dispatch a custom 'expense-added' event with the form data payload upon successful submission. Do not read or write any files other than src/components/ExpenseForm.jsx.\"}, {\"title\": \"Implement Monthly Chart Visualization\", \"spec\": \"Build a React component named MonthlyCharts.jsx using a charting library (e.g., Recharts or Chart.js). The component must accept an array of expense objects as a prop and render a bar chart showing total expenses grouped by category for the current month. Include a toggle to switch between 'Current Month' and 'Last Month' views. Do not read or write any files other than src/components/MonthlyCharts.jsx.\"}, {\"title\": \"Create CSV Export Utility\", \"spec\": \"Write a standalone JavaScript utility file named src/utils/exportCSV.js. This file must export a function named generateCSV that takes an array of expense objects and returns a CSV-formatted string. Implement a function named triggerDownload that takes the CSV string and programmatically triggers a file download named 'expenses_export.csv'. Do not read or write any files other than src/utils/exportCSV.js.\"}, {\"title\": \"Generate Project Documentation\", \"spec\": \"Create a README.md file in the project root directory. Include sections for Project Description, Installation Instructions (npm install, npm start), Usage Guide (how to add expenses, view charts, export data), and a list of technologies used. Ensure the content is self-contained and does not reference specific implementation details of other subtasks. Do not read or write any files other than README.md.\"}]}",
+    "first_token_s": 9.485911700001452,
+    "total_s": 24.722,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "plan_valid": true,
+     "subtasks": 4
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\n  \"subtasks\": [\n    {\n      \"title\": \"Expense Entry Form Component\",\n      \"spec\": \"Create a React component named ExpenseForm.jsx that includes a form with fields for date, description, amount, and category. Implement client-side validation to ensure amount is a positive number and date is valid. On successful submission, dispatch a generic 'ADD_EXPENSE' action to a central store context without persisting to disk or relying on external data.\"\n    },\n    {\n      \"title\": \"Monthly Charts Visualization\",\n      \"spec\": \"Develop a React component named MonthlyCharts.jsx that consumes a list of expense objects from a global context. Use a charting library (e.g., Recharts or Chart.js) to render a bar chart showing expenses grouped by month and a pie chart showing distribution by category. Ensure the component handles empty data states gracefully and does not perform any data input or file writing.\"\n    },\n    {\n      \"title\": \"CSV Export Utility\",\n      \"spec\": \"Write a standalone utility function named exportToCSV.js that accepts an array of expense objects as an argument. The function must convert this array into a CSV string and trigger a browser download of a file named 'expenses.csv'. This logic must be completely isolated, not reading from the file system, and must not depend on specific UI components or charting libraries.\"\n    },\n    {\n      \"title\": \"Project Documentation and Setup\",\n      \"spec\": \"Generate a README.md file containing the project name, installation instructions (npm install), usage guide for the features (Form, Charts, Export), and a tech stack summary. Additionally, create a package.json file with necessary dependencies for React and a basic build script, ensuring no source code files are modified.\"\n    }\n  ]\n}",
+    "first_token_s": 4.9477872000024945,
+    "total_s": 14.081,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "plan_valid": true,
+     "subtasks": 4
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"subtasks\": [{\"title\": \"Frontend Form Components\", \"spec\": \"Create the HTML and CSS for the expense entry form including input fields for date, description, category, and amount. Ensure the form is responsive and styled with a clean, modern aesthetic. Save as index.html and styles.css.\"}, {\"title\": \"Data Visualization Module\", \"spec\": \"Implement a JavaScript module using Chart.js to render monthly expense charts. The code must accept an array of expense objects, aggregate data by month, and render a bar chart. Save as chart.js.\"}, {\"title\": \"Export Functionality\", \"spec\": \"Develop a standalone JavaScript function to convert an array of expense objects into a CSV string and trigger a browser download named 'expenses.csv'. Ensure proper escaping of special characters. Save as export.js.\"}, {\"title\": \"Documentation\", \"spec\": \"Write a comprehensive README.md file containing installation instructions, usage guide for the form and charts, explanation of the CSV export feature, and a list of dependencies. Do not include code implementation details.\"}]}",
+    "first_token_s": 14.843651600000157,
+    "total_s": 20.279,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 53.226,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+   }
+  ]
+ },
+ "reasoning_effort": "accepted"
+}

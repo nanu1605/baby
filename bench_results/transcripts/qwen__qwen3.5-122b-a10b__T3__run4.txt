@@ -1,0 +1,9 @@
+model: qwen/qwen3.5-122b-a10b  test: T3  run: 4
+score: {"pass": true, "args_ok": true, "query_ok": true, "limit_ok": true}
+calls:
+  file_search({"max_results":5,"query":"backup*.py"})
+final:
+I found 2 Python scripts named "backup" on your PC:
+
+1. `C:\Users\tanis\scripts\backup.py` (4 KB)
+2. `C:\Users\tanis\old\backup_v2.py` (6 KB)

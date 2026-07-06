@@ -1,0 +1,7 @@
+model: minimaxai/minimax-m2.7  test: T8  run: 1
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+
+
+{"city": "Jaipur", "why": "Jaipur is widely regarded as India's street food capital, offering an unparalleled variety of authentic Rajasthani street eats like pyaaz kachori, dal baati churma, laal maas, ghewar, andlassi, all concentrated in vibrant areas like Johari Bazaar and Sireh Deori Bazaar with deeply affordable prices."}

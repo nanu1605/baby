@@ -7,6 +7,7 @@ surface consumes and submits messages to the same AgentCore.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,7 +53,12 @@ class UIContext:
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
 
     def turn_running(self) -> bool:
-        return self.current_turn is not None and not self.current_turn.done()
+        if self.current_turn is not None and not self.current_turn.done():
+            return True
+        # Voice turns live in the pipeline, not in current_turn — /stats and
+        # the busy check must see them too.
+        voice_running = getattr(self.voice, "turn_running", None)
+        return bool(voice_running and voice_running())
 
 
 def create_app(ctx: UIContext) -> FastAPI:
@@ -73,6 +79,21 @@ def create_app(ctx: UIContext) -> FastAPI:
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
+        counts = getattr(ctx.agent.provider, "turn_counts", None)
+        if counts is not None:
+            data["brain_turns"] = dict(counts)  # per-brain totals for the N4 soak
+        game = getattr(ctx.agent.provider, "game_mode", None)
+        if game is not None:
+            data["game_mode"] = bool(game)
+        latency = getattr(ctx.agent.provider, "latency", None)
+        if latency:
+            def pct(samples, p):
+                ranked = sorted(samples)
+                return round(ranked[min(len(ranked) - 1, int(p * len(ranked)))], 1)
+            data["latency_ms"] = {
+                tier: {"p50": pct(s, 0.5), "p95": pct(s, 0.95)}
+                for tier, s in latency.items() if s
+            }
         if ctx.pool is not None:
             data["tasks_running"] = ctx.pool.running_count()
         if ctx.orchestrator is not None:
@@ -103,6 +124,22 @@ def create_app(ctx: UIContext) -> FastAPI:
     async def history(limit: int = 50):
         return await ctx.db.get_history(ctx.agent.conversation_id, limit)
 
+    @app.post("/conversation/new")
+    async def conversation_new():
+        """Start a fresh UI conversation; the old one stays in the DB.
+
+        A restart alone reuses the latest conversation by design (context
+        survives reboots) — scored E2E battery runs need this to get a clean
+        history, since the 9B's tool discipline drops on a polluted context.
+        """
+        if ctx.turn_running():
+            return JSONResponse(
+                {"error": "turn in progress — try again when idle"}, status_code=409
+            )
+        ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
+        ctx.bus.publish("status", "ui", text="fresh conversation started")
+        return {"conversation_id": ctx.agent.conversation_id}
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:
@@ -119,12 +156,32 @@ def create_app(ctx: UIContext) -> FastAPI:
     @app.post("/kill")
     async def kill():
         cancelled = False
-        if ctx.turn_running():
+        if ctx.current_turn is not None and not ctx.current_turn.done():
             ctx.current_turn.cancel()
+            cancelled = True
+        cancel_voice = getattr(ctx.voice, "cancel_turn", None)
+        if cancel_voice is not None:
+            cancel_voice()  # voice turns are tracked in the pipeline
             cancelled = True
         ctx.gate.confirmations.cancel_all()
         ctx.bus.publish("status", "ui", text="kill switch: current turn cancelled")
         return {"cancelled": cancelled}
+
+    @app.post("/game_mode")
+    async def game_mode(body: dict):
+        provider = ctx.agent.provider
+        if not hasattr(provider, "set_game_mode"):
+            return {"error": "game mode needs the cloud-primary router"}
+        line = await provider.set_game_mode(bool(body.get("on", False)))
+        return {"game_mode": provider.game_mode, "status": line}
+
+    def _report_turn_crash(task: asyncio.Task) -> None:
+        if task.cancelled():
+            return  # kill switch — already reported as a cancelled turn
+        exc = task.exception()
+        if exc is not None:
+            logging.getLogger("baby.ui").error("ui turn crashed", exc_info=exc)
+            ctx.bus.publish("status", "ui", text=f"turn failed: {exc}")
 
     async def _pump(ws: WebSocket, kinds: set[str], ui_only: bool) -> None:
         """Forward filtered bus events to a websocket until it closes."""
@@ -154,10 +211,30 @@ def create_app(ctx: UIContext) -> FastAPI:
                 text = str(data.get("text", "")).strip()
                 if not text:
                     continue
+                # Game-mode escape hatch: bare "game mode on/off" toggles
+                # WITHOUT a model — in game mode with the cloud down there is
+                # no brain left to call the tool (observed live deadlock).
+                from tools.game import parse_game_command
+
+                game = parse_game_command(text)
+                if game is not None and hasattr(ctx.agent.provider, "set_game_mode"):
+                    line = await ctx.agent.provider.set_game_mode(game)
+                    await ws.send_json({"type": "turn_start"})
+                    await ws.send_json({"type": "token", "text": line})
+                    await ws.send_json(
+                        {"type": "turn_end", "reply": line, "status": "ok", "brain": {}}
+                    )
+                    continue
                 if ctx.turn_running():
                     await ws.send_json({"type": "busy"})
                     continue
                 ctx.current_turn = asyncio.create_task(ctx.agent.run_turn(text))
+                # Fire-and-forget task: without this, a crash mid-turn only
+                # surfaces as "Task exception was never retrieved" on stderr
+                # (observed live: a DB commit race). turn_end still arrives
+                # (run_turn's finally), but the cause belongs in the log and
+                # the activity feed.
+                ctx.current_turn.add_done_callback(_report_turn_crash)
         except WebSocketDisconnect:
             pass
         finally:
@@ -187,6 +264,18 @@ def _toast(title: str, message: str) -> None:
         pass
 
 
+def _quiet_playwright_teardown(loop, context) -> None:
+    """Ctrl+C on Windows hits the whole console group: the Playwright driver
+    dies before our cleanup runs, and its orphaned reader future prints
+    "Future exception was never retrieved ... Connection closed while reading
+    from the driver" after "bye." (observed live). Harmless — silence exactly
+    that; everything else goes to the default handler."""
+    exc = context.get("exception")
+    if exc is not None and "Connection closed while reading from the driver" in str(exc):
+        return
+    loop.default_exception_handler(context)
+
+
 async def run_ui(config: dict, with_voice: bool = False) -> None:
     """Boot the full text stack: DB, model, tools, agent, UI server.
 
@@ -201,6 +290,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import web as web_tools
 
     db = Database("baby.db")
+    asyncio.get_running_loop().set_exception_handler(_quiet_playwright_teardown)
     await db.connect()
     bus = EventBus()
     provider = build_provider(config, bus=bus, db=db)
@@ -213,6 +303,17 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         _toast("Baby could not start", notes[-1][:120])
         await db.close()
         sys.exit(1)
+
+    # Cloud-primary router runs a 45 s NIM health probe; needs the live loop.
+    if hasattr(provider, "start"):
+        provider.start()
+
+    gamewatch = None
+    if config.get("game_mode", {}).get("auto_detect") and hasattr(provider, "set_game_mode"):
+        from ui.gamewatch import GameWatch
+
+        gamewatch = GameWatch(provider)
+        gamewatch.start()
 
     register_all()
     web_tools.configure(
@@ -231,6 +332,9 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import screen as screen_tools
 
     screen_tools.configure(VisionService(config, provider, bus))
+    from tools import game as game_tools
+
+    game_tools.configure(provider)
     asyncio.get_running_loop().run_in_executor(None, apps.build_index)
 
     from memory import build_memory
@@ -307,6 +411,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
 
     notifier = Notifier(config, bus)
     notifier.voice = voice_pipeline  # None when voice is off/failed
+    if hasattr(provider, "set_game_mode"):
+        provider.notifier = notifier  # "Baby ready" announce after game-mode reload
     workers_cfg = config.get("workers", {})
     pool = WorkerPool(
         db=db,
@@ -430,4 +536,14 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             pass
         if voice_pipeline is not None:
             voice_pipeline.stop()
+        if gamewatch is not None:
+            try:
+                await gamewatch.stop()
+            except Exception:  # noqa: BLE001
+                pass
+        if hasattr(provider, "stop"):
+            try:
+                await provider.stop()
+            except Exception:  # noqa: BLE001
+                pass
         await db.close()

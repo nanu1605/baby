@@ -1,0 +1,7 @@
+model: minimaxai/minimax-m2.7  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+
+
+{"city": "Delhi", "why": "From Chandni Chowk's parathas and chaat to Karol Bagh's butter chicken, Delhi offers unmatched diversity—融合了北印度所有地区的街头美食精华，从辣味到甜味应有尽有，每条巷子都是美食天堂。"}

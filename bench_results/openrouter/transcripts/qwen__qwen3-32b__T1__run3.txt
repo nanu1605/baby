@@ -1,0 +1,13 @@
+model: qwen/qwen3-32b  test: T1  run: 3
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action": "close", "name": "Chrome"})
+  get_system_stats({})
+final:
+Chrome has been closed. Here's the system status:
+
+- **CPU Usage:** 34.2%  
+- **RAM Usage:** 61.0%  
+- **GPU:** 6.5 GB of 8.0 GB VRAM used  
+
+Let me know if you need further details! 😊

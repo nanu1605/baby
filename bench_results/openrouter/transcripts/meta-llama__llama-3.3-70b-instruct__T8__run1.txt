@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T8  run: 1
+score: {"pass": false, "json_valid": false, "keys_ok": false}
+calls:
+  web_search({"query": "best Indian city for street food"})
+  recall({"query": "best Indian city for street food"})
+  remember({"fact": "Best Indian city for street food is Old Delhi"})
+  recall({"query": "Best Indian city for street food", "k": "1"})
+  web_search({"query": "best city in India for street food"})
+final:
+

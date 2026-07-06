@@ -28,10 +28,12 @@ Local models by default (privacy, zero cost); free cloud tier only as a fallback
   15 lakh" → Baby hands back a task id and keeps chatting; when the task
   finishes you get a toast, a spoken announcement, and (if enabled) a
   Telegram message. `task_status` / `cancel_task` / `GET /tasks` to manage.
-- **Three brains**: daily 9B stays warm; "use the big brain" (or a planning
-  task, a failed retry, a huge input) escalates to the 35B — gated on free
-  RAM — or to Gemini's free tier. The activity feed narrates every routing
-  decision; the header badge shows which brain answered.
+- **Four brains, cloud-primary**: openai/gpt-4o-mini via OpenRouter serves
+  interactive turns (first token ~1.2 s); "use the big brain" (or a planning
+  task) escalates to z-ai/glm-5.2 on NVIDIA NIM; Gemini's free tier backstops;
+  the local 9B stays warm for offline, privacy-pinned and overflow turns. The
+  activity feed narrates every routing decision; the header badge shows which
+  brain answered.
 - **Browser**: "open ollama.com and read me the headline" drives a real
   Chromium window with a persistent profile (logins survive restarts).
   Navigation and reading are free; the FIRST click/type on each site asks
@@ -117,7 +119,38 @@ It's 6:42 PM on Friday, July 3rd.
 Telegram setup (optional): create a bot with **@BotFather**, get your chat
 id from **@userinfobot**, put both in `.env`
 (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`), set `telegram.enabled: true`.
-Cloud escalation (optional): put a free `GEMINI_API_KEY` in `.env`.
+Cloud brains: `OPENROUTER_API_KEY` (primary), `NVIDIA_API_KEY` (NIM heavy)
+and `GEMINI_API_KEY` (backstop) in `.env`.
+
+## Brain architecture (cloud-primary)
+
+```
+turn arrives
+├─ privacy pin (read_file / run_shell result in context) → local 9B only
+├─ language pin (≥30% Devanagari)                        → local 9B only
+├─ game mode ON (local unloaded)                         → cloud → Gemini, no local
+├─ health OFFLINE                                        → local 9B only
+├─ health DEGRADED                                       → Gemini → local (probes recover cloud)
+├─ rate bucket empty (36 RPM)                            → local 9B, cloud skipped entirely
+├─ heavy turn (planning / orchestrator)                  → NIM heavy → cloud primary → local
+└─ normal turn                                           → cloud primary → Gemini → local
+
+cloud primary = openai/gpt-4o-mini via OpenRouter (bench: DECISIONS #83);
+heavy = z-ai/glm-5.2 via NVIDIA NIM (background-only)
+```
+
+- Health state machine: one failure drops CLOUD→DEGRADED (DNS straight to
+  OFFLINE); recovery needs 3 consecutive 45 s probes plus a budgeted
+  1-token generation ping. A 429 starts a 90 s cloud cooldown.
+- Per-request fallback is mid-agent-loop: the identical messages array is
+  resent to the next rung — no restart, no lost tool results. First-token
+  timeout: 3.5 s on voice, 8 s on text.
+- Privacy pins never leak: pinned tool results force the rest of the turn
+  local (outranking game mode) and are redacted from any cloud-bound
+  payload. The UI shows which brain answered every message (badge), the
+  router state (dot) and a game-mode toggle.
+- **Rollback**: `router.mode: local_primary` in config.yaml — one line,
+  restores the pre-NIM local-first ladder.
 
 ## Development
 
@@ -139,3 +172,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | 3 ✅ | Voice: wake word, Whisper STT, Kokoro TTS, EN/HI/Hinglish |
 | 4 ✅ | Background tasks, notifications, browser control, Telegram, autostart |
 | 5 ✅ | Multi-agent projects, screen awareness, speaker verification, Tailscale doc |
+| NIM 🔄 | Cloud-primary brains (NVIDIA NIM + Gemini backstop), health-aware router, pins, game mode — `feature/nim-cloud-primary-router` |

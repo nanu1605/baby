@@ -1,0 +1,24 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T9  run: 3
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Expense Entry Form",
+      "spec": "Create a folder named expense-form. Inside it, produce three files: index.html, style.css, and script.js. index.html should contain a simple form with fields for Date (type=date), Description (text), Amount (number, min=0), and Category (select with options: Food, Transport, Entertainment, Utilities, Other). Include a submit button. style.css should provide basic styling: form width 300px, padding, margin auto, input width 100%, and visual feedback for invalid fields. script.js should add an event listener to the form's submit event; prevent default, gather field values, validate that all fields are filled and amount > 0, then store the entry as an object in an array saved to localStorage under key 'expenses' (retrieving existing array if any). After saving, clear the form and display a brief success message below the form. No external libraries are required."
+    },
+    {
+      "title": "Monthly Charts",
+      "spec": "Create a folder named charts. Inside it, produce four files: chart.html, chart.css, chart.js, and sample-data.json. sample-data.json should contain an array of expense objects each with date (YYYY-MM-DD), description, amount (number), and category (string) – include at least 12 entries spanning three months. chart.html should include a canvas element with id 'expenseChart' and a heading. chart.css should style the page with a centered canvas (max-width 600px) and appropriate padding. chart.js should load Chart.js from a CDN (https://cdn.jsdelivr.net/npm/chart.js), read sample-data.json via fetch, aggregate expenses by month (YYYY-MM), compute total amount per month, then render a bar chart showing months on the x-axis and total expenses on the y-axis. Ensure the chart updates if the data file is changed. No interaction with localStorage or other external storage is required."
+    },
+    {
+      "title": "CSV Export",
+      "spec": "Create a folder named csv-export. Inside it, produce two files: export.py and sample-data.json. sample-data.json should contain an array of expense objects with keys: date, description, amount, category (same format as in the charts subtask). export.py should be a Python 3 script that reads sample-data.json, writes a CSV file named expenses.csv in the same folder with header row: Date,Description,Amount,Category, and writes each expense's values in that order. The script should handle floating-point amounts correctly and ensure proper quoting if values contain commas. Include a brief comment at the top explaining how to run the script (python3 export.py). No external dependencies beyond the Python standard library are allowed."
+    },
+    {
+      "title": "README Documentation",
+      "spec": "Create a folder named docs. Inside it, produce a single file README.md. The README should contain: (1) Project title and short description of the personal finance tracker web app. (2) Instructions for running the expense entry form: open expense-form/index.html in a browser. (3) Instructions for viewing the monthly charts: open charts/charts.html in a browser. (4) Instructions for generating the CSV export: navigate to csv-export folder and run 'python3 export.py', then open expenses.csv. (5) List of technologies used (HTML, CSS, JavaScript, Chart.js, Python). (6) Notes about data persistence (localStorage for the form, sample JSON files for charts and export). (7) Any known limitations. Ensure the markdown is properly formatted with headings, code fences where appropriate, and bullet points."
+    }
+  ]
+}

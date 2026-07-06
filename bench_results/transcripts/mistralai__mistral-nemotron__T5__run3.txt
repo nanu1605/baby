@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Mujhe afsos hai, Tanishq, main abhi tak kisi kaam pe laga hua hoon, isliye main tumse baat nahi kar pa raha hoon. Kya main kuch aur madad kar sakta hoon?

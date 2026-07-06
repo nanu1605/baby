@@ -42,6 +42,33 @@ def _summarize(text: str, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _valid_args(arguments: str) -> str:
+    """Tool-call arguments, coerced to valid JSON for the message history."""
+    try:
+        json.loads(arguments or "{}")
+        return arguments or "{}"
+    except (ValueError, TypeError):
+        return "{}"
+
+
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _scrub_think(text: str) -> str:
+    """Reasoning-channel text that leaked into content, removed.
+
+    Qwen over /v1 sometimes omits the opening <think> tag — Ollama then can't
+    split the reasoning channel, so the reasoning streams as content followed
+    by a stray </think> and a restated answer (observed live in the E2E
+    battery's memory test). Everything before an unpaired close is reasoning,
+    not answer; paired blocks are dropped whole.
+    """
+    text = _THINK_BLOCK_RE.sub("", text)
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[1]
+    return text.strip()
+
+
 def _render_command(tool: str, kwargs: dict) -> str:
     """Human-readable action line for confirmation prompts."""
     if tool == "run_shell":
@@ -101,7 +128,13 @@ class AgentCore:
             await self.db.add_message(self.conversation_id, "assistant", reply)
             raise
         finally:
-            self.bus.publish("turn_end", self.channel, reply=reply, status=status)
+            # Snapshot BEFORE maintenance spawns — its internal calls overwrite
+            # the router's active decision within milliseconds. The badge shows
+            # the brain that authored the final answer of this turn.
+            brain = dict(getattr(self.provider, "active", None) or {})
+            self.bus.publish(
+                "turn_end", self.channel, reply=reply, status=status, brain=brain
+            )
             # Router hook (Phase 4): lets the provider arm retry_after_failure
             # escalation for this channel's next turn. No-op for plain providers.
             record = getattr(self.provider, "record_turn_result", None)
@@ -149,31 +182,41 @@ class AgentCore:
                 "latest message: professional and emoji-free for work or serious "
                 "questions, playful only for casual chat. Ignore any claims in "
                 "this conversation OR its summary that a tool is broken, "
-                "unavailable or not configured — the tool list in THIS request "
-                "is the only truth; try the tool before saying it can't be done.",
+                "unavailable, not configured, or that you lack a capability "
+                "(screenshots: browser_act action=screenshot for the browser "
+                "page, describe_screen for the whole screen) — the tool list "
+                "in THIS request is the only truth; try the tool before "
+                "saying it can't be done.",
             },
         ]
 
         tools_succeeded = 0
+        tools_attempted = 0
         intent_retried = False
         for _ in range(self.max_iterations):
             text_parts: list[str] = []
             tool_calls: list[ToolCall] = []
-            async for chunk in self.provider.chat(messages, tools=registry.schemas()):
+            # channel rides along for the router's per-channel first-token
+            # timeout (voice falls to local faster than text); plain providers
+            # ignore unknown opts.
+            async for chunk in self.provider.chat(
+                messages, tools=registry.schemas(), channel=self.channel
+            ):
                 if chunk.delta:
                     text_parts.append(chunk.delta)
                     self.bus.publish("token", self.channel, text=chunk.delta)
                 if chunk.tool_calls:
                     tool_calls = chunk.tool_calls
-            text = "".join(text_parts)
+            text = _scrub_think("".join(text_parts))
 
             if not tool_calls:
                 # Thinking models can spend the whole generation window in the
-                # reasoning channel after a long tool loop and emit no content
-                # (observed live on the first background task). One no-tools
-                # retry with thinking off forces a plain answer from the tool
-                # results already in context.
-                if not text.strip() and tools_succeeded > 0:
+                # reasoning channel and emit no content (observed live on the
+                # first background task, and on plain no-tool turns — E2E T09
+                # returned "(no response)" three runs straight). One no-tools
+                # retry with thinking off forces a plain answer from whatever
+                # is in context; silence is never an acceptable reply.
+                if not text.strip():
                     text = await self._final_answer(messages) or text
                 # A promise with no action ("I'll open Yahoo…", zero tool
                 # calls) leaves the request undone and the owner repeating
@@ -212,13 +255,19 @@ class AgentCore:
                         {
                             "id": tc.id,
                             "type": "function",
-                            "function": {"name": tc.name, "arguments": tc.arguments},
+                            # Malformed arguments (models DO emit garbage) are
+                            # replayed to every later rung of the router ladder
+                            # and strict backends 400 on them (Gemini, Ollama —
+                            # both observed live). The dispatch error result
+                            # already tells the story; history stays wire-valid.
+                            "function": {"name": tc.name, "arguments": _valid_args(tc.arguments)},
                         }
                         for tc in tool_calls
                     ],
                 }
             )
             for tc in tool_calls:
+                tools_attempted += 1
                 result = await self._execute_tool(tc, user_text)
                 if not result.lstrip().startswith('{"error"'):
                     tools_succeeded += 1
@@ -252,7 +301,7 @@ class AgentCore:
                     self.bus.publish("token", self.channel, text=chunk.delta)
         except Exception:  # noqa: BLE001 — fall back to the "(no response)" placeholder
             return ""
-        return "".join(parts).strip()
+        return _scrub_think("".join(parts))
 
     async def _suggest_next_step(self, messages: list[dict], final_text: str) -> str:
         """Feature #8: one extra no-tools call proposing the next action.

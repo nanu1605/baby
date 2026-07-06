@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T3  run: 3
+score: {"pass": false, "args_ok": false, "query_ok": false, "limit_ok": false}
+calls:
+final:
+{"type": "function", "name": "file_search", "parameters": {"max_results": "5", "query": "backup*.py"}}

@@ -1,0 +1,14 @@
+model: mistralai/mistral-nemotron  test: T1  run: 5
+score: {"pass": false, "correct_tools": false, "args_ok": false, "mentions_cpu": false}
+calls:
+final:
+I'll close Chrome first.
+
+**Action:** `app_control`
+**Parameters:**
+```json
+{
+  "action": "close",
+  "name": "Chrome"
+}
+```

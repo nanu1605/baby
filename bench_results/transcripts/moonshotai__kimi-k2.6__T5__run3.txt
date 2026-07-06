@@ -1,0 +1,7 @@
+model: moonshotai/kimi-k2.6  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+ Haa bhai Tanishq, sab theek hai! Main yahin hoon, taiyaar. 😎
+
+Abhi dekhna hai kya chal raha hai tere system mein? Ya kuch aur kaam hai? Bata de!

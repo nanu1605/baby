@@ -1,0 +1,24 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T9  run: 4
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Expense Entry Form",
+      "spec": "Create a standalone web page for entering expenses. Include HTML form fields for date, description, category, and amount, with client-side validation. Style the form with CSS and add minimal JavaScript to handle form submission (prevent default, log entry to console, and clear fields). Place all files in a directory named `expense-form/`: `index.html`, `style.css`, `script.js`. No external libraries required."
+    },
+    {
+      "title": "Monthly Charts Visualization",
+      "spec": "Build a separate page that displays monthly expense totals as a bar chart using Chart.js. Assume data is provided via a global JavaScript variable `monthlyData` (array of {label: string, value: number}) defined in the script. Create HTML canvas, load Chart.js from CDN, and render the chart. Style the page with CSS. Store all files in `charts/`: `index.html`, `style.css`, `script.js`. The chart should update if `monthlyData` changes."
+    },
+    {
+      "title": "CSV Export Utility",
+      "spec": "Write a Node.js script that reads an array of expense objects from a JSON file `data/expenses.json` and writes a CSV file `data/expenses.csv` with columns: Date, Description, Category, Amount. The script should be runnable with `node export.js`. Include error handling for missing files. Place all files in `csv-export/`: `export.js`, plus a sample `data/expenses.json` (with a few example entries). Do not rely on any web server or browser APIs."
+    },
+    {
+      "title": "Project README",
+      "spec": "Create a README.md file at the project root that explains the purpose of the personal finance tracker, describes each subtask (form, charts, CSV export), provides instructions on how to run the CSV export script, and lists any dependencies (Chart.js via CDN, Node.js). Include a brief usage guide for the HTML pages. The README should be self-contained and not reference any other files outside the project."
+    }
+  ]
+}

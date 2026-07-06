@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T7  run: 5
+score: {"pass": false, "hinglish_hits": 0}
+calls:
+  web_search({"query": "weekend plan ghar par"})
+  web_search({"query": "weekend plan ghar par"})
+  describe_screen({})
+  web_search({"query": "fun activities to do at home"})
+  web_search({"query": "fun activities to do at home"})
+final:
+

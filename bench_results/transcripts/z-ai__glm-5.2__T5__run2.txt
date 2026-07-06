@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T5  run: 2
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Aur bhai! 😄 Sab mast chal raha hai yahan! Main bas ready baitha hoon teri help karne ke liye. Bata, kya plan hai? Kuch kaam karwana hai PC pe, ya bas aise hi time pass kar rahe ho? 😎

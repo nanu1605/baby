@@ -1,0 +1,8 @@
+model: deepseek/deepseek-chat-v3.1  test: T8  run: 5
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{
+  "city": "Mumbai",
+  "why": "Mumbai is renowned for its diverse and vibrant street food culture, offering iconic dishes like vada pav, pav bhaji, bhel puri, and pani puri that represent the city's unique blend of flavors and culinary traditions accessible to everyone."
+}

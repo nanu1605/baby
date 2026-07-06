@@ -1,0 +1,6 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T5  run: 5
+score: {"pass": false, "zero_tools": false}
+calls:
+  get_time({})
+final:
+I am unable to execute this task as it exceeds the limitations of the functions at my disposal.

@@ -1,0 +1,5 @@
+model: openai/gpt-4o-mini  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Sab theek hai! Aap kaise hain? Kya aaj kuch khaas karne ka mann hai?

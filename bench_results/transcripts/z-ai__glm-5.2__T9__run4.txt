@@ -1,0 +1,24 @@
+model: z-ai/glm-5.2  test: T9  run: 4
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Develop Expense Entry Form",
+      "spec": "Create a file named 'expense-form.js'. Implement a vanilla JavaScript module that renders an expense entry form into a given DOM container element. The form must include fields for: Date (date input), Amount (number input, two decimal places), Category (select with options: Food, Transport, Housing, Entertainment, Other), and Description (text input). Include an 'Add Expense' submit button. On submit, prevent default behavior, validate that all fields are filled and Amount is a positive number, then return a JavaScript object with the shape { date: 'YYYY-MM-DD', amount: number, category: string, description: string }. Export a single function `renderExpenseForm(containerId, onSubmit)` that builds the form inside the container and wires the onSubmit callback to receive the expense object. Do not use any external libraries or frameworks. Do not create or modify any other files."
+    },
+    {
+      "title": "Develop Monthly Charts Component",
+      "spec": "Create a file named 'monthly-charts.js'. Implement a vanilla JavaScript module that renders a monthly expense bar chart using the HTML5 Canvas API. Export a single function `renderMonthlyChart(canvasId, expenses)` where `expenses` is an array of objects with shape { date: 'YYYY-MM-DD', amount: number, category: string, description: string }. The function must parse the dates, group expenses by month (YYYY-MM), sum the amounts per month, sort chronologically, and draw a bar chart on the provided canvas element. Draw axis labels, month labels, and amount labels on each bar. Use only the built-in Canvas 2D API. No external charting libraries. Do not create or modify any other files."
+    },
+    {
+      "title": "Develop CSV Export Utility",
+      "spec": "Create a file named 'csv-export.js'. Implement a vanilla JavaScript module for exporting expenses to CSV. Export a single function `exportExpensesToCSV(expenses, filename)` where `expenses` is an array of objects with shape { date: 'YYYY-MM-DD', amount: number, category: string, description: string }. The function must convert the array to CSV format with a header row (Date,Amount,Category,Description), properly escape any commas or quotes in the description field by wrapping in double quotes and escaping internal double quotes, generate a CSV string, create a Blob with MIME type 'text/csv', and trigger a browser download using the provided filename (default to 'expenses.csv' if not given). Do not use any external libraries. Do not create or modify any other files."
+    },
+    {
+      "title": "Write README Documentation",
+      "spec": "Create a file named 'README.md'. Write comprehensive documentation for a personal finance tracker web app. The README must include: a project title and description, a features list covering expense entry, monthly charts, and CSV export, installation instructions (clone repo, open index.html in a browser), usage instructions for adding expenses, viewing charts, and exporting data, a project structure section listing the files expense-form.js, monthly-charts.js, csv-export.js, and index.html, a section on data persistence explaining that expenses are stored in browser localStorage, and a license section (MIT). Use proper Markdown formatting with headings, lists, and code blocks where appropriate. Do not create or modify any other files."
+    }
+  ]
+}

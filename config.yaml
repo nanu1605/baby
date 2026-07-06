@@ -10,23 +10,49 @@ models:
     num_ctx: 8192
     temperature: 0.7
     keep_alive: 24h
-  heavy:
-    provider: ollama
-    model: qwen3.6:35b-a3b              # library tag verified 2026-07-04 (24 GB MoE)
-    num_ctx: 8192
-    temperature: 0.5
-    keep_alive: 10m
-    min_free_ram_gb: 22
+  # heavy (local qwen3.6:35b-a3b) removed at N5 — the heavy tier is
+  # z-ai/glm-5.2 on NIM (models.nim_heavy). local_primary rollback now
+  # escalates daily → cloud only.
   cloud:
     provider: gemini
     model: gemini-flash-latest          # free tier; key in .env; optional
+  nim_primary:
+    provider: nvidia                    # generic OpenAI-compatible client
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    model: openai/gpt-4o-mini           # OR bench winner (Tanishq, 2026-07-06): all tests 100%, 1.2s first token
+    # NIM rollback: base_url https://integrate.api.nvidia.com/v1, drop
+    # api_key_env, model minimaxai/minimax-m2.7 (served 0/45 on the
+    # 2026-07-06 soak day — congestion; see DECISIONS.md)
+    temperature: 0.7
+  nim_heavy:
+    provider: nvidia
+    base_url: https://integrate.api.nvidia.com/v1
+    model: z-ai/glm-5.2                 # N1 bench winner (heavy): planning 5/5; slow (~130s) but background-only
+    temperature: 0.5
   embedder: intfloat/multilingual-e5-small
 
 router:
+  mode: cloud_primary                   # cloud_primary | local_primary ← rollback is this one line
   default: daily
   escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
   escalation_order: [heavy, cloud]
   long_context_tokens: 4096             # above this → cloud (heavy shares the global 8K ctx)
+  # cloud_primary keys (inert until Phase N2 router v2 lands):
+  primary: nim_primary
+  heavy: nim_heavy
+  offline_fallback: daily
+  backstop: cloud
+  local_keep_warm: true
+  first_token_timeout_s: {voice: 3.5, text: 8}
+  health: {probe_s: 45, recover_after: 3, cooldown_429_s: 90}
+  rate_limit: {rpm: 36, background_share: 0.5}
+  privacy_pins: [read_file, run_shell]
+  language_pin: {enabled: true, devanagari_ratio: 0.3, target: daily}
+
+game_mode:
+  enabled: true                         # NIM plan §2.5: unload local 9B, route all cloud
+  auto_detect: true                     # owner enabled 2026-07-06: fullscreen app toggles ON, alt-tab out toggles OFF
 
 voice:
   enabled: true
@@ -54,10 +80,10 @@ voice:
   vad_silence_ms: 400
   vad_speech_wait_ms: 5000              # grace to start talking after the beep
   speaker_verify:
-    enabled: true                       # fail-soft off while models/owner_voice.json is missing
+    enabled: false                      # owner disabled 2026-07-06: natural speech scored below even a re-enrolled profile (false rejections)
     model: models/wespeaker_en_voxceleb_CAM++.onnx
     profile: models/owner_voice.json
-    threshold: 0.5                      # tune from enroll_voice.py printed stats
+    threshold: 0.68                     # from 2026-07-06 re-enrollment (min intra-speaker 0.78)
     mode: chat_only                     # chat_only | ignore (unknown voices)
   barge_in: true
   barge_in_threshold: 0.6               # raise if speaker echo self-triggers

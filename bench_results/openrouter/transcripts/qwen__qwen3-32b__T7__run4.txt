@@ -1,0 +1,14 @@
+model: qwen/qwen3-32b  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 31}
+calls:
+  recall({"query": "user preferences or past activities"})
+final:
+Baby ki bench mode mein recall tool nahi hai, toh main aapko kuch general suggestion deta hu:
+
+1. 🍿 Movie night: Netflix/Disney+ par apne favorite show ka binge karo ya old classics dekh lo
+2. 🎲 Board games: Ludo, Carrom, ya phir family ke saath Scrabble/Chess khel lo
+3. 🧑🍳 New recipe try karo - maybe aapne pehle kisi cooking show ko dekha hota ho
+4. 🧩 Puzzle assembly ya DIY projects ke liye shuru karo (agar aapko kuch material mil gaya ho)
+5. 📷 Photo album banane ka plan karo - old memories ko arrange karo
+
+Aapko kuch specific type ka activity padhta hai? Main aapko aur specific suggestions kar sakta hu agar aapke interest ke barein janne ke baad.

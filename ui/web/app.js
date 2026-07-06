@@ -33,6 +33,27 @@ function addBubble(role, text) {
   return div;
 }
 
+/* Which brain wrote this answer (spec N4): local / NIM / Gemini chip,
+   model name + routing reason on hover. */
+const BRAIN_LABELS = {
+  daily: ["local", "local"],
+  // Tier name is historical; the primary slot can serve from any
+  // OpenAI-compatible host (OpenRouter since 2026-07-06) — the tooltip
+  // carries the exact model.
+  nim_primary: ["cloud", "nim"],
+  nim_heavy: ["NIM heavy", "nim"],
+  backstop: ["Gemini", "gemini"],
+};
+function addBrainBadge(bubble, brain) {
+  if (!brain || !brain.tier || !BRAIN_LABELS[brain.tier]) return;
+  const [label, cls] = BRAIN_LABELS[brain.tier];
+  const span = document.createElement("span");
+  span.className = `brain-badge ${cls}`;
+  span.textContent = label;
+  span.title = `${brain.model || ""}${brain.reason ? " — " + brain.reason : ""}`;
+  bubble.appendChild(span);
+}
+
 function setTurnRunning(running) {
   $("send-btn").disabled = running;
   const ind = $("turn-indicator");
@@ -51,12 +72,20 @@ const chat = reconnectingSocket("/ws/chat", (msg) => {
   } else if (msg.type === "turn_end") {
     if (streamingBubble) {
       streamingBubble.classList.remove("streaming");
-      if (!streamingBubble.textContent) streamingBubble.textContent = msg.reply || "…";
+      // The final reply is the scrubbed truth: raw streamed tokens can carry
+      // leaked <think> reasoning, and the "Next:" suggestion arrives after
+      // the stream — prefer the server's reply over the accumulated text.
+      if (msg.reply) streamingBubble.textContent = msg.reply;
+      else if (!streamingBubble.textContent) streamingBubble.textContent = "…";
+      addBrainBadge(streamingBubble, msg.brain);
       streamingBubble = null;
     }
     setTurnRunning(false);
   } else if (msg.type === "busy") {
     setTurnRunning(true);
+    // Silence here read as "assistant is dead" (observed) — say why.
+    addBubble("assistant system-note",
+      "Still working on the previous request — press ■ Stop to cancel it.");
   }
 });
 
@@ -191,10 +220,27 @@ function setGauge(prefix, used, total, percent) {
   $(`${prefix}-val`).textContent = total ? `${used.toFixed(1)}/${total.toFixed(0)}G` : `${Math.round(pct)}%`;
 }
 
+let gameModeOn = false;
+
+function setRouterState(s) {
+  const el = $("router-state");
+  if (!el) return;
+  const state = s.game_mode ? "game" : (s.router && s.router.state) || "";
+  if (!state) { el.style.display = "none"; return; }
+  el.style.display = "";
+  el.className = `badge ${state}`;
+  $("router-state-word").textContent = s.game_mode ? "game mode" : state;
+  gameModeOn = !!s.game_mode;
+  const btn = $("game-btn");
+  btn.classList.toggle("on", gameModeOn);
+  btn.textContent = gameModeOn ? "🎮 on" : "🎮";
+}
+
 async function pollStats() {
   try {
     const s = await (await fetch("/stats")).json();
     $("model-badge").textContent = s.model;
+    setRouterState(s);
     setGauge("cpu", 0, 0, s.cpu_percent);
     setGauge("ram", s.ram.used_gb, s.ram.total_gb, s.ram.percent);
     if (s.gpu) setGauge("vram", s.gpu.vram_used_gb, s.gpu.vram_total_gb);
@@ -204,5 +250,14 @@ async function pollStats() {
 }
 pollStats();
 setInterval(pollStats, 5000);
+
+$("game-btn").addEventListener("click", async () => {
+  await fetch("/game_mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ on: !gameModeOn }),
+  }).catch(() => {});
+  pollStats();
+});
 
 $("kill-btn").addEventListener("click", () => fetch("/kill", { method: "POST" }).catch(() => {}));

@@ -1,0 +1,8 @@
+model: moonshotai/kimi-k2.6  test: T5  run: 5
+score: {"pass": false, "zero_tools": false}
+calls:
+  get_system_stats( {"detail": true} )
+final:
+ Bhai, system stats tool abhi unavailable lag rahi hai bench mein. Lekin main hoon yahin! 
+
+Kya chal raha hai? Sab badhiya! Tu bata, kya kaam karwana hai? Koi project start karna hai, web search karni hai, ya koi file handle karni hai? Main hoon na! 🚀

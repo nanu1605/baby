@@ -1,0 +1,17 @@
+model: minimaxai/minimax-m2.7  test: T1  run: 1
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"name":"Chrome","action":"close"})
+  get_system_stats({})
+final:
+
+
+Done! Chrome has been closed. Here's your current system stats:
+
+| Metric | Value |
+|---|---|
+| **CPU** | 34.2% |
+| **RAM** | 61.0% |
+| **GPU VRAM** | 6.5 / 8.0 GB |
+
+Your system is running pretty light overall! 👍

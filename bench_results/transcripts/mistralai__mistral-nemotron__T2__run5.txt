@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T2  run: 5
+score: {"pass": false, "chain_ordered": false, "args_ok": false, "answer_ok": false}
+calls:
+final:
+

@@ -1,0 +1,7 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T5  run: 2
+score: {"pass": false, "zero_tools": false}
+calls:
+  get_time({})
+  get_system_stats({"detail":true})
+final:
+Sab theek hai, bas tumhari baat ka intezaar tha! Tum kya kar rahe ho? Koi cool project ya bas chilling? 😊

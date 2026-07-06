@@ -1,0 +1,5 @@
+model: qwen/qwen3-32b  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hello! 😊 Kuch help chahiye hai aapko? Yaar koi task ya query hai jo main aapke liye solve kar sakein?

@@ -212,11 +212,40 @@ async def test_empty_final_reply_retries_with_thinking_off(db):
     assert provider.requests[-1][-1]["role"] == "system"  # answer-now nudge appended
 
 
-async def test_empty_reply_without_tools_stays_placeholder(db):
-    agent, provider, _ = await _make_agent(db, [""])
+async def test_empty_reply_without_tools_retries_once(db):
+    # Silence on a plain turn gets the same thinking-off retry as tool turns
+    # (E2E T09 hit "(no response)" three runs straight before this).
+    agent, provider, _ = await _make_agent(db, ["", "Here is the answer."])
+    reply = await agent.run_turn("hi")
+    assert reply == "Here is the answer."
+    assert len(provider.requests) == 2  # one forced-answer retry
+
+
+async def test_empty_reply_and_empty_retry_stays_placeholder(db):
+    agent, provider, _ = await _make_agent(db, ["", ""])
     reply = await agent.run_turn("hi")
     assert reply == "(no response)"
-    assert len(provider.requests) == 1  # no retry when no tool ran
+
+
+# -- leaked reasoning: qwen /v1 sometimes omits the opening <think> tag --------------
+
+
+async def test_unpaired_think_close_drops_leaked_reasoning(db):
+    # Observed live (E2E battery T04): reasoning streamed as content, then a
+    # stray </think>, then the restated answer — only the answer survives.
+    agent, _, conv_id = await _make_agent(
+        db, ['Your probe word is "kumquat". 🍈\n</think>The probe word is kumquat.']
+    )
+    reply = await agent.run_turn("what is my probe word?")
+    assert reply == "The probe word is kumquat."
+    rows = await db.get_messages(conv_id)
+    assert "</think>" not in rows[-1]["content"]  # history stays clean too
+
+
+async def test_paired_think_block_stripped(db):
+    agent, _, _ = await _make_agent(db, ["<think>secret chain of thought</think>Hi!"])
+    reply = await agent.run_turn("hey")
+    assert reply == "Hi!"
 
 
 # -- stopped turns must read as closed; promises must become actions ----------------
@@ -274,3 +303,46 @@ async def test_promise_push_happens_only_once(db):
     reply = await agent.run_turn("open yahoo")
     assert reply == "I'll open it right away."  # second promise accepted, no loop
     assert len(provider.requests) == 2
+
+
+# -- empty reply after a FAILED/DENIED tool must still produce an answer -------------
+# (observed live: voice turn, web_search denied by the speaker gate, model went
+# silent, owner heard nothing)
+
+
+async def test_empty_reply_after_failed_tool_still_retries(db):
+    script = [_tc("no_such_tool", {}), "", "I could not run that tool."]
+    agent, provider, _ = await _make_agent(db, script)
+    reply = await agent.run_turn("do the thing")
+    assert reply == "I could not run that tool."
+    assert provider.request_tools[-1] is None  # finalize call carries no tools
+
+
+async def test_malformed_tool_args_sanitized_in_history(db):
+    bad = [ToolCall(id="c1", name="echo_tool", arguments="{\"broken")]
+    agent, provider, _ = await _make_agent(db, [bad, "done"])
+    reply = await agent.run_turn("go")
+    assert reply == "done"
+    second = provider.requests[1]
+    assistant = next(m for m in second if m.get("tool_calls"))
+    assert assistant["tool_calls"][0]["function"]["arguments"] == "{}"
+    tool_msg = next(m for m in second if m["role"] == "tool")
+    assert "invalid arguments JSON" in tool_msg["content"]
+
+
+async def test_turn_end_carries_brain_snapshot(db):
+    from core.bus import EventBus
+
+    bus = EventBus()
+    q = bus.subscribe()
+    provider = FakeProvider(["answer"])
+    provider.active = {"tier": "nim_primary", "reason": "normal turn", "model": "m/x"}
+    conv_id = await db.create_conversation("cli")
+    agent = AgentCore(provider, db, conv_id, channel="cli", bus=bus, gate=None)
+    await agent.run_turn("hi")
+    events = []
+    while not q.empty():
+        events.append(q.get_nowait())
+    end = next(e for e in events if e.kind == "turn_end")
+    assert end.payload["brain"]["tier"] == "nim_primary"
+    assert end.payload["brain"]["model"] == "m/x"

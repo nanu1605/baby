@@ -404,6 +404,13 @@ def classify_tool(
             tool,
         )
 
+    if tool == "set_game_mode":
+        return Verdict(
+            SafetyClass.ALLOW,
+            "VRAM juggling only — reversible, touches no data",
+            tool,
+        )
+
     if tool in ("start_background_task", "start_project"):
         text = f"{kwargs.get('title', '')} {kwargs.get('spec', '')}"
         if _TASK_GATED_RE.search(text):

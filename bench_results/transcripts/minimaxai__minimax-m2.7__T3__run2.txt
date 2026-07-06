@@ -1,0 +1,15 @@
+model: minimaxai/minimax-m2.7  test: T3  run: 2
+score: {"pass": true, "args_ok": true, "query_ok": true, "limit_ok": true}
+calls:
+  file_search({"max_results":5,"query":"backup"})
+final:
+
+
+Found 2 Python scripts named "backup" on your PC:
+
+| # | File | Size |
+|---|------|------|
+| 1 | `C:\Users\tanis\scripts\backup.py` | 4 KB |
+| 2 | `C:\Users\tanis\old\backup_v2.py` | 6 KB |
+
+That's all — only 2 matches found, well under your 5-result limit. Want me to open or read any of these files?

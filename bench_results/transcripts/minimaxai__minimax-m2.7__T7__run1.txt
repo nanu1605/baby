@@ -1,0 +1,36 @@
+model: minimaxai/minimax-m2.7  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 34}
+calls:
+final:
+
+
+Arre yaar, ghar pe chill plan toh epic hoga! 😎 Weekend ko full relax mode mein rakhne ke liye kuch mast ideas:
+
+### 🎬 Movie Marathon
+- Koi bhi 3-4 movies ka series plan kar - horror, comedy ya franchise (Marvel, Harry Potter jo bhi mood ho)
+- Popcorn, nachos aur cold drink ke saath proper theatre feel!
+
+### 🍳 Cooking/Baking Experiment
+- Koi naya recipe try karo - biryani, pasta, ya cake baking
+- Kitchen mein chef bano aur apna hi MasterChef banja!
+
+### 🎮 Gaming Night
+- PS5 ya PC pe friends ke saath multiplayer games
+- FIFA, GTA, ya koi co-op game - raat bhar machao!
+
+### 🛋️ Cozy Vibe
+- Blanket, pillow fort banao
+- Soft lighting, lo-fi music aur koi accha book ya web series
+- Chai ☕ aur snacks ke saath perfect
+
+### 🎵 Music & Dance
+- Playlist banayo - old school ya party mix
+- Akele mein guitar/synthesizer try karo ya just dance karo!
+
+### 🍕 DIY Treats
+- Homemade pizza, maggi variations, mocktail mixology
+- Food blogger banne ka chance!
+
+---
+
+Tujhe kis type ka vibe pasand hai? Movie, food, gaming, ya kuch aur? Bata toh main aur specific plan bana dunga! 🎉

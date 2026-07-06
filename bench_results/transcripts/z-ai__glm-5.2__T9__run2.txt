@@ -1,0 +1,24 @@
+model: z-ai/glm-5.2  test: T9  run: 2
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Build expense entry form and storage logic",
+      "spec": "Create a file named `app.js` containing a complete vanilla JavaScript personal finance tracker. It must: (1) Render an expense entry form into a div with id=\"app\" with fields for date (date input, default today), amount (number input), category (select with options: Food, Transport, Housing, Entertainment, Other), and description (text input), plus an Add Expense button. (2) Store expenses in localStorage under key \"baby_expenses\" as a JSON array of objects {date, amount, category, description}. (3) On Add Expense click, validate inputs, append to the array, save to localStorage, re-render the expense list table below the form showing all stored expenses with a delete button per row. (4) Expose two global functions: getExpenses() returning the array, and exportCSV() that builds a CSV string from the array and triggers a browser download as \"expenses.csv\". Do not create any other files. Do not write HTML or CSS files; the JS must build the DOM dynamically."
+    },
+    {
+      "title": "Create monthly charts component",
+      "spec": "Create a file named `charts.js` that provides a standalone monthly expense charting module. It must: (1) Define a global function renderCharts(containerId) that reads expenses from localStorage key \"baby_expenses\" (JSON array of {date, amount, category, description}). (2) Group expenses by month (parsed from date) and by category. (3) Draw two bar charts using only inline SVG created via DOM manipulation (no external libraries): one showing total expenses per month, one showing expenses per category for the current month. (4) Include axis labels and a simple legend. (5) If no expenses exist, render a message \"No data to display\" into the container. Do not create any other files. Do not depend on app.js; this file must work independently as long as localStorage contains the expected data."
+    },
+    {
+      "title": "Create HTML entry point and styles",
+      "spec": "Create two files: `index.html` and `styles.css`. The index.html must: (1) Be a valid HTML5 document with title \"Personal Finance Tracker\". (2) Link styles.css and load app.js and charts.js (in that order, with defer). (3) Contain a header with app title, a div with id=\"app\" (where app.js renders the form and list), a div with id=\"charts\" (where charts.js renders charts), and a footer. The styles.css must: (1) Use a clean, modern, responsive layout with a max-width container. (2) Style the form inputs, table, buttons, and SVG charts with a cohesive color scheme (blues/grays). (3) Include mobile-friendly media queries. Do not create any JavaScript files. Do not reference any other files."
+    },
+    {
+      "title": "Write README documentation",
+      "spec": "Create a file named `README.md` documenting a personal finance tracker web app. It must include: (1) A project title and one-paragraph description. (2) A Features section listing: expense entry form, monthly charts, CSV export, and local storage persistence. (3) A Getting Started section with steps to open index.html in a browser. (4) A Usage section explaining how to add expenses, view charts, and export CSV (mentioning the Add Expense button and the exportCSV function). (5) A Project Structure section listing files: index.html, styles.css, app.js, charts.js. (6) A Tech Stack section noting vanilla JavaScript, HTML5, CSS3, and SVG. (7) A License section with MIT License. Use proper Markdown formatting. Do not create any other files."
+    }
+  ]
+}

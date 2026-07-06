@@ -1,0 +1,5 @@
+model: meta/llama-4-maverick-17b-128e-instruct  test: T1  run: 2
+score: {"pass": false, "correct_tools": false, "args_ok": false, "mentions_cpu": false}
+calls:
+final:
+

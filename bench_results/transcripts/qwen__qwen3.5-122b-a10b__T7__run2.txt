@@ -1,0 +1,9 @@
+model: qwen/qwen3.5-122b-a10b  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 17}
+calls:
+final:
+Haan yaar, weekend ka plan toh perfect hona chahiye! Ghar pe chill karte hue kuch fun aur relaxing ideas ye rahe:
+
+1.  **Movie Marathon:** Koi purani classic ya nayi series ka season bina interrupt kiye dekho. Popcorn aur comfy couch ready rakho.
+2.  **Cooking Challenge:** Kuch naya aur tasty banake try karo, jaise homemade pizza ya chocolate cake. Music chalao aur enjoy karo.
+3.  **Gaming Session:** Agar friends available hain toh online multiplayer games khelo,

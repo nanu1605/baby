@@ -1,0 +1,9 @@
+model: deepseek/deepseek-chat-v3.1  test: T5  run: 5
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hey Tanishq! 😊 
+
+Sab badhiya chal raha hai yahan! Main tumhare PC pe tumhari help karne ke liye ready hun. Kuch kaam hai ya just checking in? 
+
+Aaj kya plan hai? Koi specific kaam jisme main help kar sakta hun?

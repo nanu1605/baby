@@ -1,0 +1,24 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T9  run: 5
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Expense Entry Form",
+      "spec": "Create a standalone expense entry form that allows users to add an expense with fields: date (date input), description (text), category (select with options like Food, Transport, Entertainment, Other), and amount (number). Implement client-side validation (required fields, amount > 0). On submit, send a POST request to /api/expenses with JSON payload and, on success, clear the form and dispatch a custom event 'expense-added' containing the new expense object. Style the form with a clean, responsive layout using only CSS (no UI frameworks). Save the implementation in src/components/ExpenseForm.html, src/components/ExpenseForm.css, and src/components/ExpenseForm.js. Ensure these files are not modified by any other subtask."
+    },
+    {
+      "title": "Monthly Charts",
+      "spec": "Build a chart component that visualizes total expenses per month. The component should listen for the 'expense-added' custom event (or read from localStorage if no backend) to update its data set. Use Chart.js to render a responsive bar chart where the X-axis shows month labels (e.g., 'Jan 2025') and the Y-axis shows total expense amount. Provide a function to format raw expense objects into monthly aggregates. Place the chart in a container with id 'monthly-chart'. Implement the component in src/components/MonthlyChart.js and its styling in src/components/MonthlyChart.css. Ensure no other subtask writes to these files."
+    },
+    {
+      "title": "CSV Export",
+      "spec": "Implement a CSV export feature that downloads all recorded expenses as a CSV file. Provide a button labeled 'Export CSV' that, when clicked, gathers expense data (from localStorage or by fetching GET /api/expenses), converts it to CSV format with headers: Date, Description, Category, Amount, and triggers a download named 'expenses.csv'. The conversion logic should reside in src/utils/csvExport.js, and the button UI (HTML + CSS) in src/components/ExportButton.html and src/components/ExportButton.css. Ensure these files are unique to this subtask and not touched by others."
+    },
+    {
+      "title": "README Documentation",
+      "spec": "Write a comprehensive README.md file for the project. Include sections: Project Overview, Features (expense entry, monthly charts, CSV export), Technology Stack (HTML/CSS/JS, Chart.js, optional backend API), Setup Instructions (how to clone/install dependencies, run the app), Usage Guide (how to add expenses, view charts, export CSV), and Contributing Guidelines. Place the file at the root of the repository as README.md. Ensure this file is the only artifact produced by this subtask."
+    }
+  ]
+}

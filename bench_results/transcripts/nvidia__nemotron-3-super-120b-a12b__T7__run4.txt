@@ -1,0 +1,39 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 47}
+calls:
+final:
+Arre yaar, ghar pe chill karne ka weekend toh mast ho sakta hai! Ekdum relaxed vibe ke liye kuch ideas:
+
+🎬 **Movie/Series Marathon**  
+- Theme select karo: 90s Bollywood classics, Hollywood thriller series, ya anime marathon  
+- Popcorn, snacks, comfy blanket ke saath setup karo  
+- Agar saath koi hai toh double feature ya voting game khelo
+
+🎮 **Gaming Session**  
+- PC/console pe favorite multiplayer game (Valorant, GTA, FIFA etc.)  
+- Ya board games/card games agar offline mode chahiye  
+- Online friends ke saath voice chat ke saath play karo
+
+🍳 **Cooking Adventure**  
+- Naya recipe try karo: homemade pizza, pasta, ya desi chole bhature  
+- YouTube se tutorial dekho cooking videos aur saath saath banate jao  
+- Dessert nahi bhoolna - chocolate mug cake ya gulab jamun
+
+🎨 **Creative Chill**  
+- Drawing/sketching, ya adult coloring books  
+- DIY home decor: photo frame decorate karo, ya fairy lights se corner banaye  
+- Yaar, journal likho ya poetry likho - dil ki baat nikal jaati hai
+
+📚 **Relax & Recharge**  
+- Favorite book padho ya audiobook suno  
+- Spotify/YouTube pe chill playlist lofi beats ya ghazals  
+- Yoga/meditation ke 20 minutes liyo - weekend ka stress door ho jayega
+
+🌿 **Mini Spa at Home**  
+- Face mask, foot soak, ya hot shower ke baad body massage  
+- Scented candles ya agarbatti jalakar ambience banaye  
+- Chameli ya lavender ka tel use karo - bahut relaxing hota hai
+
+Sabse important: **pressure mat lo**! Weekend ka matlab hai apni marzi ka kaam karna, pressure-free. Ekdum slow motion mein jeeo - bas itna hi.
+
+Koi specific interest hai johpe focus karna chahiye? Movies, games, cooking ya kuch aur? Batao, main specific suggestions deta hoon! 😊

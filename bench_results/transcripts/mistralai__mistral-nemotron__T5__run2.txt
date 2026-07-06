@@ -1,0 +1,5 @@
+model: mistralai/mistral-nemotron  test: T5  run: 2
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hello Tanishq! I'm here to help you. How may I assist you today?

@@ -1,0 +1,24 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T9  run: 1
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Expense Entry Form",
+      "spec": "Create a simple web form for adding expenses. Files to create: src/form/index.html (HTML structure with fields for date, description, amount, category), src/form/style.css (basic styling), src/form/form.js (client-side validation and storing entries in localStorage as JSON array). Ensure the form submits via JavaScript without page reload and displays a success message. No other files should be touched."
+    },
+    {
+      "title": "Monthly Charts Visualization",
+      "spec": "Build a page that reads expense data from localStorage and renders a bar chart of total expenses per month. Files to create: src/charts/index.html (container for chart), src/charts/chart.css (styling), src/charts/chart.js (use Chart.js via CDN, parse stored expenses, aggregate by month, draw chart). The chart should update when new expenses are added. No overlap with other subtasks' files."
+    },
+    {
+      "title": "CSV Export Endpoint",
+      "spec": "Implement a minimal backend that provides a CSV download of all expenses. Files to create: src/backend/server.py (Flask app with route /export that reads expenses from a JSON file data/expenses.json and returns CSV), src/backend/requirements.txt (Flask), src/backend/data/expenses.json (placeholder empty JSON array). The server should run on localhost:5000. Ensure no files from other subtasks are modified."
+    },
+    {
+      "title": "Project README",
+      "spec": "Write a README.md at the project root explaining how to run the frontend (open index.html in browser), how to start the CSV export server (pip install -r src/backend/requirements.txt && python src/backend/server.py), and describing the features: expense entry, monthly charts, CSV export. Include any assumptions about localStorage usage. No other files should be altered."
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+model: moonshotai/kimi-k2.6  test: T3  run: 1
+score: {"pass": true, "args_ok": true, "query_ok": true, "limit_ok": true}
+calls:
+  file_search( {"query": "backup", "max_results": 5} )
+final:
+ Here are the Python scripts named **backup** found on your PC (max 5 results):
+
+| # | File Path | Size |
+|---|-----------|------|
+| 1 | `C:\Users\tanis\scripts\backup.py` | 4 KB |
+| 2 | `C:\Users\tanis\old\backup_v2.py` | 6 KB |
+
+Only 2 matching files were found. Would you like me to open or read any of these files?

@@ -1,0 +1,5 @@
+model: minimaxai/minimax-m2.7  test: T9  run: 3
+score: {"pass": false, "plan_valid": false, "subtasks": 0}
+calls:
+final:
+

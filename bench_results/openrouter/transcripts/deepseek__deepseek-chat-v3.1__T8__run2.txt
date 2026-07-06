@@ -1,0 +1,7 @@
+model: deepseek/deepseek-chat-v3.1  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+  web_search({"query": "best Indian cities for street food"})
+  recall({"query": "favorite Indian street food cities"})
+final:
+{"city": "Mumbai", "why": "Known for its diverse street food culture including vada pav, pav bhaji, bhel puri, and sev puri available at every corner with vibrant flavors"}

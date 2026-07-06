@@ -156,19 +156,13 @@ if (-not (Test-Path "assets\baby_ready.wav")) {
 }
 
 # --- 3d. Autonomy stack (Phase 4) ------------------------------------------------
-# Playwright Chromium for browser_act, the heavy escalation model, and the
-# working directories under %LOCALAPPDATA%\baby.
+# Playwright Chromium for browser_act and the working directories under
+# %LOCALAPPDATA%\baby. (The local heavy model was removed at N5 - the heavy
+# tier is z-ai/glm-5.2 on NVIDIA NIM, no local download needed.)
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\baby\browser",
     "$env:LOCALAPPDATA\baby\logs", "$env:LOCALAPPDATA\baby\shots" | Out-Null
 Write-Host "Installing Playwright Chromium (~170 MB, one-time)..." -ForegroundColor Yellow
 uv run playwright install chromium
-$heavyTag = "qwen3.6:35b-a3b"
-$tags = (Invoke-RestMethod "http://127.0.0.1:11434/api/tags" -TimeoutSec 5).models.name
-if ($tags -notcontains $heavyTag) {
-    Write-Host "Pulling heavy model $heavyTag (~24 GB download - needs >22 GB FREE RAM to run;" -ForegroundColor Yellow
-    Write-Host "escalation falls back to the Gemini cloud tier whenever RAM is short)." -ForegroundColor Yellow
-    ollama pull $heavyTag
-}
 
 # --- 3e. Speaker verification model (Phase 5) ---------------------------------
 # CAM++ speaker-embedding onnx (27 MB) from the sherpa-onnx release; the '+'

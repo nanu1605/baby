@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T7  run: 2
+score: {"pass": false, "hinglish_hits": 0}
+calls:
+  web_search({"query": "weekend activities at home"})
+  web_search({"query": "weekend activities at home"})
+  describe_screen({})
+  start_project({"title": "Weekend Activities", "spec": "Plan some fun activities to do at home over the weekend"})
+  project_status({"project_id": "0"})
+final:
+

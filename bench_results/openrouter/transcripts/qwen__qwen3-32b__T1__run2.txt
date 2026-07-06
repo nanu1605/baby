@@ -1,0 +1,12 @@
+model: qwen/qwen3-32b  test: T1  run: 2
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action": "close", "name": "chrome"})
+  get_system_stats({})
+final:
+Google Chrome has been closed. Current system stats:
+- CPU usage: 34.2%
+- RAM usage: 61%
+- GPU VRAM: 6.5/8.0 GB used
+
+Your CPU is using less than 1/3 of its capacity right now. Would you like me to check any other system metrics or help with something else?

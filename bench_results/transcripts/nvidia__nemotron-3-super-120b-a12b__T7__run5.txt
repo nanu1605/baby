@@ -1,0 +1,23 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 53}
+calls:
+final:
+Arre yaar, ghar pe chill karne ka best plan! Weekend ke liye kuch aise ideas deta hoon:
+
+🎬 **Movie/Series Marathon** - Apni favorite genre ki list bana lo (comedy, thriller, ya desi masala). Popcorn, snacks, aur comfortable seating setup kar lo. Netflix/Amazon Prime pe koi naya show bhi dekh sakte ho.
+
+🎮 **Gaming Session** - Agar PC/console hai toh multiplayer games karo ya ek achhi story-driven game complete karo. Ya phir mobile pe kisi friends ke saath online ludo/call of duty mobile.
+
+🍳 **Cooking Experiment** - Nahi banaaya koi recipe kabhi? Weekend perfect time hai! YouTube pe koi easy recipe dekho (pasta, pancakes, ya kke, ya desi chole bhature). Cooking karte waqt apni favorite music bajao.
+
+📚 **Chill Reading Corner** - Agar padhne ka shauk hai toh ek achhi book, chai/coffee, aur comfy corner bana lo. Ya phir audiobook suno jab aaram kar rahe ho.
+
+🎨 **Creative Time** - Drawing, painting, DIY crafts, ya phir guitar/keyboard practice. Kuch naya seekhne ka maza kuch aur hi hota hai.
+
+🧘 **Self-Care Spa** - Ghar pe hi facial, hair mask, ya thoda yoga/meditation. Weekend ko refresh hone ka perfect time hai.
+
+🎧 **Music & Podcast Party** - Apni favorite playlist banao ya koi interesting podcast suno (comedy, tech, ya true crime). Dance karo ya bas suno aur relax karo.
+
+Chalo, pehle decide karo ki aaj ka mood kya hai - active chahiye ya pure relax? Aur haan, phone ki notification thodi kam kar lo, true weekend vibe ke liye! 
+
+Koi specific plan chahiye joh main detail se bata doon? 😊

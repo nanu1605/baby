@@ -1,0 +1,7 @@
+model: minimaxai/minimax-m2.7  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+
+
+{"city": "Delhi", "why": "From iconic Chandni Chowk chaat and parathas to buttery Matar Kulcha at Sita Ram Diwan Singh, Delhi's street food scene is unmatched in diversity, authenticity, and sheer scale—blending Mughal, Punjabi, and North Indian flavors into every corner of the city."}

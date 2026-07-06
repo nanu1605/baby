@@ -1,0 +1,5 @@
+model: z-ai/glm-5.2  test: T8  run: 4
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "From Chandni Chowk's chole bhature and parathas to Daulat ki Chaal and Nihari at Jama Masjid, Delhi's street food scene is unmatched in variety, flavor, and history — it's the undisputed street food capital of India."}

@@ -1,0 +1,5 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hey Tanishq! Sab theek hai, bas tumhari yaadon mein khoi huyi hoon. Tum kaise ho? Kya plan hai aaj ka? 😊

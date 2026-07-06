@@ -1,0 +1,15 @@
+model: minimaxai/minimax-m2.7  test: T3  run: 3
+score: {"pass": true, "args_ok": true, "query_ok": true, "limit_ok": true}
+calls:
+  file_search({"max_results":5,"query":"backup .py"})
+final:
+
+
+Found **2 Python scripts** with "backup" in the name:
+
+| File | Size |
+|------|------|
+| `C:\Users\tanis\scripts\backup.py` | 4 KB |
+| `C:\Users\tanis\old\backup_v2.py` | 6 KB |
+
+Want me to read the contents of either of these files, or search for something else?

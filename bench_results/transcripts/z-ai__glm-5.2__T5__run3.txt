@@ -1,0 +1,7 @@
+model: z-ai/glm-5.2  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Arre Tanishq bhai! 😄 Main bilkul mast hoon, yahan tumhara wait kar raha tha. Bolo, aaj kya plan hai? Koi kaam hai, ya bas aise hi check karne aaye?
+
+Kuch bhi ho — file search, web search, PC ka status, ya kuch aur — bas bolo, main sambhal lunga! 😎

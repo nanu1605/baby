@@ -1,0 +1,8 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T1  run: 5
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action":"close","name":"Chrome"})
+  get_system_stats({"detail":false})
+final:
+Chrome has been closed.  
+Current CPU usage: **34.2%** (RAM: 61.0%, GPU VRAM: 6.5 GB/8.0 GB).

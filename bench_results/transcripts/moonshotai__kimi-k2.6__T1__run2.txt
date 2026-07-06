@@ -1,0 +1,13 @@
+model: moonshotai/kimi-k2.6  test: T1  run: 2
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control( {"action": "close", "name": "Chrome"} )
+  get_system_stats( {"detail": true} )
+final:
+ Chrome has been closed. Here's the current CPU usage:
+
+- **CPU Usage:** 34.2%
+- **RAM Usage:** 61.0%
+- **GPU VRAM:** 6.5 GB used out of 8.0 GB total
+
+Your system is running at moderate load. Is there anything else you'd like me to do?

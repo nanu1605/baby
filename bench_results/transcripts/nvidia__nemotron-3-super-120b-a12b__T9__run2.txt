@@ -1,0 +1,75 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T9  run: 2
+score: {"pass": false, "plan_valid": false, "subtasks": 0}
+calls:
+final:
+We need to output JSON with subtasks array, each with title and spec. No prose, no code fences. Must split into at most 4 independent subtasks, each self-contained, no dependencies, no touching same files. So we need to decide tasks: maybe frontend UI (HTML/CSS/JS), backend API (Node/Express or Python Flask), data storage (maybe localStorage or simple file), charting library integration, CSV export functionality, README. But each subtask must be independent and not share files. So we need to assign distinct file sets per subtask.
+
+We could have:
+
+1. Frontend UI: expense entry form, display monthly charts, using Chart.js, with HTML/CSS/JS files (index.html, style.css, script.js). No backend.
+
+2. Backend API: Node/Express server providing endpoints to save expenses (maybe to a JSON file), retrieve monthly data, export CSV. Files: server.js, data.json (or maybe a separate data folder). But note CSV export may need to generate CSV from data.
+
+3. Data persistence layer: maybe a simple SQLite or JSON file handling, but could be part of backend.
+
+But we need to ensure subtasks do not touch same files. So each subtask's files must be distinct.
+
+We can break as:
+
+- Subtask 1: Frontend (HTML/CSS/JS) that includes a form and uses Chart.js to render charts based on data fetched from a mock API endpoint (maybe using fetch to /api/expenses). It will not implement backend; just assumes API exists.
+
+- Subtask 2: Backend API (Node/Express) that provides REST endpoints for expenses (GET, POST) and CSV export (GET /export). It will read/write a data file (expenses.json) in its own directory.
+
+- Subtask 3: Data model & storage utilities: maybe a module that handles reading/writing expenses.json, but that would be used by backend, causing dependency. Better to incorporate storage into backend subtask.
+
+We have limit 4 subtasks. Could also have:
+
+- Subtask 3: Chart generation library integration (maybe a separate JS module that takes data and draws chart). But that could be part of frontend.
+
+- Subtask 4: README creation.
+
+But we need each subtask spec self-contained: they see only its own spec. So we need to define file list and what to implement.
+
+We must ensure no overlapping files: each subtask should have its own directory or file names that are unique across subtasks.
+
+We can prefix file names with subtask identifier, e.g., frontend/, backend/, docs/. But they must not touch same files; as long as they are in separate folders, it's okay.
+
+Thus:
+
+Subtask 1: Frontend (folder: frontend/). Files: index.html, style.css, script.js. Implement expense entry form, display monthly chart using Chart.js, fetch data from /api/expenses (GET) and /api/export (GET) maybe.
+
+Subtask 2: Backend (folder: backend/). Files: server.js, expenses.json (data file), package.json. Implement Express server with endpoints: GET /api/expenses (return all expenses), POST /api/expenses (add expense), GET /api/export (return CSV). Also maybe serve static frontend? But to avoid overlapping, we can have backend serve its own static files? That would overlap with frontend files. Better to have backend not serve static; just API. The frontend will fetch from backend via relative URL (maybe same origin). But if they are separate folders, they'd need to be served together; but we can assume they will be combined later. However spec must be independent; we can note that frontend expects API at /api/... and backend provides that. They don't share files.
+
+Subtask 3: CSV export utility (maybe a separate module that backend uses). But we could incorporate into backend.
+
+Subtask 4: README (folder: docs/). File: README.md with instructions.
+
+We have 4 subtasks.
+
+Now we need to output JSON: {"subtasks": [{"title":"...", "spec":"..."}, ...]}. Spec should be a string describing what to implement, list of files, maybe tech stack.
+
+We must not include any extra prose outside JSON. No code fences. So output exactly JSON.
+
+Let's craft each spec.
+
+Subtask 1 title: "Frontend UI". Spec: "Create a single-page web application in the frontend/ directory with index.html, style.css, and script.js. Implement an expense entry form (date, description, amount, category). On submit, send POST request to /api/expenses with JSON payload. Fetch existing expenses from GET /api/expenses on load and after each add. Use Chart.js to render a bar chart of total expenses per month (current year). Style responsively. Assume the backend API is available at the same origin. Do not implement any server logic or data persistence."
+
+Subtask 2 title: "Backend API". Spec: "Create a Node.js/Express server in the backend/ directory with server.js, package.json, and an expenses.json file for data storage. Implement REST endpoints: GET /api/expenses returns all expenses as JSON array; POST /api/expenses adds a new expense (expects JSON with date, description, amount, category) and appends to expenses.json; GET /api/export returns a CSV string of all expenses with appropriate Content-Type header. Use fs.readFile/writeFile synchronously or async for file operations. Ensure the server runs on port 3000. Do not include any frontend files."
+
+Subtask 3 title: "Charting Module". Spec: "Create a reusable JavaScript module in the charts/ directory named chart.js that accepts an array of expense objects and returns a Chart.js configuration object for a monthly bar chart. The module should expose a function generateChart(data, canvasId) that creates or updates a Chart.js chart on the given canvas element. Include a simple HTML demo file demo.html that shows how to use the module with sample data. This subtask is independent of frontend and backend; it only provides charting logic."
+
+Subtask 4 title: "Documentation". Spec: "Write a README.md file in the docs/ directory that explains how to install dependencies, run the backend server, serve the frontend, and use the application. Include sections: Project Overview, Setup, API Endpoints, Frontend Usage, CSV Export, and Troubleshooting. Assume Node.js >=14 is installed. Do not include any source code beyond the README."
+
+We have 4 subtasks.
+
+Now produce JSON.
+
+Check: Ensure no extra text. Output exactly JSON.
+
+Let's craft.
+
+{
+  "subtasks": [
+    {
+      "title": "Frontend UI",
+      "spec": "Create a single-page web application in the frontend/ directory with three files: index.html, style.css, and script.js. Implement an expense entry form with fields for date, description, amount (number), and category (text). On form submission, prevent default, collect values, and send a POST request to /api/expenses with JSON payload. After successful submission, clear the form and fetch

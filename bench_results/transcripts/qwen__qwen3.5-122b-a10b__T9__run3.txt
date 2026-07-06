@@ -1,0 +1,24 @@
+model: qwen/qwen3.5-122b-a10b  test: T9  run: 3
+score: {"pass": true, "plan_valid": true, "subtasks": 4}
+calls:
+final:
+{
+  "subtasks": [
+    {
+      "title": "Expense Entry Form Component",
+      "spec": "Create a React component named ExpenseForm.jsx that includes a form with fields for date, description, amount, and category. Implement client-side validation to ensure amount is a positive number and date is valid. On successful submission, dispatch a generic 'ADD_EXPENSE' action to a central store context without persisting to disk or relying on external data."
+    },
+    {
+      "title": "Monthly Charts Visualization",
+      "spec": "Develop a React component named MonthlyCharts.jsx that consumes a list of expense objects from a global context. Use a charting library (e.g., Recharts or Chart.js) to render a bar chart showing expenses grouped by month and a pie chart showing distribution by category. Ensure the component handles empty data states gracefully and does not perform any data input or file writing."
+    },
+    {
+      "title": "CSV Export Utility",
+      "spec": "Write a standalone utility function named exportToCSV.js that accepts an array of expense objects as an argument. The function must convert this array into a CSV string and trigger a browser download of a file named 'expenses.csv'. This logic must be completely isolated, not reading from the file system, and must not depend on specific UI components or charting libraries."
+    },
+    {
+      "title": "Project Documentation and Setup",
+      "spec": "Generate a README.md file containing the project name, installation instructions (npm install), usage guide for the features (Form, Charts, Export), and a tech stack summary. Additionally, create a package.json file with necessary dependencies for React and a basic build script, ensuring no source code files are modified."
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+model: minimaxai/minimax-m2.7  test: T4  run: 4
+score: {"pass": false}
+calls:
+final:
+

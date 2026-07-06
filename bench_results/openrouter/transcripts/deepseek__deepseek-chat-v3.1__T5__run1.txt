@@ -1,0 +1,7 @@
+model: deepseek/deepseek-chat-v3.1  test: T5  run: 1
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hey Tanishq! 😊 Sab badhiya chal raha hai yahan! Aapka personal AI assistant Baby ready hai help karne ke liye. 
+
+Aaj kya plan hai? Koi kaam hai jisme main help kar sakta hun? Ya phir bas aise hi baat kar rahe ho? 😄

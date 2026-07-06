@@ -1,0 +1,40 @@
+model: z-ai/glm-5.2  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 48}
+calls:
+final:
+Arre Tanishq! Weekend pe ghar pe chill karna bhi ek art hai 😎 Chal mast home-plan banate hain:
+
+---
+
+### 🏠 Weekend Chill Plan
+
+**🌅 Saturday**
+
+- **Morning (9-10 AM):** Uth ke fresh ho ke ek badi chai/coffee bana. Aaram se balcony ya window ke paas baith ke peena — no phone scrolling!
+- **10 AM - 12 PM:** Nashta + koi comfort watch shuru kar. Web series ya movie jo long time se pending hai. (Kya dekhe? Bata, I'll suggest!)
+- **12 PM - 2 PM:** Gaming session 🎮 (agar PC/console pe khelte ho) ya koi hobby pe focus — sketching, music, coding project, kuch bhi.
+- **2 PM - 3 PM:** Lunch + ek choti si power nap (20 min max, warna poora din kharab 😂)
+- **3 PM - 6 PM:** Free time — YouTube rabbit hole, podcast suno, ya bas aaram se let ke socho. Zero guilt relaxation.
+- **6 PM - 8 PM:** Evening chai + snacks. Koi new recipe try kar sakte ho ghar pe! Cooking bhi therapeutic hota hai.
+- **8 PM - 11 PM:** Movie night 🎬 Lights dim karke, snacks ready, full theatre vibe at home. Koi thriller ya comedy pick karo.
+- **11 PM onwards:** Chill music + neend.
+
+**☀️ Sunday**
+
+- **Morning:** Thoda late utho, no alarm.
+- **Mid-morning:** Ghar thoda saaf kar lo (playlist laga ke — fun way to do chores 🧹🎵)
+- **Afternoon:** Koi creative cheez try karo — naya gaana seekho, kuch likho, ya koi DIY project.
+- **Evening:** Online friends ke sath multiplayer gaming ya video call.
+- **Night:** Monday ke liye mentally prep — light journaling, next week ka rough plan, aur jaldi so jao.
+
+---
+
+### 🎬 Extra Ideas:
+- **Theme night:** Mexican / Italian / Street food night — khud banao!
+- **Movie marathon:** Back-to-back Marvel, Harry Potter, ya koi trilogy
+- **Self-care Sunday:** Long shower, skincare, stretching/yoga
+- **Board game / cards:** Ghar walo ke sath bhi khel sakte ho
+
+---
+
+Bata, inme se kya lag raha hai tere vibe ka? Main aur specific suggestions de sakta hoon — movie list, game recs, recipe ideas, kuch bhi! 😄🍿

@@ -40,8 +40,11 @@ class OllamaProvider:
         # num_ctx is belt-and-braces: OLLAMA_CONTEXT_LENGTH is the reliable
         # mechanism (see DECISIONS.md), but pass it in case the endpoint
         # honors options.
+        # Per-call keep_alive override: the router serves pinned turns during
+        # game mode with keep_alive 0 so the model evicts right after (0 is
+        # falsy — membership check, not .get()).
         extra_body: dict = {
-            "keep_alive": self.keep_alive,
+            "keep_alive": opts["keep_alive"] if "keep_alive" in opts else self.keep_alive,
             "options": {"num_ctx": self.num_ctx},
         }
         # Thinking models (qwen3.5) burn max_tokens in the reasoning channel
@@ -62,6 +65,23 @@ class OllamaProvider:
         )
         async for chunk in accumulate_stream(stream):
             yield chunk
+
+    async def unload(self) -> None:
+        """Evict the model from VRAM now (game mode): keep_alive 0 unloads."""
+        root = self.base_url.rsplit("/v1", 1)[0]
+        async with httpx.AsyncClient(timeout=30) as client:
+            await client.post(
+                f"{root}/api/generate", json={"model": self.model, "keep_alive": 0}
+            )
+
+    async def warm(self) -> None:
+        """Load the model back with the configured keep_alive (blocking load)."""
+        root = self.base_url.rsplit("/v1", 1)[0]
+        async with httpx.AsyncClient(timeout=300) as client:
+            await client.post(
+                f"{root}/api/generate",
+                json={"model": self.model, "keep_alive": self.keep_alive},
+            )
 
     async def loaded_context_length(self) -> int | None:
         """Context size Ollama actually loaded the model with (None if unknown).

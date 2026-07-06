@@ -351,3 +351,51 @@ def test_note_approval_records_domain_for_press():
     gate.session.browser_domain_fn = lambda: "google.com"
     gate.note_approval("browser_act", {"action": "press"})
     assert "google.com" in gate.session.confirmed_browser_domains
+
+
+async def test_read_unreadable_page_returns_hint_not_error(monkeypatch):
+    """DDG-style pages: inner_text times out / returns empty - the result
+    must teach type+press instead of dead-ending (observed live)."""
+    import json as _json
+
+    from tools import browser
+
+    class HostilePage:
+        url = "https://duckduckgo.com/"
+
+        async def inner_text(self, target, timeout=0):
+            raise TimeoutError("Page.inner_text: Timeout exceeded")
+
+        async def wait_for_load_state(self, state, timeout=0):
+            return None
+
+    async def fake_ensure():
+        return HostilePage()
+
+    monkeypatch.setattr(browser, "_ensure", fake_ensure)
+    result = _json.loads(await browser.browser_act("read"))
+    assert "error" not in result
+    assert result["text"] == ""
+    assert 'action="type"' in result["hint"] and 'action="press"' in result["hint"]
+
+
+@pytest.mark.asyncio
+async def test_read_with_query_in_value_teaches_type_press(page):
+    """gpt-4o-mini passed its search query as read's value 3x in one turn
+    (observed live) — read must teach the exact type+press calls, never type
+    itself (type is CONFIRM-class, read is ALLOW: silent redirect = gate
+    bypass)."""
+    result = json.loads(await browser.browser_act(
+        "read", selector="input[name='q']", value="mobile phones"
+    ))
+    assert "cannot type" in result["error"]
+    assert 'action="type"' in result["error"]
+    assert "mobile phones" in result["error"]  # their own query, ready to copy
+
+
+@pytest.mark.asyncio
+async def test_read_with_selector_in_value_slot_forgiven(page):
+    page.selectors_present.add("h1")
+    result = json.loads(await browser.browser_act("read", value="h1"))
+    assert "error" not in result
+    assert "headline" in result["text"]

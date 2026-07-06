@@ -87,6 +87,33 @@ async def test_task_events_round_trip(db):
     assert events[0]["ts"] is not None
 
 
+# -- shared-connection concurrency ---------------------------------------------
+
+
+async def test_concurrent_writers_and_readers_do_not_race(db):
+    """Commits interleaving with another coroutine's execute→fetch gap raised
+    'cannot commit transaction - SQL statements in progress' (observed live:
+    a background task writing audit rows while a UI turn read history).
+    db.lock must make write+commit and execute+fetch uninterruptible."""
+    import asyncio
+
+    conv = await db.create_conversation("ui")
+
+    async def writer(i: int):
+        for n in range(25):
+            await db.add_audit("t", f"tool{i}", "{}", "allow", 1, f"row {n}")
+            await db.add_message(conv, "user", f"msg {i}-{n}")
+
+    async def reader():
+        for _ in range(25):
+            await db.get_messages(conv)
+            await db.list_tasks()
+            await db.get_history(conv)
+
+    await asyncio.gather(writer(1), writer(2), reader(), reader())
+    assert len(await db.get_messages(conv, limit=200)) == 50
+
+
 # -- schedules ----------------------------------------------------------------
 
 

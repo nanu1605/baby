@@ -1,0 +1,12 @@
+model: mistralai/mistral-nemotron  test: T1  run: 2
+score: {"pass": false, "correct_tools": false, "args_ok": false, "mentions_cpu": false}
+calls:
+final:
+Okay, I will close Chrome and get the CPU usage for you.
+
+```json
+[
+  {"action": "close", "name": "chrome"},
+  {"detail": true}
+]
+```

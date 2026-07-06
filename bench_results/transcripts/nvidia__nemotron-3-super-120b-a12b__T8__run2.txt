@@ -1,0 +1,5 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi offers a vibrant and diverse street food scene, featuring iconic dishes like chaat, parathas, kebabs, chole bhature, and momos, reflecting the culinary traditions of North India and beyond."}

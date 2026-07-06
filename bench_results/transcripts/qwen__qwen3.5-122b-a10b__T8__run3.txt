@@ -1,0 +1,5 @@
+model: qwen/qwen3.5-122b-a10b  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi is widely considered the street food capital of India, offering an unparalleled variety of iconic dishes like Chole Bhature, Parathas from Paranthe Wali Gali, Kebabs, and Kulcha across diverse neighborhoods."}

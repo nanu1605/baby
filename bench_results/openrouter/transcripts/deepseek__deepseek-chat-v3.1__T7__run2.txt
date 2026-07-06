@@ -1,0 +1,29 @@
+model: deepseek/deepseek-chat-v3.1  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 27}
+calls:
+final:
+Hey Tanishq! Weekend chill plan? Mast idea hai! 😎
+
+Ghar pe chill karne ke liye yeh kuch mast options hain:
+
+**🎬 Entertainment Time:**
+- Movie marathon - Netflix/Prime pe koi series ya movies binge watch kar sakte ho
+- Gaming session - koi naya game try karo ya purane favorites
+- Music party - apne favorite songs ka playlist banao aur full volume pe enjoy karo
+
+**🍕 Food & Fun:**
+- Cooking experiment - koi nayi recipe try karo ya favorite dish banayo
+- Order-in feast - mast food order karo aur relax karo
+- Baking session - cookies ya cake banake maza karo
+
+**🎮 Creative Stuff:**
+- Learn something new - YouTube se koi skill seekho (guitar, drawing, coding)
+- Photo editing - purane photos ko edit karke naya look do
+- Writing - blog ya diary likhna shuru karo
+
+**🧘‍♂️ Relaxation Mode:**
+- Spa day - ghar pe hi massage, face mask, aromatherapy try karo
+- Reading marathon - koi interesting book pick karo
+- Meditation/Yoga - relax karo aur mind fresh karo
+
+Konsa option pasand aaya? Ya phir kuch aur specific plan chahiye? 😊

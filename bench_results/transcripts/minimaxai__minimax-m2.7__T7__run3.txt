@@ -1,0 +1,41 @@
+model: minimaxai/minimax-m2.7  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 26}
+calls:
+final:
+
+
+Arre yaar, weekend ghar pe chill karna toh best plan hai! 😎 Acha, sun:
+
+## 🎬 Movie/Series Binge
+- Pick a theme: **Marvel marathon**, **Christopher Nolan ke films**, ya **K-Drama night**
+- Popcorn, blankets, pillows - full comfort mode ON
+
+## 🍳 Cooking/Baking Experiment
+- Kuch naya seekh - biryani weekend pe banao, ya phir brownies/cookies try karo
+- Reels ke saath cook - fun toh hoga!
+
+## 🎮 Gaming Night
+- PS5/Xbox ya PC pe multiplayer games
+- Friends ko invite karo (offline ya online) - FIFA, GTA, ya Among Us
+
+## 🧘 Self-Care Weekend
+- Morning yoga/meditation
+- Long bath with candles
+- Face mask + chill music
+
+## 🎵 Music & Vibes
+- New playlist banalo for different moods
+- Guitar/Piano try karo agar hai
+- Karaoke night at home! 🎤
+
+## 📚 Lazy But Productive
+- Wo series/documentary jo list mein pada hai
+- Book reading (agar bookworm ho)
+- Online course ka ek chapter complete karo
+
+## 🍿 Snack Master Plan
+- Nachos, Maggie, chaat, cold coffee - full ghar ki dukan kholo!
+
+---
+
+Tera vibe konsa hai yaar? Movie person hai, gaming type, ya cooking champion? Bata toh main specific plan bana doon! 🎉

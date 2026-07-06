@@ -1,0 +1,34 @@
+model: nvidia/nemotron-3-super-120b-a12b  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 76}
+calls:
+final:
+Arre yaar, ghar pe chill karne ka weekend plan? Mast lag raha hai! 😎 Ek simple lekin enjoyable schedule deta hoon—apni mood ke hisab se adjust kar lo:
+
+**Shanivar (Saturday)**
+- **Subah 9-10 baje**: Der tak sona (weekend ka maza!), phir chai/coffee ke saath lite stretching ya yoga (bas 10-15 min, 15 min).
+- **10:30-12 baje**: Nashta—kuch naya try karo: avocado toast, masala omelette, ya leftover pizza ko upgrade karo (toppings daalo, bake karo).
+- **12-3 baje**: Screen time! Koi binge-worthy series (ex: *The Office*, *Mirzapur*, *Stranger Things* ya koi anime) ya movie marathon. Popcorn, nachos, ya fruit chaat ke saath.
+- **3-5 baje**: Chhota break—baahari hawa (agar balcony/terrace hai), ya ek short walk ghar ke andar. Phir agar gaming ka shauq hai to ek round multiplayer (Valorant, FIFA, GTA Online) ya ek solo adventure game (Hades, Stardew Valley).
+- **5-7 baje**: Snack time—maggie, samosa, ya fruit salad. Phir ek chhota creative task: sketching, journaling, ya kuch DIY (like candle making, origami).
+- **7-9 baje**: Dinner—kuch special banaye: pasta, biryani, ya paneer tikka. Agar cooking ka mood nahi hai to order karo le favorite se.
+- **9-11 baje**: Chill vibes—lo-fi beats, podcast ya audiobook sunte hue light reading (comic, magazine, ya ebook). Ya phir ek late-night game session dostoon ke saath.
+
+**Itwar (Sunday)**
+- **Subah 8-9 baje**: Der tak sona, phir detox water (lemon-mint) ke saath light breakfast (fruit, yogurt, granola).
+- **9:30-11 baje**: “Me time”—meditation, journaling, ya ek short online course (Skillshare, YouTube tutorial kisi hobby ke liye).
+- **11-1 baje**: Ghar ka chhota refresh—apni almirah/desk ka ek corner organize karo, ya plants ko water do.
+- **1-3 baje**: Lunch—simple aur healthy: khichdi, salad, ya wrap.
+- **3-5 baje**: Outdoor vibe agar mumkin ho—terrace par chai, ya ek short drive (agar mann kare). Warna, ghar pe hi ek naya recipe try karo (dessert ya snack).
+- **5-7 baje**: Prep for week—outfit select karo, bag pack karo, ya Sunday planner likho (kal ke liye 3 priority tasks).
+- **7-9 baje**: Dinner—light aur soothing: soup, salad, ya khichdi.
+- **9-10:30 baje**: Wind down—kafi nahi, herbal tea, ek feel-good movie ya yaadgar album sunte hue.
+- **10:30 baje**: Neend ka time—phone ke andar night mode, 10 min deep breathing, aur kal ke liye fresh feel!
+
+**Bonus tips**:
+- Agar mood off ho toh “comfort rewatch”—apni favorite childhood show ya movie.
+- Dostoon ke saath virtual party: Netflix Party, Jackbox, ya bas zoom pe chai pe charcha.
+- Agar creative juices flow kar rahe ho toh ek short story, poem, ya beat bana lo.
+
+Yaar, bas yehi—garaam chai, comfy pyjama, aur zero pressure. Weekend ka maza hai ki kuch karna hai ya nahi, tum decide karo! Agar koi specific interest ho (gaming, cooking, movies, fitness) toh batao, main tailored suggestions de doon. 😊
+
+Chill karo, maza karo! 🌟

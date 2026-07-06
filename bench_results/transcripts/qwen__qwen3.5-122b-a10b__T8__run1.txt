@@ -1,0 +1,5 @@
+model: qwen/qwen3.5-122b-a10b  test: T8  run: 1
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Mumbai", "why": "Mumbai is widely recognized as the street food capital of India, offering an unparalleled variety of iconic dishes like Vada Pav, Pav Bhaji, Bhel Puri, and Pani Puri at affordable prices across the city."}

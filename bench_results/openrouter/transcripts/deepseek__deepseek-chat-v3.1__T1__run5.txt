@@ -1,0 +1,7 @@
+model: deepseek/deepseek-chat-v3.1  test: T1  run: 5
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action": "close", "name": "Chrome"})
+  get_system_stats({"detail": false})
+final:
+Done! I've closed Chrome. Your current CPU usage is **34.2%** and RAM usage is **61.0%**.

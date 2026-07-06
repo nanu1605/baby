@@ -115,8 +115,10 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
     """Drive the real browser window. Actions: goto (value=url), read (whole
     page, or selector), click (selector), type (value=text; finds the search
     box itself when selector is empty), press (value=key, e.g. Enter — submits
-    a search), screenshot. Easiest web search: goto
-    "https://www.google.com/search?q=your+query" then read — no typing needed."""
+    a search), screenshot. Easiest search ON ANY site: goto its query URL —
+    "https://www.google.com/search?q=your+query" or
+    "https://duckduckgo.com/?q=your+query" — then read. Or: type the query
+    (search box auto-found), then press Enter."""
     action = action.lower().strip()
     if action not in ("goto", "read", "click", "type", "press", "screenshot"):
         return json.dumps({"error": f"unknown browser action {action!r}"})
@@ -132,8 +134,59 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
             return json.dumps({"url": page.url, "title": await page.title()})
         if action == "read":
             target = selector or "body"
-            text = await page.inner_text(target, timeout=_ACTION_TIMEOUT_MS)
-            text = " ".join(text.split())
+            # value lands here with two distinct wrong-slot intents (both
+            # observed live): a selector ("h1") — forgive it like goto/click
+            # do — or a search query the model expects read to TYPE
+            # (gpt-4o-mini, 3x in one turn). read must never silently type:
+            # type is CONFIRM-class per domain while read is ALLOW, so
+            # honoring that intent would bypass the safety gate. Decide by
+            # asking the page: value that matches an element is a selector,
+            # anything else earns the exact type+press recipe.
+            if value:
+                el = None
+                try:
+                    el = await page.query_selector(value)
+                except Exception:  # noqa: BLE001 — not parseable as a selector
+                    el = None
+                if el is not None:
+                    if not selector:
+                        target = value
+                else:
+                    return json.dumps({
+                        "error": "read only reads — it cannot type. To search "
+                                 f'this page: call browser_act action="type" '
+                                 f'value="{value}" (the search box is '
+                                 'auto-found), then browser_act action="press" '
+                                 'value="Enter"',
+                    })
+            # Hostile-to-automation pages (duckduckgo.com, observed live) hang
+            # inner_text for the full 15 s AND serve empty bodies; a dead-end
+            # error left the model with no path forward. Short reads, one
+            # hydration retry, and a teaching hint instead of an error — real
+            # keystrokes (type + press) still work on these pages.
+            text = ""
+            try:
+                text = " ".join((await page.inner_text(target, timeout=5000)).split())
+            except Exception:  # noqa: BLE001 — fall through to the retry/hint
+                pass
+            if not text:
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=5000)
+                    text = " ".join((await page.inner_text(target, timeout=5000)).split())
+                except Exception:  # noqa: BLE001
+                    pass
+            if not text:
+                # Exact call syntax: prose ("call type with your query") was
+                # misread as an English verb — the model kept re-reading.
+                return json.dumps({
+                    "url": page.url,
+                    "text": "",
+                    "hint": "page text unreadable (script-heavy or blocks "
+                            "automation reads) — to search here: call "
+                            'browser_act action="type" value="<your query>" '
+                            "(the search box is auto-found), then browser_act "
+                            'action="press" value="Enter"; screenshot also works',
+                })
             truncated = len(text) > _READ_CAP
             return json.dumps(
                 {"url": page.url, "text": text[:_READ_CAP], "truncated": truncated},
