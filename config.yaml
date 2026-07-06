@@ -83,7 +83,7 @@ voice:
     enabled: true                       # fail-soft off while models/owner_voice.json is missing
     model: models/wespeaker_en_voxceleb_CAM++.onnx
     profile: models/owner_voice.json
-    threshold: 0.5                      # tune from enroll_voice.py printed stats
+    threshold: 0.68                     # from 2026-07-06 re-enrollment (min intra-speaker 0.78)
     mode: chat_only                     # chat_only | ignore (unknown voices)
   barge_in: true
   barge_in_threshold: 0.6               # raise if speaker echo self-triggers
