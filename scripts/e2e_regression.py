@@ -361,10 +361,22 @@ async def t14_escape_hatch():
     marker = audit_marker()
     reply, status, _, took = await ws_turn("game mode off", timeout=15)
     rows = audit_since(marker)
-    model_routes = [a for a, d in router_actions(rows) if a.startswith("route ")]
-    ok = "game mode" in reply.lower() and status == "ok" and not model_routes and took < 5
+    # Background maintenance (summarizer/extractor spawned by earlier turns)
+    # writes its own "route daily / internal call" rows concurrently, so raw
+    # route rows in this window prove nothing about THIS message (observed
+    # flake: T13's maintenance landed inside T14's window). Only a SERVED row
+    # on the ui channel would mean a model actually answered it.
+    ui_served = []
+    for action, detail in router_actions(rows):
+        if action.startswith("served"):
+            try:
+                if json.loads(detail).get("channel") == "ui":
+                    ui_served.append(action)
+            except ValueError:
+                pass
+    ok = "game mode" in reply.lower() and status == "ok" and not ui_served and took < 5
     record("T14", "game-mode escape hatch (no model)", ok,
-           f"{took:.1f}s routes={model_routes}")
+           f"{took:.1f}s ui_served={ui_served}")
 
 
 async def t15_get_endpoints():
