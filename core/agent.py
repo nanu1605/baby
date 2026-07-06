@@ -211,14 +211,12 @@ class AgentCore:
 
             if not tool_calls:
                 # Thinking models can spend the whole generation window in the
-                # reasoning channel after a long tool loop and emit no content
-                # (observed live on the first background task). One no-tools
-                # retry with thinking off forces a plain answer from the tool
-                # results already in context. Attempted (not just succeeded)
-                # tools count: a denied/failed call still leaves a result the
-                # owner deserves to hear about — "(no response)" after a
-                # safety-gate denial was observed live on a voice turn.
-                if not text.strip() and tools_attempted > 0:
+                # reasoning channel and emit no content (observed live on the
+                # first background task, and on plain no-tool turns — E2E T09
+                # returned "(no response)" three runs straight). One no-tools
+                # retry with thinking off forces a plain answer from whatever
+                # is in context; silence is never an acceptable reply.
+                if not text.strip():
                     text = await self._final_answer(messages) or text
                 # A promise with no action ("I'll open Yahoo…", zero tool
                 # calls) leaves the request undone and the owner repeating

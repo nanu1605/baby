@@ -212,11 +212,19 @@ async def test_empty_final_reply_retries_with_thinking_off(db):
     assert provider.requests[-1][-1]["role"] == "system"  # answer-now nudge appended
 
 
-async def test_empty_reply_without_tools_stays_placeholder(db):
-    agent, provider, _ = await _make_agent(db, [""])
+async def test_empty_reply_without_tools_retries_once(db):
+    # Silence on a plain turn gets the same thinking-off retry as tool turns
+    # (E2E T09 hit "(no response)" three runs straight before this).
+    agent, provider, _ = await _make_agent(db, ["", "Here is the answer."])
+    reply = await agent.run_turn("hi")
+    assert reply == "Here is the answer."
+    assert len(provider.requests) == 2  # one forced-answer retry
+
+
+async def test_empty_reply_and_empty_retry_stays_placeholder(db):
+    agent, provider, _ = await _make_agent(db, ["", ""])
     reply = await agent.run_turn("hi")
     assert reply == "(no response)"
-    assert len(provider.requests) == 1  # no retry when no tool ran
 
 
 # -- leaked reasoning: qwen /v1 sometimes omits the opening <think> tag --------------
