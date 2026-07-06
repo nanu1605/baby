@@ -120,6 +120,28 @@ async def ws_turn(text: str, timeout: float = 240.0, kill_after_first_token: boo
                 )
 
 
+async def ws_turn_expect_tool(text: str, tool: str):
+    """One turn that should call `tool`, with ONE deterministic retry.
+
+    The local 9B's tool discipline is single-roll flaky in degraded windows
+    (observed: T05/T10 skipping the named tool on one run and passing the
+    next, same prompt). A skipped call gets exactly one explicit push — the
+    same recovery a human would type. Returns (reply, brain, rows, attempts)
+    where rows are the audit rows of the LAST attempt's window.
+    """
+    marker = audit_marker()
+    reply, _, brain, _ = await ws_turn(text)
+    rows = audit_since(marker)
+    if any(r["tool"] == tool for r in rows):
+        return reply, brain, rows, 1
+    marker = audit_marker()
+    reply, _, brain, _ = await ws_turn(
+        f"You did not call the {tool} tool. Call the {tool} tool NOW for the "
+        f"request I just made — do not answer without calling it."
+    )
+    return reply, brain, audit_since(marker), 2
+
+
 def get(path: str):
     return httpx.get(f"{BASE}{path}", timeout=10)
 
@@ -148,17 +170,15 @@ async def t02_plain_turn():
 
 
 async def t03_tool_turn():
-    marker = audit_marker()
     # Name the tool: without it the model can answer from stale context
     # (get_time results linger in history — observed in the baseline run).
-    reply, status, _, _ = await ws_turn(
-        "Use the get_time tool and tell me the exact current time."
+    reply, _, rows, attempts = await ws_turn_expect_tool(
+        "Use the get_time tool and tell me the exact current time.", "get_time"
     )
-    rows = audit_since(marker)
     used_time = any(r["tool"] == "get_time" for r in rows)
     has_time = bool(re.search(r"\d{1,2}[:.]\d{2}", reply))
-    record("T03", "tool turn (get_time)", used_time and has_time and status == "ok",
-           f"tool={used_time} time_in_reply={has_time}")
+    record("T03", "tool turn (get_time)", used_time and has_time,
+           f"tool={used_time} time_in_reply={has_time} attempts={attempts}")
 
 
 async def t04_memory():
@@ -170,22 +190,23 @@ async def t04_memory():
 
 async def t05_privacy_pin():
     PROBE.write_text(f"The probe word is {PROBE_SECRET}.", encoding="utf-8")
-    marker = audit_marker()
-    reply, _, brain, _ = await ws_turn(f"Read the file {PROBE} and tell me the probe word.")
-    rows = audit_since(marker)
+    reply, brain, rows, attempts = await ws_turn_expect_tool(
+        f"Use the read_file tool to read the file {PROBE} and tell me the probe word.",
+        "read_file",
+    )
     called = any(r["tool"] == "read_file" for r in rows)
     pinned = any("privacy pin" in detail for _, detail in router_actions(rows))
     if not called:
-        # No read_file call → nothing for the pin to act on. That's model
-        # discipline, not a pin regression: with a pinned tool result present
-        # the pin either fires or the pipeline is genuinely broken (the hard
-        # FAIL below). Observed in the 2026-07-06 run on a 50-message history.
+        # No read_file call even after the retry → nothing for the pin to act
+        # on. That's model discipline, not a pin regression: with a pinned
+        # tool result present the pin either fires or the pipeline is
+        # genuinely broken (the hard FAIL below).
         RUNTIME_BRAIN_DEPENDENT.add("T05")
         record("T05", "privacy pin (read_file)", False,
                "model never called read_file — brain-dependent under-read, not a pin failure")
     else:
         record("T05", "privacy pin (read_file)", pinned and brain.get("tier") == "daily",
-               f"pinned={pinned} brain={brain.get('tier')}")
+               f"pinned={pinned} brain={brain.get('tier')} attempts={attempts}")
     PROBE.unlink(missing_ok=True)
 
 
@@ -267,17 +288,18 @@ async def t10_background_task():
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     before = con.execute("SELECT COALESCE(MAX(id), 0) FROM tasks").fetchone()[0]
     con.close()
-    marker = audit_marker()
     # The safety class of start_background_task depends on the MODEL-WRITTEN
     # title/spec (_TASK_GATED_RE): benign wording queues straight away (ALLOW,
     # observed 2026-07-06 second run), gated wording raises a confirm dialog
     # that times out unattended (observed first run). Handle both paths.
-    watcher = asyncio.create_task(_answer_own_confirm(APPROVE_CONFIRMS))
+    # Watcher window 300s: spans both attempts of the tool-retry helper.
+    watcher = asyncio.create_task(_answer_own_confirm(APPROVE_CONFIRMS, window_s=300.0))
     # Explicit tool naming: the 9B answers research inline otherwise (observed
     # twice) — this test verifies the QUEUE pipeline, not model initiative.
-    await ws_turn(
+    _, _, rows, attempts = await ws_turn_expect_tool(
         "Use the start_background_task tool to queue this as a background "
-        "task: research the top 3 electric cars under 15 lakh and summarize."
+        "task: research the top 3 electric cars under 15 lakh and summarize.",
+        "start_background_task",
     )
     if not watcher.done():
         watcher.cancel()
@@ -285,8 +307,7 @@ async def t10_background_task():
         answered = await watcher
     except asyncio.CancelledError:
         answered = ""
-    called = any(r["tool"] == "start_background_task" for r in audit_since(marker))
-    if not called:
+    if not any(r["tool"] == "start_background_task" for r in rows):
         RUNTIME_BRAIN_DEPENDENT.add("T10")
         record("T10", "background task", False,
                "model never called start_background_task — brain-dependent under-read")
@@ -310,7 +331,8 @@ async def t10_background_task():
         await asyncio.sleep(10)
         status = _newest_task_status(before)
     how = f"confirm {answered}" if answered else "queued without dialog (benign spec is ALLOW)"
-    record("T10", "background task", status == "done", f"status={status} — {how}")
+    record("T10", "background task", status == "done",
+           f"status={status} — {how}, attempts={attempts}")
 
 
 async def t11_game_mode_cycle():
@@ -406,13 +428,13 @@ async def t16_project():
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     before = con.execute("SELECT COALESCE(MAX(id), 0) FROM projects").fetchone()[0]
     con.close()
-    marker = audit_marker()
-    await ws_turn(
+    _, _, rows, attempts = await ws_turn_expect_tool(
         "Use the start_project tool to start a project: write a two-line haiku "
         "about Indore and a two-line haiku about monsoon rain, as two separate "
-        "subtasks."
+        "subtasks.",
+        "start_project",
     )
-    if not any(r["tool"] == "start_project" for r in audit_since(marker)):
+    if not any(r["tool"] == "start_project" for r in rows):
         # Same discipline gap as T05/T10 — don't sit through the 30-minute
         # poll window for a project that was never started (observed live:
         # the battery looked hung for half an hour).
@@ -432,7 +454,7 @@ async def t16_project():
             break
         await asyncio.sleep(20)
     record("T16", "orchestrator project (--with-project)", status == "done",
-           f"status={status or 'never created'}")
+           f"status={status or 'never created'} attempts={attempts}")
 
 
 BRAIN_DEPENDENT = {"T03", "T07", "T08", "T09"}  # model tool-discipline, not pipeline

@@ -264,6 +264,18 @@ def _toast(title: str, message: str) -> None:
         pass
 
 
+def _quiet_playwright_teardown(loop, context) -> None:
+    """Ctrl+C on Windows hits the whole console group: the Playwright driver
+    dies before our cleanup runs, and its orphaned reader future prints
+    "Future exception was never retrieved ... Connection closed while reading
+    from the driver" after "bye." (observed live). Harmless — silence exactly
+    that; everything else goes to the default handler."""
+    exc = context.get("exception")
+    if exc is not None and "Connection closed while reading from the driver" in str(exc):
+        return
+    loop.default_exception_handler(context)
+
+
 async def run_ui(config: dict, with_voice: bool = False) -> None:
     """Boot the full text stack: DB, model, tools, agent, UI server.
 
@@ -278,6 +290,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import web as web_tools
 
     db = Database("baby.db")
+    asyncio.get_running_loop().set_exception_handler(_quiet_playwright_teardown)
     await db.connect()
     bus = EventBus()
     provider = build_provider(config, bus=bus, db=db)
