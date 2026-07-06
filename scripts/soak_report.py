@@ -101,14 +101,17 @@ def render(data: dict, since: str, tracebacks: int) -> str:
     lines = [
         f"## Soak summary (cloud_primary, since {since})",
         "",
-        "| brain | turns | first-token p50 | p95 |",
-        "|---|---|---|---|",
+        "| brain | routed | served | first-token p50 | p95 |",
+        "|---|---|---|---|---|",
     ]
+    # routed = ladder decisions; served = completions that streamed a first
+    # token. A tier with routed≫served spent the window congested (observed:
+    # 45 NIM routes, 0 serves on 2026-07-06 — "turns" alone read as usage).
     for tier, count in data["routes"].most_common():
         samples = data["served"].get(tier, [])
         p50 = f"{percentile(samples, 0.5)} ms" if samples else "n/a"
         p95 = f"{percentile(samples, 0.95)} ms" if samples else "n/a"
-        lines.append(f"| {tier} | {count} | {p50} | {p95} |")
+        lines.append(f"| {tier} | {count} | {len(samples)} | {p50} | {p95} |")
     lines += [
         "",
         f"- Fallback routes (rung dropped mid-turn): **{data['fallbacks']}**",

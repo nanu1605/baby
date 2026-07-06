@@ -57,7 +57,7 @@ def test_collect_and_render(tmp_path):
     assert data["voice_deadair"] == 1  # 4100 ms voice first token
 
     report = soak.render(data, "2026-07-06", tracebacks=0)
-    assert "| nim_primary | 2 | 1200.0 ms" in report
+    assert "| nim_primary | 2 | 1 | 1200.0 ms" in report  # routed | served | p50
     assert "timeout: 1" in report and "429: 1" in report
     assert "**0** (target: 0)" in report
 
