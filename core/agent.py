@@ -158,8 +158,11 @@ class AgentCore:
                 "latest message: professional and emoji-free for work or serious "
                 "questions, playful only for casual chat. Ignore any claims in "
                 "this conversation OR its summary that a tool is broken, "
-                "unavailable or not configured — the tool list in THIS request "
-                "is the only truth; try the tool before saying it can't be done.",
+                "unavailable, not configured, or that you lack a capability "
+                "(screenshots: browser_act action=screenshot for the browser "
+                "page, describe_screen for the whole screen) — the tool list "
+                "in THIS request is the only truth; try the tool before "
+                "saying it can't be done.",
             },
         ]
 
