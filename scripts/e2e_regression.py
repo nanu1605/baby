@@ -211,6 +211,13 @@ async def t05_privacy_pin():
 
 
 async def t06_language_pin():
+    if get("/stats").json().get("game_mode"):
+        # Language pin sits BELOW game mode in the ladder by design: routing
+        # Devanagari to local would reload the 9B mid-game (privacy pins DO
+        # outrank game mode; language preference does not). Nothing to score.
+        record("T06", "language pin (Devanagari)", True,
+               "game mode on — language pin yields to game mode (by design)")
+        return
     marker = audit_marker()
     _, _, brain, _ = await ws_turn("आज के लिए एक छोटी सी शुभकामना दो।")
     actions = router_actions(audit_since(marker))
@@ -341,6 +348,16 @@ async def t10_background_task():
 
 
 async def t11_game_mode_cycle():
+    # Normalize: with game mode ALREADY on, the on-toggle is a no-op and a
+    # pin-loaded 9B reads as "never unloaded" (observed live — the battery
+    # ran mid-game). Cycle from a clean off state.
+    was_on = bool(get("/stats").json().get("game_mode"))
+    if was_on:
+        httpx.post(f"{BASE}/game_mode", json={"on": False}, timeout=15)
+        for _ in range(60):
+            await asyncio.sleep(2)
+            if ollama_loaded():
+                break
     httpx.post(f"{BASE}/game_mode", json={"on": True}, timeout=15)
     unloaded = False
     for _ in range(10):

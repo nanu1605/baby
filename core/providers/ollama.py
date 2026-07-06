@@ -40,8 +40,11 @@ class OllamaProvider:
         # num_ctx is belt-and-braces: OLLAMA_CONTEXT_LENGTH is the reliable
         # mechanism (see DECISIONS.md), but pass it in case the endpoint
         # honors options.
+        # Per-call keep_alive override: the router serves pinned turns during
+        # game mode with keep_alive 0 so the model evicts right after (0 is
+        # falsy — membership check, not .get()).
         extra_body: dict = {
-            "keep_alive": self.keep_alive,
+            "keep_alive": opts["keep_alive"] if "keep_alive" in opts else self.keep_alive,
             "options": {"num_ctx": self.num_ctx},
         }
         # Thinking models (qwen3.5) burn max_tokens in the reasoning channel

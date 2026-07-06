@@ -764,7 +764,14 @@ class CloudRouter:
 
             self._note_decision(tier, reason if rung_no == 0 else f"fallback from {ladder[0]}")
             payload = messages if tier == "daily" else self._redact_pinned(messages)
-            stream = provider.chat(payload, tools=tools, **opts).__aiter__()
+            call_opts = opts
+            if tier == "daily" and self.game_mode:
+                # Pin/offline-forced local serves during game mode must not
+                # leave the 9B camped in VRAM under the configured 24h
+                # keep_alive (observed: one privacy-pin turn reloaded it for
+                # the rest of the game session) — serve, then evict at once.
+                call_opts = {**opts, "keep_alive": 0}
+            stream = provider.chat(payload, tools=tools, **call_opts).__aiter__()
             emitted = False
             t_start = _time.monotonic()
             ft_ms: float | None = None

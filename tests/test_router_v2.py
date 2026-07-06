@@ -399,6 +399,35 @@ async def test_privacy_pin_beats_game_mode():
     assert primary.requests == []
 
 
+async def test_game_mode_pinned_serve_evicts_immediately():
+    # A pin-forced local serve during game mode must not leave the 9B camped
+    # in VRAM under the configured 24h keep_alive (observed live: one
+    # privacy-pin turn reloaded it for the rest of the game session) —
+    # the router overrides keep_alive to 0 for that call.
+    class OptsCapture(FakeProvider):
+        def __init__(self, script):
+            super().__init__(script)
+            self.chat_opts: list[dict] = []
+
+        async def chat(self, messages, tools=None, **opts):
+            self.chat_opts.append(dict(opts))
+            async for chunk in super().chat(messages, tools=tools, **opts):
+                yield chunk
+
+    daily = OptsCapture(["local reply", "local reply"])
+    router = make_router(daily=daily, primary=NimFake(["never"]))
+    router.game_mode = True
+    async for _ in router.chat(_pinned_messages(), tools=None):
+        pass
+    assert daily.chat_opts[-1]["keep_alive"] == 0
+
+    # Outside game mode the configured keep_alive stays untouched.
+    router.game_mode = False
+    async for _ in router.chat(_pinned_messages(), tools=None):
+        pass
+    assert "keep_alive" not in daily.chat_opts[-1]
+
+
 async def test_redaction_masks_pinned_bytes_only():
     router = make_router(primary=NimFake(["x"]))
     messages = _pinned_messages() + [
