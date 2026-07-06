@@ -252,9 +252,14 @@ async def t08_browser_screenshot():
 
 
 async def t09_screen():
+    marker = audit_marker()
     reply, status, _, _ = await ws_turn("What's on my screen right now? One sentence.")
-    ok = (status == "ok" and bool(reply.strip())
-          and "error" not in reply.lower() and "(no response)" not in reply)
+    described = any(r["tool"] == "describe_screen" for r in audit_since(marker))
+    # No substring "error" guard: an honest description of a screen that
+    # CONTAINS error text tripped it (observed live — a terminal full of
+    # test output). The tool call + a non-empty reply is the real signal.
+    ok = (status == "ok" and described and bool(reply.strip())
+          and "(no response)" not in reply)
     record("T09", "screen awareness", ok, reply[:60])
 
 
