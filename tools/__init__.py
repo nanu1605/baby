@@ -10,6 +10,7 @@ def register_all() -> None:
         browser,
         clock,
         files,
+        game,
         memory_tools,
         projects,
         screen,

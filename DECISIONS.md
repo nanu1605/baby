@@ -398,3 +398,18 @@ Running log of non-obvious choices made during the build. Newest last.
     entirely; no queueing") - Gemini is not a rate-limit escape valve, it is
     a failure backstop. In game mode (local unloaded) overflow is an honest
     error instead.
+79. **Privacy pins live in the ROUTER, not the agent**: the router already
+    sees the full messages array on every call, so it detects pinned tool
+    results in context (tool_call_id -> name map from the assistant
+    entries) and forces the rest of the turn local - zero agent surgery,
+    and the pin can never be forgotten by a future agent refactor. Pins
+    outrank game mode: private bytes never go cloud even if that means
+    reloading the unloaded local brain. Redaction of pinned bytes in
+    cloud-bound payloads stays as defense-in-depth (tool results never
+    reload into later turns - roles filter - so in-turn is the only
+    exposure window).
+80. **Game mode is a plain ALLOW tool** (set_game_mode): VRAM juggling is
+    reversible and touches no data, so gating it would only train the
+    owner to click through confirmations. The fullscreen auto-detect
+    watcher only reverses toggles IT made - a manual "game mode on" is
+    never fought when the owner alt-tabs.

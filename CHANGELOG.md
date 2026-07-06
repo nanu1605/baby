@@ -29,6 +29,18 @@
   untouched — `router.mode: local_primary` is the one-line rollback.
   Live-verified: boot green, real turn answered by minimax via the full
   stack (1.0 s first token), internal calls stayed local.
+- N3 (2026-07-06): Pins + game mode. Privacy pins (`router.privacy_pins`,
+  default `read_file`/`run_shell`) detected ROUTER-side: a pinned tool
+  result in the context forces the rest of the turn local — outranking
+  even game mode — and a redaction layer masks pinned bytes in any
+  cloud-bound payload as defense-in-depth (capture-tested). Language pin:
+  ≥30% Devanagari routes local (Roman Hinglish flows to NIM). Game mode:
+  `set_game_mode` tool (safety ALLOW) + `POST /game_mode` — ON unloads
+  the local 9B (~5.5 GB VRAM freed, all-cloud routing, honest failure if
+  the net dies), OFF rewarns in the background and announces "Baby
+  ready"; optional fullscreen auto-detect (`game_mode.auto_detect`,
+  default off, `ui/gamewatch.py`). Live-verified VRAM swing via
+  nvidia-smi.
 
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 

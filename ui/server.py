@@ -76,6 +76,9 @@ def create_app(ctx: UIContext) -> FastAPI:
         counts = getattr(ctx.agent.provider, "turn_counts", None)
         if counts is not None:
             data["brain_turns"] = dict(counts)  # per-brain totals for the N4 soak
+        game = getattr(ctx.agent.provider, "game_mode", None)
+        if game is not None:
+            data["game_mode"] = bool(game)
         if ctx.pool is not None:
             data["tasks_running"] = ctx.pool.running_count()
         if ctx.orchestrator is not None:
@@ -128,6 +131,14 @@ def create_app(ctx: UIContext) -> FastAPI:
         ctx.gate.confirmations.cancel_all()
         ctx.bus.publish("status", "ui", text="kill switch: current turn cancelled")
         return {"cancelled": cancelled}
+
+    @app.post("/game_mode")
+    async def game_mode(body: dict):
+        provider = ctx.agent.provider
+        if not hasattr(provider, "set_game_mode"):
+            return {"error": "game mode needs the cloud-primary router"}
+        line = await provider.set_game_mode(bool(body.get("on", False)))
+        return {"game_mode": provider.game_mode, "status": line}
 
     async def _pump(ws: WebSocket, kinds: set[str], ui_only: bool) -> None:
         """Forward filtered bus events to a websocket until it closes."""
@@ -221,6 +232,13 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     if hasattr(provider, "start"):
         provider.start()
 
+    gamewatch = None
+    if config.get("game_mode", {}).get("auto_detect") and hasattr(provider, "set_game_mode"):
+        from ui.gamewatch import GameWatch
+
+        gamewatch = GameWatch(provider)
+        gamewatch.start()
+
     register_all()
     web_tools.configure(
         engine=config.get("search", {}).get("engine", "ddg"),
@@ -238,6 +256,9 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import screen as screen_tools
 
     screen_tools.configure(VisionService(config, provider, bus))
+    from tools import game as game_tools
+
+    game_tools.configure(provider)
     asyncio.get_running_loop().run_in_executor(None, apps.build_index)
 
     from memory import build_memory
@@ -314,6 +335,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
 
     notifier = Notifier(config, bus)
     notifier.voice = voice_pipeline  # None when voice is off/failed
+    if hasattr(provider, "set_game_mode"):
+        provider.notifier = notifier  # "Baby ready" announce after game-mode reload
     workers_cfg = config.get("workers", {})
     pool = WorkerPool(
         db=db,
@@ -437,6 +460,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             pass
         if voice_pipeline is not None:
             voice_pipeline.stop()
+        if gamewatch is not None:
+            try:
+                await gamewatch.stop()
+            except Exception:  # noqa: BLE001
+                pass
         if hasattr(provider, "stop"):
             try:
                 await provider.stop()

@@ -492,7 +492,12 @@ class CloudRouter:
         self.monitor = HealthMonitor(
             nim_primary, cfg=cfg.get("health", {}), bucket=self.bucket, bus=bus, db=db
         )
-        self.game_mode = False  # toggled in Phase N3
+        self.privacy_pins = set(cfg.get("privacy_pins", ["read_file", "run_shell"]))
+        lang = cfg.get("language_pin", {}) or {}
+        self.language_pin_enabled = bool(lang.get("enabled", True))
+        self.devanagari_threshold = float(lang.get("devanagari_ratio", 0.3))
+        self.game_mode = False
+        self._warm_task = None
         self._active = {"tier": "nim_primary", "reason": "default"}
         # Per-brain turn counters for the N4 soak (/stats).
         self.turn_counts = {"daily": 0, "nim_primary": 0, "nim_heavy": 0, "backstop": 0}
@@ -504,6 +509,54 @@ class CloudRouter:
 
     async def stop(self) -> None:
         await self.monitor.stop()
+        if self._warm_task is not None:
+            self._warm_task.cancel()
+
+    # -- game mode (spec §2.5) ---------------------------------------------------------
+
+    notifier = None  # assigned at boot; announces "Baby ready" after reload
+
+    async def set_game_mode(self, on: bool) -> str:
+        """Toggle game mode: ON unloads the local brain (~5.5 GB VRAM freed,
+        all routing goes cloud); OFF reloads it in the background and
+        announces when warm. Returns a short human line for the caller."""
+        import asyncio
+
+        if on == self.game_mode:
+            return f"game mode already {'on' if on else 'off'}"
+        self.game_mode = on
+        self._audit_row(f"game_mode {'on' if on else 'off'}", "toggled")
+        if on:
+            unload = getattr(self.daily, "unload", None)
+            if unload is not None:
+                try:
+                    await unload()
+                except Exception:  # noqa: BLE001 — eviction is best-effort; routing flips regardless
+                    pass
+            line = "game mode ON — local brain unloaded, cloud answers now"
+        else:
+            self._warm_task = asyncio.create_task(self._rewarm(), name="baby-game-rewarm")
+            line = "game mode OFF — reloading the local brain in the background"
+        if self.bus is not None:
+            self.bus.publish("status", "router", text=f"router: {line}")
+        return line
+
+    async def _rewarm(self) -> None:
+        warm = getattr(self.daily, "warm", None)
+        try:
+            if warm is not None:
+                await warm()
+            if self.bus is not None:
+                self.bus.publish(
+                    "status", "router", text="router: local brain warm — Baby ready"
+                )
+            if self.notifier is not None:
+                await self.notifier.announce(
+                    "Baby ready — local brain reloaded.",
+                    toast_title="Baby — game mode off",
+                )
+        except Exception:  # noqa: BLE001 — a failed rewarm must not kill anything
+            pass
 
     # -- compat hooks (duck-typed by AgentCore / readiness / stats) --------------------
 
@@ -545,9 +598,65 @@ class CloudRouter:
             p in text for p in self.explicit_phrases
         )
 
+    def _pinned_tools_in(self, messages: list[dict]) -> set[str]:
+        """Names of privacy-pinned tools whose results sit in this context.
+
+        Tool-result messages carry only a tool_call_id; the id→name map comes
+        from the assistant tool_calls entries earlier in the same turn.
+        """
+        if not self.privacy_pins:
+            return set()
+        id_to_name = {
+            tc.get("id"): tc.get("function", {}).get("name", "")
+            for m in messages
+            if m.get("role") == "assistant"
+            for tc in (m.get("tool_calls") or [])
+        }
+        return {
+            name
+            for m in messages
+            if m.get("role") == "tool"
+            for name in [id_to_name.get(m.get("tool_call_id"), "")]
+            if name in self.privacy_pins
+        }
+
+    def _redact_pinned(self, messages: list[dict]) -> list[dict]:
+        """Cloud-bound copy: pinned tool results become size-only placeholders.
+
+        Defense-in-depth — the ladder already keeps pinned turns local, so a
+        cloud provider should never receive these bytes; if a future ladder
+        bug routes one anyway, the payload still carries no private content.
+        """
+        pinned = self._pinned_tools_in(messages)
+        if not pinned:
+            return messages
+        id_to_name = {
+            tc.get("id"): tc.get("function", {}).get("name", "")
+            for m in messages
+            if m.get("role") == "assistant"
+            for tc in (m.get("tool_calls") or [])
+        }
+        out = []
+        for m in messages:
+            name = id_to_name.get(m.get("tool_call_id"), "")
+            if m.get("role") == "tool" and name in pinned:
+                size = len(str(m.get("content") or ""))
+                out.append(
+                    {**m, "content":
+                     f"[local-only content redacted: {name} result, {size} bytes]"}
+                )
+            else:
+                out.append(m)
+        return out
+
     def _ladder(self, messages: list[dict], tools, opts: dict) -> tuple[list[str], str]:
+        # Privacy outranks EVERYTHING, game mode included: pinned bytes never
+        # leave the PC even if that means reloading the unloaded local brain.
         if opts.get("pin_local"):
             return ["daily"], str(opts.get("pin_reason") or "pinned")
+        pinned = self._pinned_tools_in(messages)
+        if pinned:
+            return ["daily"], f"privacy pin ({', '.join(sorted(pinned))})"
         if self.game_mode:
             # Local is unloaded — never a rung. All-cloud, honest if all fail.
             if self._is_heavy_turn(messages, opts):
@@ -574,6 +683,14 @@ class CloudRouter:
         # "plan" must not wake the heavy brain.
         if opts.get("max_tokens") and not tools:
             return ["daily"], "internal call"
+        # Language pin: Devanagari-dominant messages go to the local Qwen
+        # (strong Hindi). Roman-script Hinglish is NOT pinned — it flows to
+        # the NIM primary (spec §2.4).
+        if self.language_pin_enabled:
+            from core.prompts import devanagari_ratio
+
+            if devanagari_ratio(_trailing_user_text(messages)) >= self.devanagari_threshold:
+                return ["daily"], "language pin (Devanagari)"
         if self._is_heavy_turn(messages, opts):
             return ["nim_heavy", "nim_primary", "daily"], "heavy turn"
         return ["nim_primary", "backstop", "daily"], "normal turn"
@@ -631,7 +748,8 @@ class CloudRouter:
                 continue
 
             self._note_decision(tier, reason if rung_no == 0 else f"fallback from {ladder[0]}")
-            stream = provider.chat(messages, tools=tools, **opts).__aiter__()
+            payload = messages if tier == "daily" else self._redact_pinned(messages)
+            stream = provider.chat(payload, tools=tools, **opts).__aiter__()
             emitted = False
             # The final rung must answer — no first-token cutoff for it.
             is_last = not queue

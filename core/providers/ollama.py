@@ -63,6 +63,23 @@ class OllamaProvider:
         async for chunk in accumulate_stream(stream):
             yield chunk
 
+    async def unload(self) -> None:
+        """Evict the model from VRAM now (game mode): keep_alive 0 unloads."""
+        root = self.base_url.rsplit("/v1", 1)[0]
+        async with httpx.AsyncClient(timeout=30) as client:
+            await client.post(
+                f"{root}/api/generate", json={"model": self.model, "keep_alive": 0}
+            )
+
+    async def warm(self) -> None:
+        """Load the model back with the configured keep_alive (blocking load)."""
+        root = self.base_url.rsplit("/v1", 1)[0]
+        async with httpx.AsyncClient(timeout=300) as client:
+            await client.post(
+                f"{root}/api/generate",
+                json={"model": self.model, "keep_alive": self.keep_alive},
+            )
+
     async def loaded_context_length(self) -> int | None:
         """Context size Ollama actually loaded the model with (None if unknown).
 

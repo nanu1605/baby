@@ -359,3 +359,146 @@ async def test_slow_gen_ping_blocks_recovery():
     monitor.state = "degraded"
     await monitor._probe_once()
     assert monitor.state == "degraded"  # congested-but-alive is not recovered
+
+
+# -- N3: privacy pins ------------------------------------------------------------------
+
+
+def _pinned_messages(tool_name="read_file", content="SECRET-BYTES-42"):
+    return [
+        {"role": "user", "content": "read my notes"},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "c1", "type": "function",
+             "function": {"name": tool_name, "arguments": "{\"path\": \"notes.txt\"}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": content},
+    ]
+
+
+async def test_pinned_tool_result_forces_local():
+    primary = NimFake(["never"])
+    backstop = FakeProvider(["never"])
+    router = make_router(primary=primary, backstop=backstop)
+    reply = ""
+    async for chunk in router.chat(_pinned_messages(), tools=None):
+        reply += chunk.delta
+    assert reply == "local reply"
+    assert primary.requests == [] and backstop.requests == []
+    assert "privacy pin (read_file)" in router.active["reason"]
+
+
+async def test_privacy_pin_beats_game_mode():
+    # Pinned bytes never leave the PC even when the local brain is unloaded.
+    primary = NimFake(["never"])
+    router = make_router(primary=primary)
+    router.game_mode = True
+    reply = ""
+    async for chunk in router.chat(_pinned_messages(), tools=None):
+        reply += chunk.delta
+    assert reply == "local reply"
+    assert primary.requests == []
+
+
+async def test_redaction_masks_pinned_bytes_only():
+    router = make_router(primary=NimFake(["x"]))
+    messages = _pinned_messages() + [
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "c2", "type": "function",
+             "function": {"name": "web_search", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c2", "content": "public result"},
+    ]
+    out = router._redact_pinned(messages)
+    tool_msgs = [m for m in out if m["role"] == "tool"]
+    assert "SECRET-BYTES-42" not in str(out)
+    assert "[local-only content redacted: read_file result, 15 bytes]" in tool_msgs[0]["content"]
+    assert tool_msgs[1]["content"] == "public result"  # unpinned untouched
+
+
+async def test_unpinned_tool_results_do_not_pin():
+    primary = NimFake(["cloud reply"])
+    router = make_router(primary=primary)
+    reply = ""
+    async for chunk in router.chat(_pinned_messages(tool_name="web_search"), tools=None):
+        reply += chunk.delta
+    assert reply == "cloud reply"
+
+
+# -- N3: language pin -------------------------------------------------------------------
+
+
+async def test_devanagari_message_pins_local():
+    primary = NimFake(["never"])
+    router = make_router(primary=primary)
+    reply = await collect(router, "मेरे लिए कल का मौसम बताओ")
+    assert reply == "local reply"
+    assert primary.requests == []
+    assert "language pin" in router.active["reason"]
+
+
+async def test_roman_hinglish_is_not_pinned():
+    primary = NimFake(["cloud reply"])
+    router = make_router(primary=primary)
+    assert await collect(router, "yaar kal ka weather kya hai") == "cloud reply"
+
+
+# -- N3: game mode toggle -----------------------------------------------------------------
+
+
+class UnloadableDaily(FakeProvider):
+    def __init__(self, script):
+        super().__init__(script)
+        self.unloads = 0
+        self.warms = 0
+
+    async def unload(self):
+        self.unloads += 1
+
+    async def warm(self):
+        self.warms += 1
+
+
+async def test_set_game_mode_unloads_and_rewarns():
+    daily = UnloadableDaily(["local reply"])
+    router = make_router(daily=daily, primary=NimFake(["cloud reply"]))
+
+    class FakeNotifier:
+        def __init__(self):
+            self.announced = []
+
+        async def announce(self, text, **kw):
+            self.announced.append(text)
+
+    router.notifier = FakeNotifier()
+    line = await router.set_game_mode(True)
+    assert router.game_mode and daily.unloads == 1 and "ON" in line
+    assert "already" in await router.set_game_mode(True)
+    line = await router.set_game_mode(False)
+    assert not router.game_mode and "OFF" in line
+    await router._warm_task
+    assert daily.warms == 1
+    assert any("ready" in t.lower() for t in router.notifier.announced)
+
+
+async def test_set_game_mode_tool_and_safety():
+    from core.safety import SafetyConfig, classify_tool
+    from tools import game as game_tools
+
+    verdict = classify_tool("set_game_mode", {"on": True}, SafetyConfig())
+    assert verdict.klass.value == "allow"
+
+    router = make_router(daily=UnloadableDaily(["x"]), primary=NimFake(["y"]))
+    game_tools.configure(router)
+    import json as _json
+
+    result = _json.loads(await game_tools.set_game_mode(True))
+    assert result["game_mode"] is True
+    game_tools.configure(None)
+    result = _json.loads(await game_tools.set_game_mode(True))
+    assert "error" in result
+
+
+async def test_gamewatch_rect_logic():
+    from ui.gamewatch import covers_monitor
+
+    assert covers_monitor((0, 0, 2560, 1440), (0, 0, 2560, 1440))
+    assert covers_monitor((-8, -8, 2568, 1448), (0, 0, 2560, 1440))  # borderless overhang
+    assert not covers_monitor((0, 0, 1280, 720), (0, 0, 2560, 1440))  # windowed
