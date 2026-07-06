@@ -482,6 +482,10 @@ class CloudRouter:
         timeouts = cfg.get("first_token_timeout_s", {}) or {}
         self.timeout_voice = float(timeouts.get("voice", 3.5))
         self.timeout_text = float(timeouts.get("text", 8))
+        # A stream that STALLS after its first chunk hung a turn forever
+        # (observed live: turn_running stuck true, every later message
+        # silently swallowed). No provider should go this long between chunks.
+        self.stall_timeout_s = float(cfg.get("stall_timeout_s", 90))
         rate = cfg.get("rate_limit", {}) or {}
         from core.ratelimit import TokenBucket
 
@@ -779,7 +783,9 @@ class CloudRouter:
                             break
                     else:
                         try:
-                            chunk = await stream.__anext__()
+                            chunk = await asyncio.wait_for(
+                                stream.__anext__(), self.stall_timeout_s
+                            )
                         except StopAsyncIteration:
                             if is_nim:
                                 self.monitor.note_success()
@@ -787,6 +793,16 @@ class CloudRouter:
                                 tier, str(opts.get("channel") or ""), ft_ms
                             )
                             return
+                        except TimeoutError:
+                            # Mid-stream stall: a half-streamed reply can't be
+                            # restarted, but hanging the turn forever is worse
+                            # — surface it so the agent reports and moves on.
+                            if is_nim:
+                                self.monitor.note_failure("timeout")
+                            self._note_skip(tier, f"stream stalled > {self.stall_timeout_s:g}s")
+                            raise RuntimeError(
+                                f"{tier}: stream stalled mid-reply — try again"
+                            ) from None
                     if not emitted:
                         ft_ms = (_time.monotonic() - t_start) * 1000.0
                     emitted = True

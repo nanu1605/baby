@@ -76,6 +76,9 @@ const chat = reconnectingSocket("/ws/chat", (msg) => {
     setTurnRunning(false);
   } else if (msg.type === "busy") {
     setTurnRunning(true);
+    // Silence here read as "assistant is dead" (observed) — say why.
+    addBubble("assistant system-note",
+      "Still working on the previous request — press ■ Stop to cancel it.");
   }
 });
 

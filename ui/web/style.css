@@ -74,6 +74,7 @@ header {
 .brain-badge.local { color: var(--green); border-color: var(--green); }
 .brain-badge.nim { color: #2dd4bf; border-color: #2dd4bf; }
 .brain-badge.gemini { color: #c084fc; border-color: #c084fc; }
+.msg.system-note { color: var(--muted); font-style: italic; font-size: .85rem; }
 .spacer { flex: 1; }
 #turn-indicator { font-size: .8rem; color: var(--muted); }
 #turn-indicator.running { color: var(--green); }

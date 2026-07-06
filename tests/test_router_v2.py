@@ -580,3 +580,20 @@ async def test_language_pin_outranks_degraded_state():
     assert await collect(router, "आज का मौसम कैसा है?") == "local reply"
     assert backstop.requests == []
     assert "language pin" in router.active["reason"]
+
+
+async def test_midstream_stall_raises_instead_of_hanging():
+    # Observed live: a stream that stalled after its first chunk hung the
+    # turn forever (turn_running stuck, every later message swallowed).
+    class Staller(NimFake):
+        async def chat(self, messages, tools=None, **opts):
+            self.requests.append([dict(m) for m in messages])
+            yield Chunk(delta="first ")
+            await asyncio.sleep(5)  # far past the stall budget below
+            yield Chunk(delta="never")
+
+    cfg = dict(ROUTER_CFG, stall_timeout_s=0.1)
+    router = make_router(primary=Staller([]), cfg=cfg)
+    with pytest.raises(RuntimeError, match="stalled"):
+        await collect(router)
+    assert router.monitor.state == "degraded"

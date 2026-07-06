@@ -52,7 +52,12 @@ class UIContext:
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
 
     def turn_running(self) -> bool:
-        return self.current_turn is not None and not self.current_turn.done()
+        if self.current_turn is not None and not self.current_turn.done():
+            return True
+        # Voice turns live in the pipeline, not in current_turn — /stats and
+        # the busy check must see them too.
+        voice_running = getattr(self.voice, "turn_running", None)
+        return bool(voice_running and voice_running())
 
 
 def create_app(ctx: UIContext) -> FastAPI:
@@ -134,8 +139,12 @@ def create_app(ctx: UIContext) -> FastAPI:
     @app.post("/kill")
     async def kill():
         cancelled = False
-        if ctx.turn_running():
+        if ctx.current_turn is not None and not ctx.current_turn.done():
             ctx.current_turn.cancel()
+            cancelled = True
+        cancel_voice = getattr(ctx.voice, "cancel_turn", None)
+        if cancel_voice is not None:
+            cancel_voice()  # voice turns are tracked in the pipeline
             cancelled = True
         ctx.gate.confirmations.cancel_all()
         ctx.bus.publish("status", "ui", text="kill switch: current turn cancelled")

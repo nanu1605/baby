@@ -241,6 +241,15 @@ class VoicePipeline:
         if self._turn_future is not None and not self._turn_future.done():
             self._turn_future.cancel()
 
+    def cancel_turn(self) -> None:
+        """Public: the UI kill switch must reach VOICE turns too (observed
+        live: a stalled voice turn survived /kill because only the UI-tracked
+        task was cancelled)."""
+        self._cancel_turn()
+
+    def turn_running(self) -> bool:
+        return self._turn_future is not None and not self._turn_future.done()
+
     def _toggle_game_mode(self, on: bool) -> None:
         """Deterministic voice toggle — runs even when every brain is down."""
         provider = getattr(self.agent, "provider", None)
