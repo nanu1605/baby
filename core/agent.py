@@ -159,8 +159,12 @@ class AgentCore:
             if decline:
                 # Proposed next step declined — acknowledge, don't act, no model
                 # call. (A CONFIRM-class action was never queued, so nothing to
-                # cancel at the gate.)
-                reply = "Okay, I'll skip that."
+                # cancel at the gate.) Match the user's language.
+                reply = (
+                    "ठीक है, छोड़ देता हूँ।"
+                    if detect_language(user_text) == "Hindi"
+                    else "Okay, I'll skip that."
+                )
                 self.bus.publish("token", self.channel, text=reply)
                 await self.db.add_message(
                     self.conversation_id, "assistant", reply, turn_id=turn_id
@@ -210,6 +214,12 @@ class AgentCore:
                 record(self.channel, status)
             if self.memory is not None and status == "ok":
                 self._schedule_maintenance()
+            # A next-step offer only stays armed if THIS turn fully persisted its
+            # assistant row (the "Next: …" the model would act on). An errored or
+            # capped turn must not leave a stale suggestion for the next turn
+            # (review #7).
+            if status != "ok":
+                self.pending_suggestion = None
 
     async def _loop(
         self, user_text: str, turn_id: int, *, proceed_hint: str | None = None

@@ -2,7 +2,8 @@
 
 Run `uv run python run.py --voice`. Speaker + mic required.
 All of these must pass before Phase 4 starts (spec Section 16, Phase 3).
-Interim wake word is **"hey jarvis"** until `models/hey_baby.onnx` lands
+Wake word is the pretrained **"hey jarvis"**; a custom single-word **"jarvis"**
+(`models/jarvis.onnx`) runs alongside it once trained
 (see scripts/wakeword_training.md).
 
 ## 1. Ready cue

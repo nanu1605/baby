@@ -405,3 +405,24 @@ async def test_unrelated_answer_expires_pending(db):
     assert not any(
         "approved the next step" in (m.get("content") or "") for m in provider.requests[0]
     )
+
+
+async def test_casual_reply_does_not_proceed(db):
+    # Laughter/backchannel in the hands-free window must NOT run the armed action.
+    agent, provider, _ = await _make_agent(db, ["just chatting"])
+    agent.pending_suggestion = "delete the old logs"
+    reply = await agent.run_turn("ha ha")
+    assert reply == "just chatting"  # a normal new turn, not a proceed
+    assert not any(
+        "approved the next step" in (m.get("content") or "") for m in provider.requests[0]
+    )
+    assert agent.pending_suggestion is None
+
+
+async def test_ambiguous_ok_cancel_declines_not_proceeds(db):
+    # "ok cancel" carries a no-signal — it must decline, never proceed.
+    agent, provider, _ = await _make_agent(db, ["should not run"])
+    agent.pending_suggestion = "delete the old logs"
+    reply = await agent.run_turn("ok cancel")
+    assert "skip" in reply.lower()  # decline ack
+    assert provider.requests == []  # no model call, no execution

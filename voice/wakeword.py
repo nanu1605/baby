@@ -54,6 +54,13 @@ class WakeWord:
         if self.builtin_fallback and self.builtin_fallback not in names:
             refs.append(self.builtin_fallback)
             names.append(self.builtin_fallback)
+        # Never hand openWakeWord an empty list — Model([]) loads EVERY bundled
+        # wake word (alexa, hey_mycroft, timer, weather…), so Baby would wake on
+        # all of them. If a user blanked the fallback and has no custom model,
+        # fall back to hey_jarvis rather than everything.
+        if not refs:
+            refs = ["hey_jarvis"]
+            names = ["hey_jarvis"]
         self._model = Model(wakeword_models=refs, inference_framework="onnx")
         self._active_name = "+".join(dict.fromkeys(names))
         return self._active_name

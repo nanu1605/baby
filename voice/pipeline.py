@@ -410,6 +410,13 @@ class VoicePipeline:
             while (chunk := frames.pop(_VAD_FRAME)) is not None:
                 recorded.append(chunk)
                 if self.vad.utterance_done(chunk):
+                    # A follow-up window must honor the full window_s: the VAD's
+                    # short pure-silence timeout would otherwise close it in a
+                    # few seconds. Ignore "done" until the user actually starts
+                    # speaking; only the window_s deadline closes a silent one.
+                    if followup and not getattr(self.vad, "speech_started", False):
+                        recorded.clear()  # don't accumulate the whole window of silence
+                        break
                     done = True
                     break
             if done:
@@ -435,16 +442,18 @@ class VoicePipeline:
             else:
                 self._publish("status", text="voice: heard nothing")
             return
+        # Conversation end phrase ("baby stop listening", "bas") cleanly closes
+        # the follow-up window. Checked BEFORE the kill phrase so "baby stop
+        # listening" ends the session as a session-close, not as a mid-turn kill
+        # (the kill phrase "baby stop" would otherwise shadow it).
+        if followup and is_end_phrase(text, self.end_phrases):
+            self._session_cue()
+            self._publish("status", text="voice: conversation ended")
+            return
         if is_kill_phrase(text, self.kill_phrases):
             self._cancel_turn()
             self._drain_sentences()
             self._publish("status", text="voice: stopped by kill phrase")
-            return
-        # Conversation end phrase ("baby stop listening", "bas") closes the
-        # follow-up window instead of starting another turn.
-        if followup and is_end_phrase(text, self.end_phrases):
-            self._session_cue()
-            self._publish("status", text="voice: conversation ended")
             return
         # Game-mode escape hatch: a bare "game mode on/off" toggles directly,
         # no model in the loop — in game mode with the cloud down there is NO

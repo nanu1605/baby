@@ -740,6 +740,31 @@ def test_wakeword_loads_custom_alongside_builtin(tmp_path, monkeypatch):
     assert name == "jarvis+hey_jarvis"
 
 
+def test_wakeword_empty_fallback_never_loads_all(tmp_path, monkeypatch):
+    # A blanked fallback with no custom model must NOT hand Model([]) — that
+    # loads EVERY bundled wake word (alexa, timer…). Fall back to hey_jarvis.
+    import openwakeword.model as owm
+
+    from voice.wakeword import WakeWord
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx"):
+            captured["models"] = list(wakeword_models)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    ww = WakeWord(model_path=tmp_path / "absent.onnx", builtin_fallback="")
+    ww.load()
+    assert captured["models"] == ["hey_jarvis"]  # never [] (which loads all)
+
+
 # -- 11. markdown never reaches the speaker -----------------------------------------
 
 
