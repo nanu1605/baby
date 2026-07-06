@@ -13,14 +13,16 @@ deterministic pipeline checks.
 | T01 | stats sanity | PASS | state=cloud |
 | T02 | plain chat turn | PASS | brain=nim_primary 1.6s |
 | T03 | tool turn (get_time) | PASS | tool=True time_in_reply=True attempts=1 |
-| T04 | memory round-trip | PASS | Your e2e probe word is kumquat. |
+| T04 | memory round-trip | PASS | Your e2e probe word is kumquat.
+
+Next: Verify that "kumquat" |
 | T05 | privacy pin (read_file) | PASS | pinned=True brain=daily attempts=1 |
 | T06 | language pin (Devanagari) | PASS | pinned=True |
-| T07 | browser goto+read | PASS | The main heading on the page is: "Example Domain." 
+| T07 | browser goto+read | PASS | The main heading of the page is: **Example Domain**. 
 
-If you  |
-| T08 | browser screenshot | PASS | new=['shot_1783345341.png'] attempts=1 |
-| T09 | screen awareness | PASS | Your screen currently shows a development environment with a |
+If yo |
+| T08 | browser screenshot | PASS | new=['shot_1783347730.png'] attempts=1 |
+| T09 | screen awareness | PASS | Your screen currently displays a Windows desktop with a brow |
 | T10 | background task | PASS | status=done — queued without dialog (benign spec is ALLOW), attempts=1 |
 | T11 | game-mode VRAM cycle | PASS | unloaded=True reloaded=True |
 | T12 | kill switch cancels turn | PASS | status=cancelled |
