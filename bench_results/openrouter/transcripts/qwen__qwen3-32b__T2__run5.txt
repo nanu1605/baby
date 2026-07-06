@@ -1,0 +1,10 @@
+model: qwen/qwen3-32b  test: T2  run: 5
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query": "quarterly_report.pdf", "max_results": 1})
+  read_file({"path": "C:\\Users\\tanis\\Documents\\quarterly_report.pdf", "max_kb": 812})
+final:
+The revenue number in the quarterly report is **$4.2 million**. 
+
+From the file text:
+> "Quarterly Report Q2. **Revenue: $4.2M**. Costs: $3.1M. Margin improved 6%."

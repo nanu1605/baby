@@ -1,0 +1,5 @@
+model: openai/gpt-4o-mini  test: T8  run: 5
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi offers a diverse range of street food that reflects its rich culture, from spicy chaat to delicious parathas, making it a paradise for food lovers."}

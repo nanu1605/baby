@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T6  run: 1
+score: {"pass": false, "devanagari_ratio": 0.0}
+calls:
+  write_file({"content": "कल के लिए एक ग्ण्त सी बात", "path": "tomorrow_motive.txt", "mode": "w"})
+  write_file({"path": "hindi_motive.txt", "content": "कल के लिए एक गणत सी बात", "mode": "w"})
+  remember({"fact": "आज का दिन बहुत अच्छा रहा"})
+  recall({"query": "कल के लिए एक गणत सी बात", "k": "1"})
+  write_file({"path": "hindi_motive.txt", "content": "कल के लिए एक गृणत सी बात", "mode": "w"})
+final:
+

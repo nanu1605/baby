@@ -1,0 +1,9 @@
+model: qwen/qwen3-32b  test: T2  run: 1
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query": "quarterly_report.pdf", "max_results": 1})
+  read_file({"path": "C:\\Users\\tanis\\Documents\\quarterly_report.pdf", "max_kb": 1024})
+final:
+The revenue from the quarterly report is **$4.2M**.  
+
+Let me know if you'd like me to extract more details or assist further! 💸

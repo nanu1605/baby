@@ -1,0 +1,14 @@
+model: qwen/qwen3-32b  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 22}
+calls:
+  web_search({"query": "best weekend plans to chill at home"})
+final:
+Aaj ke bench mode mein web_search kaam nahi kar raha hai, lekin main aapko kuch idea doon sakta hoon:
+
+1. **Netflix/Disney+ Hotstar binge** - "app_control" use karke aapki fav streaming app open karein
+2. **Cooking experiment** - Recipe app open karke naye dish banaen
+3. **Indoor games** - "app_control" se Steam/Gaming app chalayein
+4. **Reading marathon** - PDF reader open karke koi eBook padhein
+5. **DIY projects** - YouTube app mein DIY tutorial dekhkar something build karein
+
+Chahte ho to main kisi bhi activity ke liye direct app open kar sakta hoon. Konsa karna chahte ho? 😊

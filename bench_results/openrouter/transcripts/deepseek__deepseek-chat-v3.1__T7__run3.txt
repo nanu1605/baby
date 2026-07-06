@@ -1,0 +1,37 @@
+model: deepseek/deepseek-chat-v3.1  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 20}
+calls:
+final:
+Hey Tanishq! Weekend chill plan? Mast idea hai! 😎 Let me suggest some awesome options:
+
+**🎮 Gaming Marathon:**
+- PUBG ya Valorant ke matches khelo
+- New game try karo - Steam pe kuch interesting games dekho
+- Friends ke saath online gaming session
+
+**🎬 Movie/Series Binge:**
+- Netflix/Prime pe nayi series start karo
+- Classic movies ka marathon
+- Anime dekhlo agar pasand hai
+
+**🍕 Food & Chill:**
+- Ghar pe mast khana banaye (pizza, biryani, etc.)
+- Food delivery order karo favorite restaurant se
+- Cooking experiment karo - nayi recipe try karo
+
+**🎵 Music & Relax:**
+- Spotify pe playlist banao
+- Karaoke session with friends/family
+- New music explore karo
+
+**📚 Learning/Reading:**
+- Interesting book padho
+- Online course start karo
+- Coding ya creative project pe kaam karo
+
+**💪 Fitness:**
+- Home workout session
+- Yoga ya meditation
+- Dance workout try karo
+
+Tumhe kis type ka chill plan pasand aayega? Koi specific interest hai? Ya main kuch aur suggestions de doon? 🥰

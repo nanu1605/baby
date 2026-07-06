@@ -1,0 +1,5 @@
+model: openai/gpt-4o-mini  test: T6  run: 4
+score: {"pass": true, "devanagari_ratio": 1.0}
+calls:
+final:
+"हर नया दिन एक नई शुरुआत है। अपने सपनों की ओर एक कदम और बढ़ाएं। विश्वास रखो, मेहनत का फल मीठा होता है।"

@@ -1,0 +1,7 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T1  run: 5
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action": "close", "name": "Chrome"})
+  get_system_stats({"detail": "false"})
+final:
+The CPU usage is 34.2%.

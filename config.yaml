@@ -21,9 +21,13 @@ models:
     provider: gemini
     model: gemini-flash-latest          # free tier; key in .env; optional
   nim_primary:
-    provider: nvidia
-    base_url: https://integrate.api.nvidia.com/v1
-    model: minimaxai/minimax-m2.7       # N1 bench winner (Tanishq, 2026-07-06): tools 100%, 1.4s first token
+    provider: nvidia                    # generic OpenAI-compatible client
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    model: openai/gpt-4o-mini           # OR bench winner (Tanishq, 2026-07-06): all tests 100%, 1.2s first token
+    # NIM rollback: base_url https://integrate.api.nvidia.com/v1, drop
+    # api_key_env, model minimaxai/minimax-m2.7 (served 0/45 on the
+    # 2026-07-06 soak day — congestion; see DECISIONS.md)
     temperature: 0.7
   nim_heavy:
     provider: nvidia

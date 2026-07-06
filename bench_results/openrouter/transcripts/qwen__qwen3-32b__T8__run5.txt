@@ -1,0 +1,5 @@
+model: qwen/qwen3-32b  test: T8  run: 5
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi is renowned for its diverse and rich street food culture, featuring iconic dishes like chaat, pani puri, butter chicken, and jalebi. The city's historical significance as a Mughal capital and its cosmopolitan nature have blended North Indian, Mughlai, and street food traditions into a vibrant culinary scene, especially in areas like Chandni Chowk and Old Delhi."}

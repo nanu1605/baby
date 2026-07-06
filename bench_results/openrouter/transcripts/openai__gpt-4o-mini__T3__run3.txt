@@ -1,0 +1,11 @@
+model: openai/gpt-4o-mini  test: T3  run: 3
+score: {"pass": true, "args_ok": true, "query_ok": true, "limit_ok": true}
+calls:
+  file_search({"query":"backup","max_results":5})
+final:
+I found 2 Python scripts named "backup":
+
+1. **Path:** `C:\Users\tanis\scripts\backup.py` - Size: 4 KB
+2. **Path:** `C:\Users\tanis\old\backup_v2.py` - Size: 6 KB
+
+Let me know if you need anything else!

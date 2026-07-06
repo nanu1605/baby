@@ -1,0 +1,12 @@
+model: qwen/qwen3-32b  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 22}
+calls:
+  web_search({"query": "best weekend plans at home"})
+final:
+Baby apki aapka weekend plan kuch aise ho sakta hai:  
+1. **Movie Night** – `app_control` se Netflix ya Disney+ open kardo.  
+2. **Music Time** – Spotify/WhatsApp Music ko `app_control` se khola karo aur favorite playlist suno.  
+3. **Cooking/Experiment** – Induction stove par kuch naya banao (agar naya recipe chahiye to `browser_act` se URL khol sakta hu).  
+4. **Board Games** – Ludo, Carrom, ya mobile ka PUBG karo.  
+
+Web search ka tool abhi unavailable hai, so I suggest apps aapke PC pe jo already installed hai. Kuch specific app chahiye? Baby help karega 😊

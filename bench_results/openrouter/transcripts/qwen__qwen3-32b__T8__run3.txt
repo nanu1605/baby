@@ -1,0 +1,5 @@
+model: qwen/qwen3-32b  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Delhi", "why": "Delhi is renowned for its diverse and flavorful street food scene, offering a wide range of cuisines from chaat to kebabs, reflecting the city's rich cultural heritage and culinary diversity."}

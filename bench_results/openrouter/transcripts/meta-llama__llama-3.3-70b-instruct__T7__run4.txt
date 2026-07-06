@@ -1,0 +1,20 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 34}
+calls:
+  web_search({"query": "fun activities to do at home on weekend"})
+  web_search({"query": "weekend par ghar pe kuch mast karne ke tareeke"})
+final:
+Agar aap weekend pe ghar par hi chill karna chahte hain, toh kuch mast plan yeh hain:
+
+1. Movie marathon: Apne favorite movies dekhein, ya phir koi nayi series shuru karein.
+2. Gaming: Agar aapko gaming ka shauk hai, toh apne favorite games khelne mein time bitayein.
+3. Cooking: Kuch nayi recipes try karein, ya phir apne favorite dishes banayein.
+4. Reading: Agar aapko padhne ka shauk hai, toh koi nayi kitab padhein, ya phir apne favorite authors ki kitaabein padhein.
+5. Music: Apne favorite songs suniye, ya phir koi nayi music discover karein.
+6. Yoga ya meditation: Apne aap ko relax karne ke liye yoga ya meditation karein.
+7. DIY projects: Agar aapko crafting ka shauk hai, toh koi nayi DIY project shuru karein.
+8. Video calls: Apne doston ya parivaar walon se video calls karke baat karein.
+9. Indoor games: Apne parivaar walon ke saath indoor games khelne mein time bitayein, jaise ki ludo, carrom, ya chess.
+10. Self-care: Apne aap ko pamper karne ke liye self-care routine follow karein, jaise ki face masks, hair masks, ya manicures.
+
+Ummeed hai ki ye plans aapke weekend ko mast bana denge!

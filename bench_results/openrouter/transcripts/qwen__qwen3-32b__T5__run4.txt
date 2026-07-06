@@ -1,0 +1,5 @@
+model: qwen/qwen3-32b  test: T5  run: 4
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+हाय! मैं ठीक हूँ। आपकी मदद करने के लिए तैयार हूँ। क्या आपको कुछ खास काम या प्रश्न है? 😊

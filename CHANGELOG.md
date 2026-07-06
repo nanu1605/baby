@@ -51,6 +51,16 @@
   transitions, first-token p50/p95, voice dead-air count, traceback
   count). `/stats` += per-brain `latency_ms` percentiles. README gains
   the cloud-primary architecture diagram.
+- OR (2026-07-06): **Primary brain moved to OpenRouter** —
+  `openai/gpt-4o-mini` (day-1 soak caught NIM serving 0/45 attempts;
+  re-benched on OpenRouter: every test 100%, first token p50 1.2 s —
+  see DECISIONS #83). Cloud slots gain `api_key_env` so primary
+  (OpenRouter) and heavy (glm-5.2, still NIM) use separate hosts/keys;
+  bench harness gains `--base-url/--key-env/--rpm/--tag`. Same-day
+  hardening from the live E2E battery: shared-DB-connection lock
+  (commit race), leaked `<think>`-tag scrub (reply/history/TTS/UI),
+  empty replies always retried once, `POST /conversation/new` for
+  clean scored runs, Playwright Ctrl+C teardown noise silenced.
 
 ## Phase 5 — Multi-Agent, Screen Awareness, Speaker Verification (2026-07-05)
 

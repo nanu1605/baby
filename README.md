@@ -117,8 +117,8 @@ It's 6:42 PM on Friday, July 3rd.
 Telegram setup (optional): create a bot with **@BotFather**, get your chat
 id from **@userinfobot**, put both in `.env`
 (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`), set `telegram.enabled: true`.
-Cloud brains: `NVIDIA_API_KEY` (NIM, primary) and `GEMINI_API_KEY`
-(backstop) in `.env`.
+Cloud brains: `OPENROUTER_API_KEY` (primary), `NVIDIA_API_KEY` (NIM heavy)
+and `GEMINI_API_KEY` (backstop) in `.env`.
 
 ## Brain architecture (cloud-primary)
 
@@ -126,12 +126,15 @@ Cloud brains: `NVIDIA_API_KEY` (NIM, primary) and `GEMINI_API_KEY`
 turn arrives
 ├─ privacy pin (read_file / run_shell result in context) → local 9B only
 ├─ language pin (≥30% Devanagari)                        → local 9B only
-├─ game mode ON (local unloaded)                         → NIM → Gemini, no local
+├─ game mode ON (local unloaded)                         → cloud → Gemini, no local
 ├─ health OFFLINE                                        → local 9B only
-├─ health DEGRADED                                       → Gemini → local (probes recover NIM)
+├─ health DEGRADED                                       → Gemini → local (probes recover cloud)
 ├─ rate bucket empty (36 RPM)                            → local 9B, cloud skipped entirely
-├─ heavy turn (planning / orchestrator)                  → NIM heavy → NIM primary → local
-└─ normal turn                                           → NIM primary → Gemini → local
+├─ heavy turn (planning / orchestrator)                  → NIM heavy → cloud primary → local
+└─ normal turn                                           → cloud primary → Gemini → local
+
+cloud primary = openai/gpt-4o-mini via OpenRouter (bench: DECISIONS #83);
+heavy = z-ai/glm-5.2 via NVIDIA NIM (background-only)
 ```
 
 - Health state machine: one failure drops CLOUD→DEGRADED (DNS straight to

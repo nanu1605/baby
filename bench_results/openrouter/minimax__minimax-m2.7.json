@@ -1,0 +1,622 @@
+{
+ "model": "minimax/minimax-m2.7",
+ "runs": {
+  "T1": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.915,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.17,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.344,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.012,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.173,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T2": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.028,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.11,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.936,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.641,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.503,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T3": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.004,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.84,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.654,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.898,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.948,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T4": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.607,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.261,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.202,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.836,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.366,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T5": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.404,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.605,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.28,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.541,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.06,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T6": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.741,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.95,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 30.706,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.264,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.171,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T7": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.208,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.86,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.336,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 34.861,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.102,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ],
+  "T8": [
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.615,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.218,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.277,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.968,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   },
+   {
+    "ok": false,
+    "score": {
+     "pass": false
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "",
+    "first_token_s": null,
+    "total_s": 31.032,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 5,
+    "error": "RuntimeError: call failed after 5 attempts"
+   }
+  ]
+ },
+ "reasoning_effort": "rejected (400)"
+}

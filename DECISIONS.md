@@ -423,3 +423,17 @@ Running log of non-obvious choices made during the build. Newest last.
     soak report is a pure read over that trail - restart-proof, no
     schema change, and the same rows double as the live activity feed's
     forensic record (they solved the silent-voice-turn bug in minutes).
+83. **Primary brain moved from NIM to OpenRouter (openai/gpt-4o-mini)**:
+    day-1 soak showed NIM serving 0 of 45 routed attempts - congested
+    the whole window, so cloud-primary delivered no cloud (the ladder
+    hid it; feel stayed local). Re-benched on OpenRouter with the same
+    T1-T8 harness (bench_results/openrouter/): gpt-4o-mini 95.2 (every
+    test 100%, first token p50 1.2 s / p95 4.0 s), deepseek-chat-v3.1
+    90.5, qwen3-32b 73.3, llama-3.3-70b 22.3, and minimaxai/minimax-m2.7
+    - the NIM winner - scored 0 through OpenRouter (200/200 stream
+    errors with tools; fine on plain requests, broken through its
+    provider pool). Heavy stays z-ai/glm-5.2 on NIM: background-only,
+    tolerates congestion, planning benched 5/5. Slots carry api_key_env
+    so each can point at a different host; tier names (nim_primary)
+    kept for audit/report continuity. NIM rollback is three config
+    lines (recorded inline in config.yaml). Tanishq picked the winner.

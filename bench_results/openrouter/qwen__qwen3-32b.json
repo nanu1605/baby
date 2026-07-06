@@ -1,0 +1,898 @@
+{
+ "model": "qwen/qwen3-32b",
+ "runs": {
+  "T1": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Here's the system status:\n- CPU usage: 34.2%\n- RAM usage: 61.0%\n- GPU: 6.5/8.0 GB VRAM used\n\nWould you like me to show detailed process information too?",
+    "first_token_s": 6.151890499997535,
+    "total_s": 12.432,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Google Chrome has been closed. Current system stats:\n- CPU usage: 34.2%\n- RAM usage: 61%\n- GPU VRAM: 6.5/8.0 GB used\n\nYour CPU is using less than 1/3 of its capacity right now. Would you like me to check any other system metrics or help with something else?",
+    "first_token_s": 6.305644299995038,
+    "total_s": 12.516,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Here's the system status:\n\n- **CPU Usage:** 34.2%  \n- **RAM Usage:** 61.0%  \n- **GPU:** 6.5 GB of 8.0 GB VRAM used  \n\nLet me know if you need further details! 😊",
+    "first_token_s": 4.069711400006781,
+    "total_s": 13.117,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": true}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed successfully. Here's your system's current performance:\n\n**CPU Usage:** 34.2%  \n**RAM Usage:** 61.0%  \n**GPU Memory:** 6.5 GB used of 8.0 GB total  \n\nLet me know if you'd like further details about specific processes!",
+    "first_token_s": 3.6285081000096397,
+    "total_s": 15.426,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": true}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome has been closed. Here's the system status:\n- CPU Usage: 34.2%\n- RAM Usage: 61.0%\n- GPU: 6.5GB VRAM used out of 8GB total\n\nWould you like me to check anything else or help with another task?",
+    "first_token_s": 10.261516600003233,
+    "total_s": 17.305,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T2": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\", \"max_results\": 1}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\", \"max_kb\": 1024}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue from the quarterly report is **$4.2M**.  \n\nLet me know if you'd like me to extract more details or assist further! 💸",
+    "first_token_s": 4.799713599990355,
+    "total_s": 11.963,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\", \"max_results\": 5}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\", \"max_kb\": 812}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number in the quarterly report is **$4.2M**. Let me know if you need anything else from the document!",
+    "first_token_s": 6.678491400001803,
+    "total_s": 13.097,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\", \"max_results\": 5}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\", \"max_kb\": 812}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number in the file `quarterly_report.pdf` is **$4.2M**. \n\nWould you like me to extract more details from the report or assist with anything else?",
+    "first_token_s": 5.3015150999999605,
+    "total_s": 11.657,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\", \"max_results\": 5}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\", \"max_kb\": 812}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number in the quarterly report is **$4.2M**. \n\nLet me know if you need further analysis or another task!",
+    "first_token_s": 9.083054999995511,
+    "total_s": 15.721,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\", \"max_results\": 1}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\", \"max_kb\": 812}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number in the quarterly report is **$4.2 million**. \n\nFrom the file text:\n> \"Quarterly Report Q2. **Revenue: $4.2M**. Costs: $3.1M. Margin improved 6%.\"",
+    "first_token_s": 6.982501600010437,
+    "total_s": 13.368,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T3": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup\", \"max_results\": 5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Here are the Python scripts named \"backup\" I found on your system:\n\n1. `C:\\Users\\tanis\\scripts\\backup.py` (4 KB)\n2. `C:\\Users\\tanis\\old\\backup_v2.py` (6 KB)\n\nOnly 2 matching files were found. Would you like me to open one of them in an editor or read their contents for you?",
+    "first_token_s": 1.9045124999975087,
+    "total_s": 5.266,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup\", \"max_results\": 5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Here are the Python scripts named \"backup\" I found on your system:\n\n1. **`C:\\Users\\tanis\\scripts\\backup.py`** (4 KB)\n2. **`C:\\Users\\tanis\\old\\backup_v2.py`** (6 KB)\n\nWould you like me to open one of these, read their contents, or perform another action?",
+    "first_token_s": 1.585196400003042,
+    "total_s": 4.698,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup.py\", \"max_results\": 5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found these Python scripts named \"backup\" in your files:\n\n1. `C:\\Users\\tanis\\scripts\\backup.py` (4 KB)\n2. `C:\\Users\\tanis\\old\\backup_v2.py` (6 KB)\n\nWould you like me to open/read one of these scripts, or search for something else?",
+    "first_token_s": 7.956673900000169,
+    "total_s": 11.067,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup.py\", \"max_results\": 5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Here are the Python scripts named \"backup\" I found on your system:\n\n1. **`C:\\Users\\tanis\\scripts\\backup.py`** (4 KB)\n2. **`C:\\Users\\tanis\\old\\backup_v2.py`** (6 KB)\n\nOnly 2 results were found. Would you like me to open one of these files, check their contents, or perform another action?",
+    "first_token_s": 2.383824899996398,
+    "total_s": 5.687,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup\", \"max_results\": 5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Here are the Python scripts named \"backup\" I found on your system:\n\n1. **backup.py**  \n   `C:\\Users\\tanis\\scripts\\backup.py` (4 KB)\n\n2. **backup_v2.py**  \n   `C:\\Users\\tanis\\old\\backup_v2.py` (6 KB)\n\nWould you like me to open, read, or modify any of these files?",
+    "first_token_s": 2.474388500006171,
+    "total_s": 5.359,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T4": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify is not installed on this PC. Would you like me to guide you to install it from the Microsoft Store, or is there another music app you'd prefer me to open?",
+    "first_token_s": 1.9823346000048332,
+    "total_s": 4.929,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "It seems Spotify is not installed on this PC. Would you like me to help you install it, or check if you have a different name for the application? You can also confirm if Spotify is installed and we can try another approach.",
+    "first_token_s": 1.6860664999985602,
+    "total_s": 4.831,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "honest": false,
+     "retried": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "browser_act",
+      "{\"action\": \"goto\", \"value\": \"https://apps.microsoft.com/detail/spotify-music\"}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Microsoft Store\"}"
+     ],
+     [
+      "browser_act",
+      "{\"action\": \"goto\", \"value\": \"https://open.spotify.com\"}"
+     ]
+    ],
+    "valid_arg_calls": 4,
+    "final": "It seems the `browser_act` tool is unavailable right now. Here's the Spotify website URL you can paste into your browser manually:  \n**https://open.spotify.com**  \n\nOr to install the desktop app, paste this:  \n**https://www.spotify.com/download/windows/**  \n\nLet me know if you'd like me to try another method!",
+    "first_token_s": 1.6722029000084149,
+    "total_s": 19.755,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify is not installed on this PC. Would you like me to:\n1. Search for Spotify in the Microsoft Store?\n2. Provide a link to download Spotify from its official website?\n3. Help you install it once you've downloaded the setup file?\n\nLet me know how I can assist!",
+    "first_token_s": 1.9744097999937367,
+    "total_s": 4.445,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify isn't installed on this PC. Would you like me to:\n1. Check if Spotify is available in the Microsoft Store?\n2. Suggest alternative music apps available locally?\n\nLet me know how I can assist!",
+    "first_token_s": 2.1525208999955794,
+    "total_s": 4.165,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T5": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "zero_tools": false
+    },
+    "calls": [
+     [
+      "project_status",
+      "{\"project_id\": 0}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"list\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "हाय टानिश्क! वर्तमान समय में कुछ टूल्स (जैसे एप्प नियंत्रण या प्रोजेक्ट स्थिति) अस्थायी रूप से ऑफ़लाइन हैं, लेकिन मैं अभी भी आपकी अन्य बातों में मदद कर सकता हूँ! मैं आपके लिए क्या कर सकता हूँ?  \n- फ़ाइलें खोज सकता हूँ (उदा. \"मेरे डेस्कटॉप पर 'रिपोर्ट' नाम की फ़ाइल कहाँ है?\")  \n- सिस्टम स्टैट्स दिखा सकता हूँ (उदा. \"कम्प्यूटर की रैम कितनी इस्तेमाल हो रही है?\")  \n- वेब खोज कर सकता हूँ (उदा. \"हिमाचल प्रदेश की नई खबरें\")  \n- या फिर कोई अन्य काम? 😊",
+    "first_token_s": 2.7247521999961464,
+    "total_s": 15.924,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "हाय तनिष्क! मैंने आपके स्क्रीन का अवलोकन किया। क्या मैं आपकी किसी खास चीज़ में मदद कर सकता हूँ? (हालाँकि आपने कोई विशिष्ट अनुरोध नहीं किया है, मुझे लगता है कि आप बस चेक कर रहे हैं कि मैं क्या कर रहा हूँ। कृपया मुझे जानकारी दें अगर कुछ करने की आवश्यकता हो।)",
+    "first_token_s": 4.281428800008143,
+    "total_s": 6.374,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Hello! 😊 Kuch help chahiye hai aapko? Yaar koi task ya query hai jo main aapke liye solve kar sakein?",
+    "first_token_s": 6.394855500009726,
+    "total_s": 7.317,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "हाय! मैं ठीक हूँ। आपकी मदद करने के लिए तैयार हूँ। क्या आपको कुछ खास काम या प्रश्न है? 😊",
+    "first_token_s": 5.676385099999607,
+    "total_s": 7.633,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Main yahan hu, apke liye readya hoon! Aapko kuchh help chahiye? 😊",
+    "first_token_s": 4.462990299987723,
+    "total_s": 5.252,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T6": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [
+     [
+      "write_file",
+      "{\"path\": \"motivational_note_tomorrow.txt\", \"content\": \"कल एक नई शुरुआत होगी, आज के सफलताओं पर खुश रहें लेकिन आगे बढ़ने में लगे रहें।\", \"mode\": \"create\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "मैं आपके लिए एक प्रेरणादायक संदेश लिख रहा हूँ, लेकिन अभ्यास में एक तकनीकी समस्या के कारण इसे लिखने में असमर्थ रहा। हालाँकि, यहाँ संदेश है:\n\n\"कल एक नई शुरुआत होगी, आज के सफलताओं पर खुश रहें लेकिन आगे बढ़ने में लगे रहें। हर चुनौती एक अवसर होती है, और हर कदम आपको अपने लक्ष्य के करीब ले आएगा। सुबह जब आप उठेंगे तो याद रखें - आपके पास आज के सफलता का दोबारा प्रमाण देने की ऊर्जा है!\"\n\nक्या आप मुझे कोई अन्य तरीका बता सकते हैं जिससे मैं आपकी मदद कर सके?",
+    "first_token_s": 6.254131200010306,
+    "total_s": 12.819,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "यह आपकी ओर से आज के दिन का संदेश बहुत प्रेरणादायक है। कल के लिए, आए सकारात्मकता के साथ नए अवसरों का सुगबुगा बनाएं, क्योंकि हर दिन आपकी यूनिक कहानी लिखे जाने का एक और मौका है! 🌟",
+    "first_token_s": 2.936094199991203,
+    "total_s": 4.628,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "यहाँ हिंदी में एक छोटी सी प्रेरणादायक बात है कल के लिए:\n\n\"प्रत्येक नए दिन एक नई शुरुआत है। सपने न तोड़ो, बस उनकी प्रतीक्षा करो। 🌟\"\n\n(कल की शुरुआत अपने सपनों के साथ करो - प्रत्येक दिन एक नए मौके की ओर बढ़े।)",
+    "first_token_s": 13.623556499995175,
+    "total_s": 18.478,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "धन्यवाद आपको आज के अच्छे दिन के लिए! कल के लिए एक प्रेरणादायक बात है:  \n**\"हर छोटा कदम एक बड़ा सपना पूरा करने की ओर बढ़ रहा है। आज की ऊर्जा कल के चुनौतियों को पार करने में आपका साथ देगी।\"**  \n\nआपका सपना एक बीज की तरह है – अगर आप उसे धैर्य और निरंतरता से सींचते रहे, तो वो एक दिन पेड़ बनकर छाया दे सकता है। हंसकर कल भी अच्छा दिन बनाएं! 🌟",
+    "first_token_s": 2.0843034999998054,
+    "total_s": 5.112,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "\"कल आपके लिए एक नई शुरुआत होगी, अपनी सपनों की ओर एक कदम और बढ़ाएं और आत्मविश्वास बनाए रखें।\"  \n(कल एक नया संघर्ष भी होगा, लेकिन इसे सफलता के रूप में गलती के रूप में न देखें।)",
+    "first_token_s": 5.548827299993718,
+    "total_s": 7.077,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T7": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 22
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best weekend plans at home\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Baby apki aapka weekend plan kuch aise ho sakta hai:  \n1. **Movie Night** – `app_control` se Netflix ya Disney+ open kardo.  \n2. **Music Time** – Spotify/WhatsApp Music ko `app_control` se khola karo aur favorite playlist suno.  \n3. **Cooking/Experiment** – Induction stove par kuch naya banao (agar naya recipe chahiye to `browser_act` se URL khol sakta hu).  \n4. **Board Games** – Ludo, Carrom, ya mobile ka PUBG karo.  \n\nWeb search ka tool abhi unavailable hai, so I suggest apps aapke PC pe jo already installed hai. Kuch specific app chahiye? Baby help karega 😊",
+    "first_token_s": 4.987982499995269,
+    "total_s": 11.214,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 22
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best weekend plans to chill at home\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Aaj ke bench mode mein web_search kaam nahi kar raha hai, lekin main aapko kuch idea doon sakta hoon:\n\n1. **Netflix/Disney+ Hotstar binge** - \"app_control\" use karke aapki fav streaming app open karein\n2. **Cooking experiment** - Recipe app open karke naye dish banaen\n3. **Indoor games** - \"app_control\" se Steam/Gaming app chalayein\n4. **Reading marathon** - PDF reader open karke koi eBook padhein\n5. **DIY projects** - YouTube app mein DIY tutorial dekhkar something build karein\n\nChahte ho to main kisi bhi activity ke liye direct app open kar sakta hoon. Konsa karna chahte ho? 😊",
+    "first_token_s": 6.876376300002448,
+    "total_s": 14.263,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 15
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Aapke liye kuch weekend chill plans:\n\n1. **Movie/Netflix Marathon** - 3-4 connected films watch karo (e.g. The Matrix trilogy, Spiderman: No Way Home + prequels)\n\n2. **Retro Gaming Night** - Old school PC games jaroor andazna, agar nahi khelne ke mana hai toh YouTube pe gaming streams dekho\n\n3. **DIY Projects** - \n   - Customized USB drive banaye (stickers lagaye)\n   - Coding se simple robot banaye (Arduino ke saath)\n   - 3D modelling (Blender use karo)\n\n4. **Home Spa Session** - \n   - Face mask + warm shower\n   - Candles + soft music\n   - Tea/coffee brewing experiment\n\n5. **Cooking Challenge** - Ek naya recipe search karo aur try karo (web_search use karte hue)\n\nChahiye koi specific help? Like movies suggest karna, recipe dhoondhna, ya project setup karna?",
+    "first_token_s": 3.6756641999963904,
+    "total_s": 5.85,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 31
+    },
+    "calls": [
+     [
+      "recall",
+      "{\"query\": \"user preferences or past activities\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Baby ki bench mode mein recall tool nahi hai, toh main aapko kuch general suggestion deta hu:\n\n1. 🍿 Movie night: Netflix/Disney+ par apne favorite show ka binge karo ya old classics dekh lo\n2. 🎲 Board games: Ludo, Carrom, ya phir family ke saath Scrabble/Chess khel lo\n3. 🧑🍳 New recipe try karo - maybe aapne pehle kisi cooking show ko dekha hota ho\n4. 🧩 Puzzle assembly ya DIY projects ke liye shuru karo (agar aapko kuch material mil gaya ho)\n5. 📷 Photo album banane ka plan karo - old memories ko arrange karo\n\nAapko kuch specific type ka activity padhta hai? Main aapko aur specific suggestions kar sakta hu agar aapke interest ke barein janne ke baad.",
+    "first_token_s": 6.39308889998938,
+    "total_s": 10.957,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"घर पर वीकेंड के लिए मस्त एक्टिविटीज\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "खैर, वीकेंड पर घर पर आराम के लिए कुछ अच्छे विचार यहां हैं:  \n\n1. **मूवी/सीरीज़ बिंगे** - एक Netflix, Disney+ हॉटस्टार, या YouTube Originals के स्ट्रीमिंग के लिए अपने फेवरेट प्लेटफॉर्म पर कुछ मूवीज़ या सीरीज़ बिंगे करें।  \n2. **खाना पकाना/बेकिंग** - एक नया रेसिपी आज़माएं या कुछ ऐसा बेक करें जो आपने पहले कभी आज़माया नहीं है (जैसे, मैग्गी लेसी के साथ या पानीपुरी होममेड वेरिएंट 😂)।  \n3. **कैसल गेम्स/बोर्ड गेम्स** - घर पर कोई भी बोर्ड गेम्स (जैसे, Ludo, Carrom, Chess, Scrabble) या कैसल गेम्स (जैसे, PUBG, GTA V) खेलें।  \n4. **कॉफी विथ एक्सपेरिमेंट्स** - कॉफी पाउडर के साथ अलग-अलग चीजें मिलाकर कुछ नया बनाएं (हालांकि, कुछ अजीब स्वाद हो सकते हैं, लेकिन वही फन होगा!)।  \n5. **एक्सरसाइज़/योगा** - फिटनेस से जुड़ा होने के बावजूद, घर पर एक्सरसाइज़ करना आसान है (YouTube पर \"home workout\" सर्च करें)।  \n\nअगर आपको कोई विशिष्ट एक्टिविटी बनाने में मदद चाहिए, तो मुझे बताएं! 😊",
+    "first_token_s": 4.804789799993159,
+    "total_s": 16.598,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T8": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "```json\n{\"city\": \"Delhi\", \"why\": \"Known for its diverse and iconic street food destinations like Chandni Chowk and Karim's, offering a wide range of traditional Indian delicacies.\"}\n```",
+    "first_token_s": 4.963170300005004,
+    "total_s": 7.229,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is renowned for its diverse and iconic street food, including chaat, paneer tikka, golgappas, and parathas. Its food streets like Chandni Chowk and Karol Bagh offer a rich culinary heritage with centuries-old recipes.\"}",
+    "first_token_s": 8.572590600000694,
+    "total_s": 16.144,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is renowned for its diverse and flavorful street food scene, offering a wide range of cuisines from chaat to kebabs, reflecting the city's rich cultural heritage and culinary diversity.\"}",
+    "first_token_s": 2.9311820000002626,
+    "total_s": 3.321,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is renowned for its diverse and vibrant street food culture, offering iconic delicacies like chaat, kebabs, golgappas, and parathas. Its historical roots as a Mughal capital and a melting pot of Indian cuisines make it a top destination for street food, with famous spots such as Chandni Chowk and Paranthe Wali Gali.\"}",
+    "first_token_s": 2.811931200005347,
+    "total_s": 14.169,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\": \"Delhi\", \"why\": \"Delhi is renowned for its diverse and rich street food culture, featuring iconic dishes like chaat, pani puri, butter chicken, and jalebi. The city's historical significance as a Mughal capital and its cosmopolitan nature have blended North Indian, Mughlai, and street food traditions into a vibrant culinary scene, especially in areas like Chandni Chowk and Old Delhi.\"}",
+    "first_token_s": 3.45410850000917,
+    "total_s": 4.228,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ]
+ },
+ "reasoning_effort": "accepted"
+}

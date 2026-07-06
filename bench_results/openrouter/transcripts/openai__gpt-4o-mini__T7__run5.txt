@@ -1,0 +1,21 @@
+model: openai/gpt-4o-mini  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 38}
+calls:
+final:
+Weekend pe ghar pe chill karne ke liye kuch mast plans:
+
+1. **Movie Marathon**: Apne favorite movies ya series ka marathon rakho. Popcorn aur snacks ke saath baithein aur enjoy karein.
+   
+2. **Cooking Session**: Koi naya dish ya dessert try karo. Cooking karte waqt music suno aur enjoy karo.
+
+3. **Game Night**: Koi board games ya video games khelo doston ya family ke saath. Thoda competition bhi ho sakta hai!
+
+4. **DIY Spa Day**: Ghar pe hi ek spa day plan karo. Face masks, foot soaks aur relaxation ke liye time nikaalo.
+
+5. **Reading Time**: Agar aapko padhne ka shauk hai, toh apne favorite kitab le lo aur shaanti se padhai karo.
+
+6. **Art & Craft**: Kuch creative activities jaise painting ya scrapbooking karo. Yeh stress relief ka bhi achha tareeqa hai.
+
+7. **Outdoor Fun**: Agar weather achha hai, toh terrace ya garden me thoda time bita sakte ho. Chai ya coffee ke saath relax karo.
+
+Inme se koi plan pasand aaye toh aur detail mein bata sakta hoon!

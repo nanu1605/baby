@@ -1,0 +1,5 @@
+model: minimax/minimax-m2.7  test: T5  run: 2
+score: {"pass": false}
+calls:
+final:
+

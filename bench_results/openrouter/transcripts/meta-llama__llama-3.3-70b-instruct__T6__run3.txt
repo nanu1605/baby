@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T6  run: 3
+score: {"pass": false, "devanagari_ratio": 0.0}
+calls:
+  write_file({"path": "prernaday.txt", "content": "कल के लिए एक स्तोती बात", "mode": "w"})
+  remember({"fact": "आज का दिन बहुत अच्छा रहा।"})
+  write_file({"path": "prernaday.txt", "content": "कल के लिए एक सतोती वात", "mode": "w"})
+  remember({"fact": "आज का दिन बहुत अच्छा रहा।"})
+  write_file({"path": "prernaday.txt", "content": "कल के लिए एक सतोती वात", "mode": "w"})
+final:
+

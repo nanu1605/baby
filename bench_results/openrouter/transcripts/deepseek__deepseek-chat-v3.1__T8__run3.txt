@@ -1,0 +1,5 @@
+model: deepseek/deepseek-chat-v3.1  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city": "Mumbai", "why": "Mumbai offers the most diverse and iconic street food experience with legendary dishes like vada pav, pav bhaji, bhel puri, sev puri, and pani puri available throughout the city from famous spots like Juhu Beach, Mohammed Ali Road, and Chowpatty."}

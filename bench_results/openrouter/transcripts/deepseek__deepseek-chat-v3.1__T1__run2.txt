@@ -1,0 +1,11 @@
+model: deepseek/deepseek-chat-v3.1  test: T1  run: 2
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action": "close", "name": "Chrome"})
+  get_system_stats({"detail": false})
+final:
+✅ Chrome has been closed successfully! 
+
+Your current CPU usage is **34.2%** and RAM usage is **61.0%**. The GPU is using 6.5GB out of 8GB available VRAM.
+
+System resources are looking good after closing Chrome! 🚀

@@ -1,0 +1,6 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T5  run: 3
+score: {"pass": false, "zero_tools": false}
+calls:
+  get_time({})
+final:
+Sorry, the tool is unavailable in the bench.

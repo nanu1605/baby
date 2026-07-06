@@ -1,0 +1,1238 @@
+{
+ "model": "meta-llama/llama-3.3-70b-instruct",
+ "runs": {
+  "T1": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": \"false\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The current CPU usage is 34.2%.",
+    "first_token_s": 1.8715305999940028,
+    "total_s": 3.677,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": \"false\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The CPU usage is 34.2%.",
+    "first_token_s": 1.1307958999968832,
+    "total_s": 2.95,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": \"false\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The current CPU usage is 34.2%.",
+    "first_token_s": 7.756548699995619,
+    "total_s": 10.498,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": \"false\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The current CPU usage is 34.2%.",
+    "first_token_s": 1.1289852999907453,
+    "total_s": 8.015,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"close\", \"name\": \"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\": \"false\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The CPU usage is 34.2%.",
+    "first_token_s": 18.83268800000951,
+    "total_s": 30.694,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T2": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": true,
+     "args_ok": false,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\\\\\Users\\\\\\\\tanis\\\\\\\\Documents\\\\\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is $4.2M.",
+    "first_token_s": 0.9900964999978896,
+    "total_s": 3.889,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": true,
+     "args_ok": false,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\\\\\Users\\\\\\\\tanis\\\\\\\\Documents\\\\\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is $4.2 million.",
+    "first_token_s": 1.2769087000051513,
+    "total_s": 3.267,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": true,
+     "args_ok": false,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\\\\\Users\\\\\\\\tanis\\\\\\\\Documents\\\\\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number mentioned in the quarterly_report.pdf file is $4.2M.",
+    "first_token_s": 0.9693296999903396,
+    "total_s": 2.874,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": true,
+     "args_ok": false,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\\\\\Users\\\\\\\\tanis\\\\\\\\Documents\\\\\\\\quarterly_report.pdf\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is $4.2M.",
+    "first_token_s": 1.2264552999986336,
+    "total_s": 3.173,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "chain_ordered": true,
+     "args_ok": false,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"quarterly_report.pdf\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"C:\\\\\\\\Users\\\\\\\\tanis\\\\\\\\Documents\\\\\\\\quarterly_report.pdf\", \"max_kb\": \"812\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "The revenue number from the quarterly report is $4.2M.",
+    "first_token_s": 0.9351299999980256,
+    "total_s": 9.435,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T3": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": true,
+     "limit_ok": false
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup AND python\", \"max_results\": \"5\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Your files have been searched for Python scripts with the name \"backup\". Here are the results:\n\n1. \"C:\\\\Users\\\\tanis\\\\scripts\\\\backup.py\" (4 KB)\n2. \"C:\\\\Users\\\\tanis\\\\old\\\\backup_v2.py\" (6 KB)",
+    "first_token_s": 1.124326100005419,
+    "total_s": 13.805,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": true,
+     "limit_ok": false
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup AND python\", \"max_results\": \"5\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Your files have been searched. Here are the results:\n1. backup.py at C:\\Users\\tanis\\scripts\\ - Size: 4KB\n2. backup_v2.py at C:\\Users\\tanis\\old\\ - Size: 6KB",
+    "first_token_s": 1.3126111000019591,
+    "total_s": 22.879,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": true,
+     "limit_ok": false
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup AND python\", \"max_results\": \"5\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Two results were found for python scripts named backup. The first result is located at C:\\Users\\tanis\\scripts\\backup.py and is 4KB in size. The second result is located at C:\\Users\\tanis\\old\\backup_v2.py and is 6KB in size.",
+    "first_token_s": 0.9375476999994135,
+    "total_s": 2.638,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": true,
+     "limit_ok": false
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup AND python\", \"max_results\": \"5\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Your Python scripts named backup have been found. There are two results:\n\n1. C:\\\\Users\\\\tanis\\\\scripts\\\\backup.py (size: 4 KB)\n2. C:\\\\Users\\\\tanis\\\\old\\\\backup_v2.py (size: 6 KB)",
+    "first_token_s": 0.9861359000060475,
+    "total_s": 2.533,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "args_ok": false,
+     "query_ok": true,
+     "limit_ok": false
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\": \"backup AND python\", \"max_results\": \"5\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "The JSON response contains a list of dictionaries, each representing a search result. The \"path\" key maps to the file path of the search result, and the \"size_kb\" key maps to the file size in kilobytes. \n\nIn this case, the search results are:\n\n1. `C:\\Users\\tanis\\scripts\\backup.py` with a size of 4 KB\n2. `C:\\Users\\tanis\\old\\backup_v2.py` with a size of 6 KB\n\nThese are the files that match the search query \"backup AND python\" with a maximum of 5 results.",
+    "first_token_s": 7.587746800010791,
+    "total_s": 16.532,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T4": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"download Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Spotify is not installed on this PC, and the web_search function is not available. To open Spotify, you can try downloading and installing it from the official website.",
+    "first_token_s": 1.0953731000045082,
+    "total_s": 16.952,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"install\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"download Spotify\"}"
+     ],
+     [
+      "browser_act",
+      "{\"action\": \"goto\", \"value\": \"https://www.spotify.com/us/download/\"}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"focus\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.2183139999979176,
+    "total_s": 6.693,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"install\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "browser_act",
+      "{\"action\": \"goto\", \"value\": \"https://www.spotify.com/us/download/other/\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"download Spotify\"}"
+     ],
+     [
+      "browser_act",
+      "{\"action\": \"goto\", \"value\": \"https://www.spotify.com/us/download/other/\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.071390800003428,
+    "total_s": 6.399,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "If Spotify is not installed on your PC, you can install it from the Microsoft Store or download it from the official Spotify website. \n\nIf you have Spotify installed and it's still not opening, try restarting your PC or checking if there are any updates available for Spotify. \n\nIf you need help installing or updating Spotify, I can guide you through the process. \n\nPlease let me know how I can assist you further.",
+    "first_token_s": 1.2334803999983706,
+    "total_s": 12.693,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ],
+     [
+      "app_control",
+      "{\"action\": \"open\", \"name\": \"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "If Spotify is installed on your PC, the function call should be able to open it. However, if it's not installed, you'll get an error message. \n\nHere's how you could install Spotify using the built-in Microsoft Store on Windows 11:\n\n1. Open the Microsoft Store app.\n2. Search for Spotify in the search bar.\n3. Click on the Spotify app from the search results.\n4. Click the Install button to download and install Spotify.\n\nAfter installing Spotify, you should be able to open it using the function call {\"name\": \"app_control\", \"parameters\": {\"action\": \"open\", \"name\": \"Spotify\"}}.",
+    "first_token_s": 1.1012014000007184,
+    "total_s": 6.271,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T5": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "zero_tools": false
+    },
+    "calls": [
+     [
+      "get_system_stats",
+      "{}"
+     ],
+     [
+      "get_time",
+      "{}"
+     ],
+     [
+      "describe_screen",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 3,
+    "final": "Mujhe khed hai, lekin main aapke liye kuch nahi kar sakta.",
+    "first_token_s": 3.5711739999969723,
+    "total_s": 21.784,
+    "steps": 4,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "zero_tools": false
+    },
+    "calls": [
+     [
+      "get_system_stats",
+      "{}"
+     ],
+     [
+      "get_time",
+      "{}"
+     ],
+     [
+      "describe_screen",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 3,
+    "final": "Sorry, the tools are not available in the bench.",
+    "first_token_s": 2.1298528000043007,
+    "total_s": 11.723,
+    "steps": 4,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "zero_tools": false
+    },
+    "calls": [
+     [
+      "get_time",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Sorry, the tool is unavailable in the bench.",
+    "first_token_s": 1.1659597999969264,
+    "total_s": 2.317,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "zero_tools": false
+    },
+    "calls": [
+     [
+      "get_system_stats",
+      "{}"
+     ],
+     [
+      "get_time",
+      "{}"
+     ],
+     [
+      "describe_screen",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 3,
+    "final": "Aur batao, kya chal raha hai?",
+    "first_token_s": 0.8978904999967199,
+    "total_s": 5.296,
+    "steps": 4,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "zero_tools": false
+    },
+    "calls": [
+     [
+      "get_time",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I am unable to execute this task as it exceeds the limitations of the functions at my disposal.",
+    "first_token_s": 0.9445923999883235,
+    "total_s": 9.268,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T6": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [
+     [
+      "write_file",
+      "{\"content\": \"कल के लिए एक ग्ण्त सी बात\", \"path\": \"tomorrow_motive.txt\", \"mode\": \"w\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"hindi_motive.txt\", \"content\": \"कल के लिए एक गणत सी बात\", \"mode\": \"w\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"आज का दिन बहुत अच्छा रहा\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"कल के लिए एक गणत सी बात\", \"k\": \"1\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"hindi_motive.txt\", \"content\": \"कल के लिए एक गृणत सी बात\", \"mode\": \"w\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 3.764128399998299,
+    "total_s": 15.505,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [
+     [
+      "write_file",
+      "{\"path\": \"prerna.txt\", \"content\": \"कल का दिन उब उच रहेगा\", \"mode\": \"w\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"hindi motivational quote\", \"k\": \"1\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"hindi motivational quote\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"prerna.txt\", \"content\": \"कल का दिन उब उच रहेगा\", \"mode\": \"w\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"prerna.txt\", \"content\": \"कल का दिन उब उच रहेगा\", \"mode\": \"w\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 2.9614506000070833,
+    "total_s": 27.089,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [
+     [
+      "write_file",
+      "{\"path\": \"prernaday.txt\", \"content\": \"कल के लिए एक स्तोती बात\", \"mode\": \"w\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"आज का दिन बहुत अच्छा रहा।\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"prernaday.txt\", \"content\": \"कल के लिए एक सतोती वात\", \"mode\": \"w\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"आज का दिन बहुत अच्छा रहा।\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"prernaday.txt\", \"content\": \"कल के लिए एक सतोती वात\", \"mode\": \"w\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 2.5267715000081807,
+    "total_s": 18.61,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [
+     [
+      "write_file",
+      "{\"content\": \"कल के लिए एक चोटी सी प्रेरणादायक बात\", \"path\": \"tomorrow_motive.txt\", \"mode\": \"w\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"आज का दिन बहुत अच्छा रहा। कल के लिए एक छोटी सी प्रेरणादायक बात\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"कल के लिए एक चोटी सी प्रएरणादायक बात\", \"k\": \"1\"}"
+     ],
+     [
+      "write_file",
+      "{\"content\": \"अगले दिन के लिए एक चोटी सी प्रेरणादेयक बात\", \"path\": \"tomorrow_motive.txt\", \"mode\": \"w\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"आज का दिन बहुत अच्छा रहा। कल के लिए एक छोटी सी प्रेरणादायक बात\", \"k\": \"1\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 4.419900799999596,
+    "total_s": 15.68,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "devanagari_ratio": 0.0
+    },
+    "calls": [
+     [
+      "write_file",
+      "{\"path\": \"motivation_hindi.txt\", \"content\": \"कल के ले आगे ब्धाउ की कोशिश करो\", \"mode\": \"w\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"motivation_hindi.txt\", \"content\": \"कल के ले आगे बधाक की कोशिश करो\", \"mode\": \"w\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"motivation_hindi.txt\", \"content\": \"कल के ले आगे बदहाक की कोशिश करो\", \"mode\": \"w\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"motivation_hindi.txt\", \"content\": \"कल के ले आगे बदहाक की कोशिश करो\", \"mode\": \"w\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"motivation_hindi.txt\", \"content\": \"कल के लिए एक छोटी सी प्रेरणादायक बात: कल के ले आगे बधाक की कोशिश करो\", \"mode\": \"w\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 3.274750700002187,
+    "total_s": 24.699,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T7": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"weekend plan ghar pe\"}"
+     ],
+     [
+      "describe_screen",
+      "{\"question\": \"What are some fun activities to do at home on a weekend?\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"weekend plan ghar pe\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"weekend plan ghar pe\", \"k\": \"1\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"weekend_plan.txt\", \"content\": \"ghar pe chill karna hai\", \"mode\": \"overwrite\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 0.8564671999920392,
+    "total_s": 8.28,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"weekend activities at home\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"weekend activities at home\"}"
+     ],
+     [
+      "describe_screen",
+      "{}"
+     ],
+     [
+      "start_project",
+      "{\"title\": \"Weekend Activities\", \"spec\": \"Plan some fun activities to do at home over the weekend\"}"
+     ],
+     [
+      "project_status",
+      "{\"project_id\": \"0\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.298423799991724,
+    "total_s": 9.173,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"fun things to do at home on weekend\"}"
+     ],
+     [
+      "describe_screen",
+      "{\"question\": \"kuch mast plan batao na\"}"
+     ],
+     [
+      "write_file",
+      "{\"path\": \"weekend_plan.txt\", \"content\": \"fun things to do at home on weekend\", \"mode\": \"w\"}"
+     ],
+     [
+      "read_file",
+      "{\"path\": \"weekend_plan.txt\", \"max_kb\": \"10\"}"
+     ],
+     [
+      "get_time",
+      "{}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 3.821607200006838,
+    "total_s": 17.05,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 34
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"fun activities to do at home on weekend\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"weekend par ghar pe kuch mast karne ke tareeke\"}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Agar aap weekend pe ghar par hi chill karna chahte hain, toh kuch mast plan yeh hain:\n\n1. Movie marathon: Apne favorite movies dekhein, ya phir koi nayi series shuru karein.\n2. Gaming: Agar aapko gaming ka shauk hai, toh apne favorite games khelne mein time bitayein.\n3. Cooking: Kuch nayi recipes try karein, ya phir apne favorite dishes banayein.\n4. Reading: Agar aapko padhne ka shauk hai, toh koi nayi kitab padhein, ya phir apne favorite authors ki kitaabein padhein.\n5. Music: Apne favorite songs suniye, ya phir koi nayi music discover karein.\n6. Yoga ya meditation: Apne aap ko relax karne ke liye yoga ya meditation karein.\n7. DIY projects: Agar aapko crafting ka shauk hai, toh koi nayi DIY project shuru karein.\n8. Video calls: Apne doston ya parivaar walon se video calls karke baat karein.\n9. Indoor games: Apne parivaar walon ke saath indoor games khelne mein time bitayein, jaise ki ludo, carrom, ya chess.\n10. Self-care: Apne aap ko pamper karne ke liye self-care routine follow karein, jaise ki face masks, hair masks, ya manicures.\n\nUmmeed hai ki ye plans aapke weekend ko mast bana denge!",
+    "first_token_s": 1.2932459000003291,
+    "total_s": 64.421,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "hinglish_hits": 0
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"weekend plan ghar par\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"weekend plan ghar par\"}"
+     ],
+     [
+      "describe_screen",
+      "{}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"fun activities to do at home\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"fun activities to do at home\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.3000046000088332,
+    "total_s": 6.08,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T8": [
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": false,
+     "keys_ok": false
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"Best Indian city for street food is Old Delhi\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"Best Indian city for street food\", \"k\": \"1\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"best city in India for street food\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.1915472999971826,
+    "total_s": 6.607,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": false,
+     "keys_ok": false
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best Indian city for street food\", \"k\": \"1\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"The best Indian city for street food is Delhi\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"best city in India for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best city in India for street food\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.9799581999977818,
+    "total_s": 10.118,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": false,
+     "keys_ok": false
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best Indian city for street food\", \"k\": \"1\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"best city in India for street food\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"Best Indian city for street food is Delhi\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"Best Indian city for street food\", \"k\": \"1\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 2.4857549000007566,
+    "total_s": 10.331,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": false,
+     "keys_ok": false
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best Indian city for street food\", \"k\": \"1\"}"
+     ],
+     [
+      "remember",
+      "{\"fact\": \"Delhi is the best Indian city for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "forget",
+      "{\"query\": \"best Indian city for street food\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.7442155000026105,
+    "total_s": 34.499,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": false,
+     "json_valid": false,
+     "keys_ok": false
+    },
+    "calls": [
+     [
+      "web_search",
+      "{\"query\": \"best Indian city for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best Indian city for street food\", \"k\": \"1\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"best city in India for street food\"}"
+     ],
+     [
+      "recall",
+      "{\"query\": \"best city in India for street food\", \"k\": \"1\"}"
+     ],
+     [
+      "web_search",
+      "{\"query\": \"Indian city famous for street food\"}"
+     ]
+    ],
+    "valid_arg_calls": 5,
+    "final": "",
+    "first_token_s": 1.4724677999911364,
+    "total_s": 6.829,
+    "steps": 5,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ]
+ },
+ "reasoning_effort": "accepted"
+}

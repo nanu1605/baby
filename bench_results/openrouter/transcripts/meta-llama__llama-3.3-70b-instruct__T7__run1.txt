@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T7  run: 1
+score: {"pass": false, "hinglish_hits": 0}
+calls:
+  web_search({"query": "weekend plan ghar pe"})
+  describe_screen({"question": "What are some fun activities to do at home on a weekend?"})
+  remember({"fact": "weekend plan ghar pe"})
+  recall({"query": "weekend plan ghar pe", "k": "1"})
+  write_file({"path": "weekend_plan.txt", "content": "ghar pe chill karna hai", "mode": "overwrite"})
+final:
+

@@ -1,0 +1,6 @@
+model: qwen/qwen3-32b  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+  web_search({"query": "best Indian city for street food"})
+final:
+{"city": "Delhi", "why": "Delhi is renowned for its diverse and iconic street food, including chaat, paneer tikka, golgappas, and parathas. Its food streets like Chandni Chowk and Karol Bagh offer a rich culinary heritage with centuries-old recipes."}

@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T6  run: 4
+score: {"pass": false, "devanagari_ratio": 0.0}
+calls:
+  write_file({"content": "कल के लिए एक चोटी सी प्रेरणादायक बात", "path": "tomorrow_motive.txt", "mode": "w"})
+  remember({"fact": "आज का दिन बहुत अच्छा रहा। कल के लिए एक छोटी सी प्रेरणादायक बात"})
+  recall({"query": "कल के लिए एक चोटी सी प्रएरणादायक बात", "k": "1"})
+  write_file({"content": "अगले दिन के लिए एक चोटी सी प्रेरणादेयक बात", "path": "tomorrow_motive.txt", "mode": "w"})
+  recall({"query": "आज का दिन बहुत अच्छा रहा। कल के लिए एक छोटी सी प्रेरणादायक बात", "k": "1"})
+final:
+

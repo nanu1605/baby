@@ -1,0 +1,10 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T6  run: 2
+score: {"pass": false, "devanagari_ratio": 0.0}
+calls:
+  write_file({"path": "prerna.txt", "content": "कल का दिन उब उच रहेगा", "mode": "w"})
+  recall({"query": "hindi motivational quote", "k": "1"})
+  web_search({"query": "hindi motivational quote"})
+  write_file({"path": "prerna.txt", "content": "कल का दिन उब उच रहेगा", "mode": "w"})
+  write_file({"path": "prerna.txt", "content": "कल का दिन उब उच रहेगा", "mode": "w"})
+final:
+

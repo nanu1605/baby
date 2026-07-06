@@ -1,0 +1,6 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T3  run: 3
+score: {"pass": false, "args_ok": false, "query_ok": true, "limit_ok": false}
+calls:
+  file_search({"query": "backup AND python", "max_results": "5"})
+final:
+Two results were found for python scripts named backup. The first result is located at C:\Users\tanis\scripts\backup.py and is 4KB in size. The second result is located at C:\Users\tanis\old\backup_v2.py and is 6KB in size.

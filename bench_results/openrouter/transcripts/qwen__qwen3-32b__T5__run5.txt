@@ -1,0 +1,5 @@
+model: qwen/qwen3-32b  test: T5  run: 5
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Main yahan hu, apke liye readya hoon! Aapko kuchh help chahiye? 😊

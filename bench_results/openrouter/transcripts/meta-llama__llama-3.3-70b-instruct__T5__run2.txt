@@ -1,0 +1,8 @@
+model: meta-llama/llama-3.3-70b-instruct  test: T5  run: 2
+score: {"pass": false, "zero_tools": false}
+calls:
+  get_system_stats({})
+  get_time({})
+  describe_screen({})
+final:
+Sorry, the tools are not available in the bench.
