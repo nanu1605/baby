@@ -72,6 +72,21 @@ def test_kill_without_turn(ui):
     assert client.post("/kill").json() == {"cancelled": False}
 
 
+def test_conversation_new_rotates_and_clears_history(ui):
+    client, ctx, provider = ui
+    provider.script = ["first reply"]
+    with client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "user_message", "text": "hello"})
+        while ws.receive_json()["type"] != "turn_end":
+            pass
+    assert len(client.get("/history").json()) == 2  # user + assistant
+    old_id = ctx.agent.conversation_id
+    resp = client.post("/conversation/new")
+    assert resp.status_code == 200
+    assert ctx.agent.conversation_id != old_id
+    assert client.get("/history").json() == []  # fresh context
+
+
 def test_chat_round_trip_streams(ui):
     client, _, provider = ui
     provider.script = ["hello from baby"]

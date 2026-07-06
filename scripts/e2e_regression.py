@@ -1,10 +1,12 @@
 """Live E2E regression battery: drives the RUNNING Baby end to end.
 
-Restart Baby first for a scored run — battery turns pollute the history and
-the local 9B's tool discipline drops on a dirty context.
+Scored runs: add --fresh-conversation — battery turns pollute the history and
+the local 9B's tool discipline drops on a dirty context (a restart alone does
+NOT clear it; the UI reuses the latest conversation by design).
 
 Usage (Baby must be up at 127.0.0.1:8765):
     uv run python scripts/e2e_regression.py                      # T01-T15
+    uv run python scripts/e2e_regression.py --fresh-conversation # clean scored run
     uv run python scripts/e2e_regression.py --with-project       # + orchestrator E2E (slow)
     uv run python scripts/e2e_regression.py --rollback-check     # + local_primary flip
 
@@ -252,13 +254,24 @@ async def _answer_own_confirm(approve: bool, window_s: float = 180.0) -> str:
     return ""
 
 
+def _newest_task_status(before: int) -> str:
+    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    row = con.execute(
+        "SELECT status FROM tasks WHERE id > ? ORDER BY id DESC LIMIT 1", (before,)
+    ).fetchone()
+    con.close()
+    return row[0] if row else ""
+
+
 async def t10_background_task():
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     before = con.execute("SELECT COALESCE(MAX(id), 0) FROM tasks").fetchone()[0]
     con.close()
     marker = audit_marker()
-    # start_background_task is CONFIRM class — without an answer the gate
-    # times out after 60s and the task never queues (observed 2026-07-06).
+    # The safety class of start_background_task depends on the MODEL-WRITTEN
+    # title/spec (_TASK_GATED_RE): benign wording queues straight away (ALLOW,
+    # observed 2026-07-06 second run), gated wording raises a confirm dialog
+    # that times out unattended (observed first run). Handle both paths.
     watcher = asyncio.create_task(_answer_own_confirm(APPROVE_CONFIRMS))
     # Explicit tool naming: the 9B answers research inline otherwise (observed
     # twice) — this test verifies the QUEUE pipeline, not model initiative.
@@ -278,28 +291,26 @@ async def t10_background_task():
         record("T10", "background task", False,
                "model never called start_background_task — brain-dependent under-read")
         return
-    if not APPROVE_CONFIRMS:
-        # Dialog raised and denied by the battery itself: model→tool→gate
-        # pipeline proven without executing a confirm-class action unattended.
-        dialog = ("answered: " + answered) if answered else "not seen"
-        record("T10", "background task (to gate)", answered == "denied",
-               f"tool called, confirm dialog {dialog} — run with "
-               "--approve-confirms to execute through to done")
+    status = _newest_task_status(before)
+    if not status:
+        if answered == "denied":
+            # Dialog raised and denied by the battery itself: model→tool→gate
+            # pipeline proven without executing a confirm-class action
+            # unattended — --approve-confirms runs it through to done.
+            record("T10", "background task (to gate)", True,
+                   "confirm dialog raised and denied by the battery — pipeline proven")
+        else:
+            record("T10", "background task", False,
+                   f"tool called but no task queued and dialog {answered or 'not seen'}")
         return
     deadline = time.monotonic() + 300
-    status = ""
     while time.monotonic() < deadline:
-        con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-        row = con.execute(
-            "SELECT status FROM tasks WHERE id > ? ORDER BY id DESC LIMIT 1", (before,)
-        ).fetchone()
-        con.close()
-        status = row[0] if row else ""
         if status in ("done", "failed", "cancelled"):
             break
         await asyncio.sleep(10)
-    record("T10", "background task", status == "done",
-           f"status={status or 'never queued'} confirm={answered or 'not seen'}")
+        status = _newest_task_status(before)
+    how = f"confirm {answered}" if answered else "queued without dialog (benign spec is ALLOW)"
+    record("T10", "background task", status == "done", f"status={status} — {how}")
 
 
 async def t11_game_mode_cycle():
@@ -425,15 +436,23 @@ async def main(args) -> int:
         print("FAIL: Baby is not reachable at 127.0.0.1:8765 — start it first")
         return 1
 
-    # Scored runs need a fresh boot: battery turns pollute the conversation
-    # history and the folded summary, and the local 9B's tool discipline
-    # degrades measurably on a polluted context (observed: 12/15 fresh vs
-    # 11/15 on the same code re-run against a dirty history).
+    # Scored runs need a clean conversation: battery turns pollute the history
+    # and the folded summary, and the local 9B's tool discipline degrades
+    # measurably on a polluted context. A restart does NOT clear it — the UI
+    # reuses the latest conversation by design — hence --fresh-conversation.
+    if args.fresh_conversation:
+        resp = httpx.post(f"{BASE}/conversation/new", timeout=10)
+        if resp.status_code == 200:
+            print(f"fresh conversation started (id={resp.json().get('conversation_id')})")
+        else:
+            print(f"WARNING: /conversation/new failed ({resp.status_code}) — "
+                  "running against the existing history")
     try:
         history = get("/history").json()
         if len(history) > 20:
-            print(f"WARNING: {len(history)} messages in history — restart Baby "
-                  "for a clean scored run (results below may under-read)")
+            print(f"WARNING: {len(history)} messages in history — run with "
+                  "--fresh-conversation for a clean scored run (a restart alone "
+                  "does not clear it; results below may under-read)")
     except Exception:  # noqa: BLE001
         pass
 
@@ -476,6 +495,9 @@ if __name__ == "__main__":
     parser.add_argument("--approve-confirms", action="store_true",
                         help="approve the battery's OWN T10 confirm dialog and "
                              "run the background task through to done (attended runs)")
+    parser.add_argument("--fresh-conversation", action="store_true",
+                        help="start a new UI conversation first (clean history — "
+                             "use for scored runs; a restart alone does not clear it)")
     args = parser.parse_args()
     APPROVE_CONFIRMS = args.approve_confirms
     if args.rollback_check:

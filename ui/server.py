@@ -123,6 +123,22 @@ def create_app(ctx: UIContext) -> FastAPI:
     async def history(limit: int = 50):
         return await ctx.db.get_history(ctx.agent.conversation_id, limit)
 
+    @app.post("/conversation/new")
+    async def conversation_new():
+        """Start a fresh UI conversation; the old one stays in the DB.
+
+        A restart alone reuses the latest conversation by design (context
+        survives reboots) — scored E2E battery runs need this to get a clean
+        history, since the 9B's tool discipline drops on a polluted context.
+        """
+        if ctx.turn_running():
+            return JSONResponse(
+                {"error": "turn in progress — try again when idle"}, status_code=409
+            )
+        ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
+        ctx.bus.publish("status", "ui", text="fresh conversation started")
+        return {"conversation_id": ctx.agent.conversation_id}
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:
