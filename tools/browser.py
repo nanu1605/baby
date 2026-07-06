@@ -133,18 +133,32 @@ async def browser_act(action: str, selector: str = "", value: str = "") -> str:
             await page.goto(url, timeout=_ACTION_TIMEOUT_MS)
             return json.dumps({"url": page.url, "title": await page.title()})
         if action == "read":
+            # Hostile-to-automation pages (duckduckgo.com, observed live) hang
+            # inner_text for the full 15 s AND serve empty bodies; a dead-end
+            # error left the model with no path forward. Short reads, one
+            # hydration retry, and a teaching hint instead of an error — real
+            # keystrokes (type + press) still work on these pages.
             target = selector or "body"
-            text = await page.inner_text(target, timeout=_ACTION_TIMEOUT_MS)
-            text = " ".join(text.split())
+            text = ""
+            try:
+                text = " ".join((await page.inner_text(target, timeout=5000)).split())
+            except Exception:  # noqa: BLE001 — fall through to the retry/hint
+                pass
             if not text:
-                # JS-hydrated pages (duckduckgo.com homepage, observed live)
-                # serve an empty body first paint — give hydration a moment
-                # and read once more before reporting emptiness.
                 try:
                     await page.wait_for_load_state("networkidle", timeout=5000)
-                except Exception:  # noqa: BLE001 — busy pages never go idle; read anyway
+                    text = " ".join((await page.inner_text(target, timeout=5000)).split())
+                except Exception:  # noqa: BLE001
                     pass
-                text = " ".join((await page.inner_text(target, timeout=_ACTION_TIMEOUT_MS)).split())
+            if not text:
+                return json.dumps({
+                    "url": page.url,
+                    "text": "",
+                    "hint": "page text unreadable (script-heavy or blocks "
+                            "automation reads) — to search here: call type "
+                            "with your query (the search box is auto-found), "
+                            "then press Enter; screenshot also works",
+                })
             truncated = len(text) > _READ_CAP
             return json.dumps(
                 {"url": page.url, "text": text[:_READ_CAP], "truncated": truncated},
