@@ -1,9 +1,12 @@
-"""openWakeWord detector: custom hey_baby.onnx with a built-in fallback.
+"""openWakeWord detector: custom "jarvis" model(s) alongside a built-in fallback.
 
-The custom model is trained by the owner on Colab (scripts/wakeword_training.md)
-and dropped into models/. Until then the pipeline runs on the pretrained
-"hey_jarvis" model so everything stays demoable (DECISIONS.md).
-Input contract: 16 kHz int16 mono in 1280-sample (80 ms) chunks.
+The custom single-word "jarvis" model is trained by the owner on Colab
+(scripts/wakeword_training.md) and dropped into models/. It runs SIDE BY SIDE
+with the pretrained "hey_jarvis" model (openWakeWord scores every loaded model
+per chunk at negligible CPU cost, and detected() takes the max) — so both
+"Jarvis" and "Hey Jarvis" wake Baby, and wake never fully breaks even before the
+custom model lands. Input contract: 16 kHz int16 mono in 1280-sample (80 ms)
+chunks.
 """
 
 from __future__ import annotations
@@ -17,12 +20,14 @@ CHUNK = 1280  # 80 ms at 16 kHz
 class WakeWord:
     def __init__(
         self,
-        model_path: str | Path = "models/hey_baby.onnx",
+        model_path: str | Path = "models/jarvis.onnx",
         threshold: float = 0.55,
         builtin_fallback: str = "hey_jarvis",
         refractory_s: float = 2.0,
+        extra_models: list[str] | None = None,
     ) -> None:
         self.model_path = Path(model_path)
+        self.extra_models = [Path(m) for m in (extra_models or [])]
         self.threshold = threshold
         self.builtin_fallback = builtin_fallback
         self.refractory_s = refractory_s
@@ -31,18 +36,26 @@ class WakeWord:
         self._last_detection = 0.0
 
     def load(self) -> str:
-        """Load the custom model if present, else the built-in fallback.
+        """Load every present custom model PLUS the built-in fallback.
 
-        Returns the active model name (surfaced in readiness notes).
+        Returns the active model name(s) joined with "+" (surfaced in readiness
+        notes). detected() scores all of them and wakes on the highest.
         """
         from openwakeword.model import Model  # heavy; lazy
 
-        if self.model_path.exists():
-            self._model = Model(wakeword_models=[str(self.model_path)], inference_framework="onnx")
-            self._active_name = self.model_path.stem
-        else:
-            self._model = Model(wakeword_models=[self.builtin_fallback], inference_framework="onnx")
-            self._active_name = self.builtin_fallback
+        refs: list[str] = []
+        names: list[str] = []
+        for path in [self.model_path, *self.extra_models]:
+            if path.exists():
+                refs.append(str(path))
+                names.append(path.stem)
+        # Always keep the pretrained fallback so "Hey Jarvis" works even with a
+        # custom model loaded, and wake survives a missing/failed custom model.
+        if self.builtin_fallback and self.builtin_fallback not in names:
+            refs.append(self.builtin_fallback)
+            names.append(self.builtin_fallback)
+        self._model = Model(wakeword_models=refs, inference_framework="onnx")
+        self._active_name = "+".join(dict.fromkeys(names))
         return self._active_name
 
     @property

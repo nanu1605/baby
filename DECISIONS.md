@@ -496,3 +496,25 @@ Running log of non-obvious choices made during the build. Newest last.
     existing DB. The sanitizer running on every assembly is what makes
     persistent poison impossible — the next turn is already clean, so the
     same debris can never re-break a call.
+88. **Conversation mode + proceed/cancel (P3)**: three choices. (a) The
+    follow-up window reuses the existing LISTENING state with a
+    `source="followup"` flag rather than a new state — after playback's
+    `None` sentinel the pipeline calls `_enter_listening(source="followup")`
+    (soft cue, no wake beep), and `_listen` uses `conversation.window_s` as
+    the no-speech timeout and checks `is_end_phrase`. The window opens only
+    AFTER playback fully ends and drains the mic + resets VAD, so Baby never
+    transcribes its own speech. Default-on, one flag (`conversation.enabled`)
+    to disable. (b) Proceed/cancel is "approach A": a one-shot
+    `AgentCore.pending_suggestion` armed when a turn offers a next step; a
+    short "yes" re-submits it as a normal turn with a system nudge (so tools
+    STILL pass the safety gate — approve-to-proceed never bypasses a
+    CONFIRM), a short "no" acks with no model call, anything else expires it
+    and runs as a fresh turn. Not a structured tool-exec — reusing the loop
+    keeps the gate authoritative. (c) `core/intents.py` is the single
+    multilingual yes/no source (EN/HI/Hinglish), replacing the inline
+    `clients/cli.py` set; it matches only SHORT transcripts and a negation
+    token ("nahi karo") overrides an affirmative verb ("karo"). (d) Wake
+    word runs the custom "jarvis" model ALONGSIDE pretrained "hey_jarvis"
+    (openWakeWord scores a model list; `detected()` takes the max — no
+    scoring change needed); the custom `models/jarvis.onnx` is the owner's
+    Colab step and everything ships demoable on the pretrained model.

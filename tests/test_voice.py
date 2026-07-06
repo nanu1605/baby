@@ -230,12 +230,14 @@ def _cfg(**over):
         "barge_in": True,
         "barge_in_threshold": 0.6,
         "push_to_talk_hotkey": "",
+        # Classic one-shot path by default; conversation-mode tests opt in.
+        "conversation": {"enabled": False},
     }
     cfg.update(over)
     return cfg
 
 
-async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None):
+async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None, cfg_over=None):
     provider = FakeProvider(script)
     conv_id = await db.create_conversation("voice")
     bus = EventBus()
@@ -244,7 +246,7 @@ async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None)
         asyncio.get_running_loop(),
         agent,
         bus,
-        _cfg(),
+        _cfg(**(cfg_over or {})),
         audio=FakeAudio(frames),
         wake=FakeWake(),
         vad=FakeVAD(),
@@ -394,6 +396,57 @@ async def test_empty_transcript_never_submits(db):
     await asyncio.to_thread(pipeline._listen, FrameBuffer())
     assert pipeline.state == "idle"
     assert provider.requests == []
+
+
+# -- 6b. conversation mode (P3): wake-free follow-ups --------------------------
+
+_CONV = {"conversation": {"enabled": True, "cue": True, "window_s": 60, "end_phrases": ["bas"]}}
+
+
+async def test_conversation_mode_opens_followup_after_reply(db):
+    frames = [WAKE]
+    pipeline, provider, _ = await _make_pipeline(db, ["It is noon."], frames=frames, cfg_over=_CONV)
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    from voice.audio_io import FrameBuffer
+
+    fb = FrameBuffer()
+    await asyncio.to_thread(pipeline._idle, fb)
+    await asyncio.to_thread(pipeline._listen, fb)
+    await asyncio.sleep(0.1)
+    await asyncio.to_thread(pipeline._respond, fb)
+    bridge.cancel()
+    # Instead of going IDLE, the mic re-opens for a wake-free follow-up.
+    assert pipeline.state == LISTENING
+    assert pipeline._listen_source == "followup"
+
+
+async def test_followup_end_phrase_closes_session(db):
+    pipeline, provider, _ = await _make_pipeline(
+        db, ["never"], stt_text="bas", cfg_over=_CONV
+    )
+    pipeline._listen_source = "followup"  # we are in a follow-up window
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "idle"  # end phrase closes the session
+    assert provider.requests == []  # and does NOT start a new turn
+
+
+async def test_followup_normal_speech_submits_without_wake(db):
+    pipeline, provider, _ = await _make_pipeline(
+        db, ["Sure."], stt_text="what about tomorrow", cfg_over=_CONV
+    )
+    pipeline._listen_source = "followup"
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"  # a new turn, no wake word needed
+    await asyncio.sleep(0.1)
+    assert provider.requests
 
 
 async def test_ptt_path_enters_listening(db):
@@ -654,9 +707,37 @@ def test_prerender_writes_valid_riff(tmp_path, monkeypatch):
 def test_wakeword_falls_back_to_builtin(tmp_path):
     from voice.wakeword import WakeWord
 
-    ww = WakeWord(model_path=tmp_path / "hey_baby.onnx")  # absent
+    ww = WakeWord(model_path=tmp_path / "jarvis.onnx")  # absent
     assert ww.load() == "hey_jarvis"
     assert ww.active_model == "hey_jarvis"
+
+
+def test_wakeword_loads_custom_alongside_builtin(tmp_path, monkeypatch):
+    import openwakeword.model as owm
+
+    from voice.wakeword import WakeWord
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx"):
+            captured["models"] = list(wakeword_models)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    custom = tmp_path / "jarvis.onnx"
+    custom.write_bytes(b"stub")  # load() only checks existence before handing to Model
+    ww = WakeWord(model_path=custom)
+    name = ww.load()
+    # Both the custom model AND the pretrained fallback are loaded and scored.
+    assert str(custom) in captured["models"]
+    assert "hey_jarvis" in captured["models"]
+    assert name == "jarvis+hey_jarvis"
 
 
 # -- 11. markdown never reaches the speaker -----------------------------------------

@@ -356,3 +356,52 @@ async def test_turn_end_carries_brain_snapshot(db):
     end = next(e for e in events if e.kind == "turn_end")
     assert end.payload["brain"]["tier"] == "nim_primary"
     assert end.payload["brain"]["model"] == "m/x"
+
+
+# -- P3 proceed/cancel: a next-step offer resolved by a short yes/no ------------
+
+
+async def test_successful_suggestion_arms_pending(db):
+    # A tool-success turn with suggest_next_step arms pending_suggestion for the
+    # NEXT turn's yes/no answer.
+    script = [_tc("echo_tool", {"text": "x"}), "did it", "Want me to zip it?"]
+    provider = FakeProvider(script)
+    conv_id = await db.create_conversation("cli")
+    agent = AgentCore(provider, db, conv_id, channel="cli", suggest_next_step=True)
+    reply = await agent.run_turn("do the thing")
+    assert "Next: Want me to zip it?" in reply
+    assert agent.pending_suggestion == "Want me to zip it?"
+
+
+async def test_proceed_executes_prior_suggestion_via_loop(db):
+    script = [_tc("echo_tool", {"text": "zip"}), "done zipping"]
+    agent, provider, _ = await _make_agent(db, script)
+    agent.pending_suggestion = "zip the folder"
+    reply = await agent.run_turn("haan kar do")
+    assert reply == "done zipping"
+    # The proceed nudge reached the model, and the tool ran through the gate.
+    assert any(
+        m.get("role") == "system" and "approved the next step" in (m.get("content") or "")
+        for m in provider.requests[0]
+    )
+    assert agent.pending_suggestion is None  # one-shot consumed
+
+
+async def test_decline_pending_suggestion_acks_without_model_call(db):
+    agent, provider, _ = await _make_agent(db, [])  # no model call expected
+    agent.pending_suggestion = "zip the folder"
+    reply = await agent.run_turn("nahi")
+    assert "skip" in reply.lower()
+    assert provider.requests == []  # decline short-circuits — no provider call
+    assert agent.pending_suggestion is None
+
+
+async def test_unrelated_answer_expires_pending(db):
+    agent, provider, _ = await _make_agent(db, ["it is 5 pm"])
+    agent.pending_suggestion = "zip the folder"
+    reply = await agent.run_turn("what time is it right now")
+    assert reply == "it is 5 pm"
+    assert agent.pending_suggestion is None  # expired
+    assert not any(
+        "approved the next step" in (m.get("content") or "") for m in provider.requests[0]
+    )

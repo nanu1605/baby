@@ -19,6 +19,16 @@
   content dropped and audited as `context_sanitizer`); a rejected context
   self-heals from the rolling summary and retries once.
   `scripts/migrate_v2_db.py` backs up, adds columns, quarantines existing poison.
+- P3 (2026-07-06): conversation mode + proceed/cancel (#2, #4). After Baby
+  speaks, the mic stays hot for a **wake-word-free follow-up** (VAD-only) until
+  an end phrase ("baby stop listening", "bas") or `conversation.window_s` (60 s)
+  of silence — `conversation.enabled` flag, default on. A next-step offer becomes
+  a yes/no: "haan" re-runs it **through the safety gate**, "nahi" skips, anything
+  else is a fresh turn (`AgentCore.pending_suggestion`, one-shot). New
+  `core/intents.py` is the single multilingual (EN/HI/Hinglish) yes/no parser,
+  now also serving the CLI CONFIRM prompt. Wake word runs a custom "jarvis" model
+  **alongside** pretrained "hey_jarvis" (openWakeWord multi-model); train
+  `models/jarvis.onnx` per `scripts/wakeword_training.md`.
 
 ## Unreleased — NIM cloud-primary migration (feature/nim-cloud-primary-router)
 

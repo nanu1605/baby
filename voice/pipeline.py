@@ -24,6 +24,7 @@ import re
 import threading
 import time
 
+from core.intents import is_end_phrase
 from voice.tts import split_sentences
 
 _PUNCT_RE = re.compile(r"[^\w\s]|[_।]", re.UNICODE)
@@ -95,6 +96,18 @@ class VoicePipeline:
         self.max_utterance_s = float(cfg.get("max_utterance_s", 30))
         self.barge_in = bool(cfg.get("barge_in", True))
         self.barge_in_threshold = float(cfg.get("barge_in_threshold", 0.6))
+        # P3 conversation mode: after Baby speaks, keep the mic hot for a
+        # wake-word-free follow-up until an end phrase or window_s of silence.
+        conv = cfg.get("conversation", {})
+        self.conversation_enabled = bool(conv.get("enabled", True))
+        self.conversation_window_s = float(conv.get("window_s", 60))
+        self.conversation_cue = bool(conv.get("cue", True))
+        self.end_phrases = tuple(
+            conv.get(
+                "end_phrases",
+                ("baby stop listening", "stop listening", "bas", "bas baby", "so jao"),
+            )
+        )
 
         self._text_buf = ""
         self._turn_future = None
@@ -141,9 +154,10 @@ class VoicePipeline:
             from voice.wakeword import WakeWord
 
             self.wake = WakeWord(
-                model_path=self.cfg.get("wakeword_model", "models/hey_baby.onnx"),
+                model_path=self.cfg.get("wakeword_model", "models/jarvis.onnx"),
                 threshold=float(self.cfg.get("wakeword_threshold", 0.55)),
                 builtin_fallback=self.cfg.get("wakeword_builtin_fallback", "hey_jarvis"),
+                extra_models=self.cfg.get("wakeword_models", []),
             )
         return self.wake.load() or ""
 
@@ -366,18 +380,25 @@ class VoicePipeline:
         # PTT bypasses speaker verification: whoever pressed the hotkey is at
         # the keyboard and already owns the PC.
         self._listen_source = source
-        self.audio.beep()
-        self.audio.drain()
+        # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
+        if source != "followup" or self.conversation_cue:
+            self.audio.beep()
+        self.audio.drain()  # never transcribe Baby's own just-played speech
         frames.clear()
         self.vad.reset()
         self.state = LISTENING
-        self._publish("status", text="voice: listening")
+        followup = source == "followup"
+        self._publish("status", text="voice: listening" + (" (follow-up)" if followup else ""))
 
     def _listen(self, frames) -> None:
         import numpy as np
 
         recorded: list = []
-        deadline = time.monotonic() + self.max_utterance_s
+        # A follow-up window waits longer for the user to START speaking (up to
+        # window_s of quiet) before auto-closing the conversation.
+        followup = self._listen_source == "followup"
+        window = self.conversation_window_s if followup else self.max_utterance_s
+        deadline = time.monotonic() + window
         while not self._stopping.is_set():
             if time.monotonic() > deadline:
                 break
@@ -396,19 +417,34 @@ class VoicePipeline:
 
         self.state = IDLE
         # No speech at all (false wake, or the user stayed quiet): skip the
-        # expensive STT call on pure silence and say so in the feed.
+        # expensive STT call on pure silence and say so in the feed. In a
+        # follow-up window, silence is how the conversation ends.
         if not recorded or not getattr(self.vad, "speech_started", True):
-            self._publish("status", text="voice: heard nothing")
+            if followup:
+                self._session_cue()
+                self._publish("status", text="voice: conversation ended (silence)")
+            else:
+                self._publish("status", text="voice: heard nothing")
             return
         pcm = np.concatenate(recorded)
         text, lang = self.stt.transcribe(pcm)
         if not text:
-            self._publish("status", text="voice: heard nothing")
+            if followup:
+                self._session_cue()
+                self._publish("status", text="voice: conversation ended (silence)")
+            else:
+                self._publish("status", text="voice: heard nothing")
             return
         if is_kill_phrase(text, self.kill_phrases):
             self._cancel_turn()
             self._drain_sentences()
             self._publish("status", text="voice: stopped by kill phrase")
+            return
+        # Conversation end phrase ("baby stop listening", "bas") closes the
+        # follow-up window instead of starting another turn.
+        if followup and is_end_phrase(text, self.end_phrases):
+            self._session_cue()
+            self._publish("status", text="voice: conversation ended")
             return
         # Game-mode escape hatch: a bare "game mode on/off" toggles directly,
         # no model in the loop — in game mode with the cloud down there is NO
@@ -474,7 +510,13 @@ class VoicePipeline:
                 sentence = _NOTHING
             if sentence is None:  # end-of-turn sentinel
                 self._turn_future = None
-                self.state = IDLE
+                # Conversation mode: keep the mic hot for a wake-word-free
+                # follow-up (opens only now that playback is fully done, so Baby
+                # never transcribes its own speech). Disabled → back to IDLE.
+                if self.conversation_enabled:
+                    self._enter_listening(frames, source="followup")
+                else:
+                    self.state = IDLE
                 return
             if sentence is not _NOTHING:
                 pcm, sample_rate = self.tts.synth(sentence)
@@ -502,6 +544,14 @@ class VoicePipeline:
                 self._publish("status", text="voice: interrupted")
                 self._enter_listening(frames)
                 return
+
+    def _session_cue(self) -> None:
+        """Soft audio cue marking a conversation window opening/closing."""
+        if self.conversation_cue:
+            try:
+                self.audio.beep()
+            except Exception:  # noqa: BLE001 — the cue is cosmetic
+                pass
 
     def _barge_in_step(self, frames, speech_frames: int, stop_playback) -> int:
         """One mic poll during playback; sets stop on sustained speech."""

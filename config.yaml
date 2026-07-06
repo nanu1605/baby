@@ -56,9 +56,10 @@ game_mode:
 
 voice:
   enabled: true
-  wakeword_model: models/hey_baby.onnx  # trained on Colab; scripts/wakeword_training.md
-  wakeword_builtin_fallback: hey_jarvis # interim until hey_baby.onnx lands
-  wakeword_threshold: 0.55
+  wakeword_model: models/jarvis.onnx    # custom "jarvis" (Colab; scripts/wakeword_training.md)
+  wakeword_models: []                   # extra custom .onnx paths, scored alongside
+  wakeword_builtin_fallback: hey_jarvis # runs ALONGSIDE the custom model, always on
+  wakeword_threshold: 0.55              # raise toward ~0.6 once the custom model lands
   push_to_talk_hotkey: ctrl+alt+b
   kill_phrases: ["baby stop", "baby ruk ja"]
   max_utterance_s: 30
@@ -114,6 +115,17 @@ memory:
 
 persona:
   suggest_next_step: true               # feature #8: extra call after a real task
+
+conversation:                           # P3: hands-free follow-ups after Baby speaks
+  enabled: true                         # false = one-shot per wake (pre-v2 behavior)
+  window_s: 60                          # silence before the follow-up window auto-closes
+  cue: true                             # soft beep when the window opens/closes
+  end_phrases:                          # any of these closes the conversation
+    - baby stop listening
+    - stop listening
+    - bas
+    - bas baby
+    - so jao
 
 files:
   everything_dll: ""                    # optional explicit DLL path; default resolution otherwise

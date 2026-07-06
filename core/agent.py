@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 from core.bus import EventBus
 from core.context import sanitize_messages
+from core.intents import parse_no, parse_yes
 from core.prompts import detect_language, system_prompt
 from core.providers.base import ChatProvider, ToolCall
 from core.safety import SafetyClass, SafetyConfig, SafetyGate
@@ -135,9 +136,18 @@ class AgentCore:
         self.suggest_next_step = suggest_next_step
         self.max_iterations = max_iterations
         self.maintenance_task: asyncio.Task | None = None  # clients may await on shutdown
+        # P3 proceed/cancel: the next-step suggestion this turn offered, armed for
+        # exactly ONE follow-up turn (a "haan"/"no" answer). One-shot.
+        self.pending_suggestion: str | None = None
 
     async def run_turn(self, user_text: str) -> str:
         """Process one user message; returns the final assistant reply."""
+        # P3 proceed/cancel: if the previous turn offered a next step, a short
+        # yes/no answer resolves it. One-shot — consumed or expired this turn.
+        pending, self.pending_suggestion = self.pending_suggestion, None
+        proceed = bool(pending) and parse_yes(user_text)
+        decline = bool(pending) and not proceed and parse_no(user_text)
+
         # Every row of this turn shares a turn_id so a failure can quarantine
         # the whole turn atomically and keep its debris out of future context.
         turn_id = await self.db.next_turn_id(self.conversation_id)
@@ -146,7 +156,20 @@ class AgentCore:
         status = "error"
         reply = ""
         try:
-            reply, status = await self._loop(user_text, turn_id)
+            if decline:
+                # Proposed next step declined — acknowledge, don't act, no model
+                # call. (A CONFIRM-class action was never queued, so nothing to
+                # cancel at the gate.)
+                reply = "Okay, I'll skip that."
+                self.bus.publish("token", self.channel, text=reply)
+                await self.db.add_message(
+                    self.conversation_id, "assistant", reply, turn_id=turn_id
+                )
+                status = "ok"
+            else:
+                reply, status = await self._loop(
+                    user_text, turn_id, proceed_hint=pending if proceed else None
+                )
             return reply
         except asyncio.CancelledError:
             # The marker must read as CLOSURE to the model: a bare "(cancelled)"
@@ -188,7 +211,9 @@ class AgentCore:
             if self.memory is not None and status == "ok":
                 self._schedule_maintenance()
 
-    async def _loop(self, user_text: str, turn_id: int) -> tuple[str, str]:
+    async def _loop(
+        self, user_text: str, turn_id: int, *, proceed_hint: str | None = None
+    ) -> tuple[str, str]:
         summary: str | None = None
         memories: list[str] = []
         after_id = 0
@@ -247,6 +272,18 @@ class AgentCore:
                 "allow",
                 1,
                 f"dropped {len(dropped)} poisoned context row(s)",
+            )
+
+        # P3 proceed: the user approved the next step this loop offered last turn.
+        # Push the model to act on it now (tools still pass through the gate).
+        if proceed_hint:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "The user just approved the next step you proposed "
+                    f'("{proceed_hint}"). Carry it out NOW with the appropriate '
+                    "tool — do not merely restate it.",
+                }
             )
 
         tools_succeeded = 0
@@ -329,6 +366,8 @@ class AgentCore:
                     suggestion = await self._suggest_next_step(messages, text)
                     if suggestion:
                         reply = f"{reply}\n\nNext: {suggestion}"
+                        # Arm proceed/cancel for the next turn's yes/no answer.
+                        self.pending_suggestion = suggestion
                 await self.db.add_message(
                     self.conversation_id, "assistant", reply, turn_id=turn_id
                 )
@@ -434,9 +473,10 @@ class AgentCore:
                 {"role": "assistant", "content": final_text or "(task done)"},
                 {
                     "role": "user",
-                    "content": "In one short line, suggest the single most useful "
-                    "next step after what you just did. No preamble, no options — "
-                    "just the suggestion, in the same language as my previous message.",
+                    "content": "In one short line, OFFER the single most useful next "
+                    "step as a question I can answer yes/no (e.g. 'Want me to … ?'). "
+                    "No preamble, no options — just the offer, in the same language "
+                    "as my previous message.",
                 },
             ]
             parts: list[str] = []
