@@ -80,7 +80,7 @@ voice:
   vad_silence_ms: 400
   vad_speech_wait_ms: 5000              # grace to start talking after the beep
   speaker_verify:
-    enabled: true                       # fail-soft off while models/owner_voice.json is missing
+    enabled: false                      # owner disabled 2026-07-06: natural speech scored below even a re-enrolled profile (false rejections)
     model: models/wespeaker_en_voxceleb_CAM++.onnx
     profile: models/owner_voice.json
     threshold: 0.68                     # from 2026-07-06 re-enrollment (min intra-speaker 0.78)
