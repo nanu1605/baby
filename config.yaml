@@ -52,7 +52,7 @@ router:
 
 game_mode:
   enabled: true                         # NIM plan §2.5: unload local 9B, route all cloud
-  auto_detect: false                    # fullscreen-exclusive detection (off by default)
+  auto_detect: true                     # owner enabled 2026-07-06: fullscreen app toggles ON, alt-tab out toggles OFF
 
 voice:
   enabled: true
