@@ -71,6 +71,28 @@
   split (`/stats.tokens`). A host that omits usage degrades to blank counts,
   never a crash. Version finalized to `2.0.0`.
 
+## v1.1.1 — reliability hotfix (2026-07-06)
+
+Bug fixes cherry-picked ahead of the v2 features: dead sensors, silent
+replies, and DB poison that broke model calls.
+
+- Sensors + tool contract (#6). New `get_sensors` tool reads CPU/GPU temps,
+  fans and voltages from LibreHardwareMonitor's Remote Web Server (JSON at
+  `http://127.0.0.1:8085/data.json`; LHM dropped WMI in 0.9.x), degrading to a
+  structured `{error, hint}` when LHM is absent; `setup.ps1` installs +
+  autostarts LHM. `registry.dispatch` now wraps empty tool returns
+  (`None`/`""`/`{}`) as an error, and the agent serves an honest audited line
+  instead of the literal `"(no response)"` on empty output.
+- DB hygiene — never feed poison (#7). `messages` gains `turn_id` + `status`;
+  a turn that errors is quarantined whole and never reloads; a hard-kill
+  leftover (no assistant row) is failed at boot (conversation-scoped);
+  `core/context.py::sanitize_messages` is a strict gate that makes every
+  provider payload OpenAI-valid (orphaned tool rows, malformed args, empty
+  content dropped and audited as `context_sanitizer`); a rejected context
+  self-heals from the rolling summary and retries once.
+  `scripts/migrate_v2_db.py` backs up (WAL-safe), adds columns, quarantines
+  existing poison.
+
 ## Unreleased — NIM cloud-primary migration (feature/nim-cloud-primary-router)
 
 - N0 (2026-07-05): `core/providers/nvidia.py` — NVIDIA NIM provider on the
