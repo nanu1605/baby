@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS audit_log (
   result_summary TEXT
 );
 
+CREATE TABLE IF NOT EXISTS usage_log (
+  id INTEGER PRIMARY KEY,
+  ts TEXT DEFAULT (datetime('now')),
+  conversation_id INTEGER REFERENCES conversations(id),
+  turn_id INTEGER,                     -- links to messages.turn_id (P2); one row per turn
+  channel TEXT,                        -- cli | ui | voice | telegram | scheduler
+  brain_tier TEXT,                     -- daily | nim_primary | nim_heavy | backstop
+  brain_model TEXT,                    -- exact served model (nullable)
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS schedules (
   id INTEGER PRIMARY KEY,
   cron TEXT NOT NULL,

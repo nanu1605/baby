@@ -242,3 +242,77 @@ async def test_plain_internal_calls_still_daily():
     reply = await collect(router, "use the big brain please", max_tokens=100)
     assert reply == "daily reply"
     assert router.active["reason"] == "internal call"
+
+
+# -- P4 budget trim at the dispatch seam --------------------------------------
+
+
+def _long_history(turns=10):
+    msgs = [{"role": "system", "content": "S" * 40}]
+    for i in range(turns):
+        msgs.append({"role": "user", "content": f"old{i} " + "x" * 400})
+        msgs.append({"role": "assistant", "content": f"reply{i} " + "y" * 400})
+    msgs.append({"role": "user", "content": "the newest question"})
+    return msgs
+
+
+async def test_trim_applied_at_dispatch_seam():
+    from core.context import estimate_tokens
+
+    daily = Tier(["daily reply"], "daily")
+    router = RouterProvider(
+        daily, router_cfg=CFG, heavy_cfg=HEAVY_CFG,
+        history_budgets={"daily": 30}, trim_enabled=True,
+    )
+    router._free_ram_gb = lambda: 30.0
+    reply = ""
+    async for chunk in router.chat(_long_history()):
+        reply += chunk.delta
+    sent = daily.requests[-1]
+    assert sent[0]["role"] == "system"  # pinned
+    assert any("the newest question" in (m.get("content") or "") for m in sent)  # newest kept
+    hist = [m for m in sent if m["role"] != "system"]
+    assert estimate_tokens(hist) <= 30  # trimmed to daily's budget
+
+
+async def test_disabled_trim_sends_full_history():
+    daily = Tier(["daily reply"], "daily")
+    router = RouterProvider(
+        daily, router_cfg=CFG, heavy_cfg=HEAVY_CFG,
+        history_budgets={"daily": 30}, trim_enabled=False,  # engine v1
+    )
+    router._free_ram_gb = lambda: 30.0
+    msgs = _long_history()
+    async for _ in router.chat(msgs):
+        pass
+    assert len(daily.requests[-1]) == len(msgs)  # nothing dropped
+
+
+async def test_fallback_retrims_to_new_brain_budget():
+    from core.context import estimate_tokens
+
+    class FailingTier(Tier):
+        async def chat(self, messages, tools=None, **opts):
+            self.requests.append([dict(m) for m in messages])
+            raise RuntimeError("boom")
+            yield  # pragma: no cover — unreachable, makes this an async gen
+
+    cloud = FailingTier([], "cloud")
+    daily = Tier(["daily reply"], "daily")
+    router = RouterProvider(
+        daily, cloud=cloud, router_cfg=CFG, heavy_cfg=HEAVY_CFG,
+        history_budgets={"daily": 30, "cloud": 400}, trim_enabled=True,
+    )
+    router._free_ram_gb = lambda: 30.0
+    msgs = _long_history()
+    msgs[-1] = {"role": "user", "content": "use the big brain for this one"}  # → cloud
+    reply = ""
+    async for chunk in router.chat(msgs):
+        reply += chunk.delta
+    assert reply == "daily reply"  # cloud failed pre-stream, fell back to daily
+    cloud_hist = [m for m in cloud.requests[-1] if m["role"] != "system"]
+    daily_hist = [m for m in daily.requests[-1] if m["role"] != "system"]
+    assert estimate_tokens(cloud_hist) <= 400  # each brain trimmed to ITS budget
+    assert estimate_tokens(daily_hist) <= 30
+    assert len(cloud_hist) > len(daily_hist)  # the roomier brain kept more turns
+    assert len(cloud_hist) > len(daily_hist)  # the roomier brain kept more turns

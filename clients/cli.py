@@ -9,11 +9,10 @@ import yaml
 
 from core.agent import AgentCore
 from core.bus import EventBus
+from core.intents import parse_yes
 from core.readiness import ready_check
 from core.safety import SafetyConfig, SafetyGate
 from db.database import Database
-
-_YES = {"y", "yes", "haan", "haa", "ha", "kar do", "kardo", "go ahead", "ok"}
 
 
 def load_config(config_path: str = "config.yaml") -> dict:
@@ -52,7 +51,7 @@ async def _render(bus: EventBus, gate: SafetyGate) -> None:
                     f"\n  run this? [y/N] ({int(p['timeout_s'])}s): "
                 )
                 answer = await asyncio.to_thread(input, prompt)
-                gate.confirmations.resolve(p["confirm_id"], answer.strip().lower() in _YES)
+                gate.confirmations.resolve(p["confirm_id"], parse_yes(answer))
     except asyncio.CancelledError:
         bus.unsubscribe(q)
         raise

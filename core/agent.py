@@ -15,6 +15,12 @@ from typing import TYPE_CHECKING
 
 from core.bus import EventBus
 from core.context import sanitize_messages
+from core.intents import (
+    is_wipe_confirmation,
+    parse_memory_command,
+    parse_no,
+    parse_yes,
+)
 from core.prompts import detect_language, system_prompt
 from core.providers.base import ChatProvider, ToolCall
 from core.safety import SafetyClass, SafetyConfig, SafetyGate
@@ -51,6 +57,21 @@ def _looks_like_context_error(exc: Exception) -> bool:
     if "400" in text and "message" in text:
         return True
     return any(hint in text for hint in _CONTEXT_ERROR_HINTS)
+
+
+def _format_past_context(hits: list[dict] | None) -> str | None:
+    """Dated one-line snippets of retrieved past exchanges (P4 cross-session RAG)."""
+    if not hits:
+        return None
+    lines = []
+    for hit in hits:
+        date = str(hit.get("created_at") or "")[:10]
+        who = "user" if hit.get("role") == "user" else "Baby"
+        text = " ".join(str(hit.get("text") or "").split())
+        if len(text) > 240:
+            text = text[:240] + "…"
+        lines.append(f"- [{date}] {who}: {text}")
+    return "\n".join(lines) or None
 
 # "I'll open Yahoo and run that search for you." — full stop, zero tool calls
 # (observed live, repeatedly, after cancelled turns). A promise of action with
@@ -135,9 +156,39 @@ class AgentCore:
         self.suggest_next_step = suggest_next_step
         self.max_iterations = max_iterations
         self.maintenance_task: asyncio.Task | None = None  # clients may await on shutdown
+        # P3 proceed/cancel: the next-step suggestion this turn offered, armed for
+        # exactly ONE follow-up turn (a "haan"/"no" answer). One-shot.
+        self.pending_suggestion: str | None = None
+        # P4 wipe-all: a "wipe all memory" arms this one-shot challenge; only the
+        # next turn's explicit confirmation erases everything.
+        self.pending_wipe: bool = False
+        # P5 telemetry: token usage summed across every model call of one turn
+        # (main loop rounds + final-answer + next-step). Reset per run_turn.
+        self._turn_tokens: dict = {"prompt": 0, "completion": 0, "total": 0}
+
+    def _accrue_tokens(self, usage: dict | None) -> None:
+        """Add one generation's reported usage to this turn's running total (P5)."""
+        if not usage:
+            return
+        self._turn_tokens["prompt"] += int(usage.get("prompt_tokens", 0) or 0)
+        self._turn_tokens["completion"] += int(usage.get("completion_tokens", 0) or 0)
+        self._turn_tokens["total"] += int(usage.get("total_tokens", 0) or 0)
 
     async def run_turn(self, user_text: str) -> str:
         """Process one user message; returns the final assistant reply."""
+        self._turn_tokens = {"prompt": 0, "completion": 0, "total": 0}  # P5 fresh count
+        # P4: deterministic memory commands (new chat / forget that / wipe) run
+        # model-free and reach every channel here (all funnel through run_turn).
+        mem_action = self._memory_action(user_text)
+        if mem_action is not None:
+            return await self._run_memory_command(mem_action, user_text)
+
+        # P3 proceed/cancel: if the previous turn offered a next step, a short
+        # yes/no answer resolves it. One-shot — consumed or expired this turn.
+        pending, self.pending_suggestion = self.pending_suggestion, None
+        proceed = bool(pending) and parse_yes(user_text)
+        decline = bool(pending) and not proceed and parse_no(user_text)
+
         # Every row of this turn shares a turn_id so a failure can quarantine
         # the whole turn atomically and keep its debris out of future context.
         turn_id = await self.db.next_turn_id(self.conversation_id)
@@ -146,7 +197,24 @@ class AgentCore:
         status = "error"
         reply = ""
         try:
-            reply, status = await self._loop(user_text, turn_id)
+            if decline:
+                # Proposed next step declined — acknowledge, don't act, no model
+                # call. (A CONFIRM-class action was never queued, so nothing to
+                # cancel at the gate.) Match the user's language.
+                reply = (
+                    "ठीक है, छोड़ देता हूँ।"
+                    if detect_language(user_text) == "Hindi"
+                    else "Okay, I'll skip that."
+                )
+                self.bus.publish("token", self.channel, text=reply)
+                await self.db.add_message(
+                    self.conversation_id, "assistant", reply, turn_id=turn_id
+                )
+                status = "ok"
+            else:
+                reply, status = await self._loop(
+                    user_text, turn_id, proceed_hint=pending if proceed else None
+                )
             return reply
         except asyncio.CancelledError:
             # The marker must read as CLOSURE to the model: a bare "(cancelled)"
@@ -177,8 +245,21 @@ class AgentCore:
             # the router's active decision within milliseconds. The badge shows
             # the brain that authored the final answer of this turn.
             brain = dict(getattr(self.provider, "active", None) or {})
+            # P5: persist this turn's token spend (skip cancelled — awaiting the
+            # DB while a CancelledError unwinds is fragile, and a cancelled turn
+            # is debris anyway). Best-effort: telemetry never fails a turn.
+            tokens = dict(self._turn_tokens)
+            if status != "cancelled" and tokens["total"] > 0:
+                try:
+                    await self.db.add_usage(
+                        self.conversation_id, turn_id, self.channel,
+                        brain.get("tier"), brain.get("model"), tokens,
+                    )
+                except Exception:  # noqa: BLE001 — telemetry is never load-bearing
+                    pass
             self.bus.publish(
-                "turn_end", self.channel, reply=reply, status=status, brain=brain
+                "turn_end", self.channel, reply=reply, status=status,
+                brain=brain, tokens=tokens,
             )
             # Router hook (Phase 4): lets the provider arm retry_after_failure
             # escalation for this channel's next turn. No-op for plain providers.
@@ -187,10 +268,103 @@ class AgentCore:
                 record(self.channel, status)
             if self.memory is not None and status == "ok":
                 self._schedule_maintenance()
+            # A next-step offer only stays armed if THIS turn fully persisted its
+            # assistant row (the "Next: …" the model would act on). An errored or
+            # capped turn must not leave a stale suggestion for the next turn
+            # (review #7).
+            if status != "ok":
+                self.pending_suggestion = None
 
-    async def _loop(self, user_text: str, turn_id: int) -> tuple[str, str]:
+    def _memory_action(self, user_text: str) -> str | None:
+        """Classify a deterministic memory command, consuming the wipe challenge.
+
+        Returns 'new_chat' | 'clear' | 'forget_last' | 'wipe' | 'wipe_confirm',
+        or None for a normal turn. A pending wipe challenge is one-shot: a
+        confirmation completes it; anything else cancels it and is re-checked as
+        a fresh command (so a stray 'yes' never erases memory)."""
+        if self.pending_wipe:
+            self.pending_wipe = False
+            if is_wipe_confirmation(user_text):
+                return "wipe_confirm"
+        return parse_memory_command(user_text)
+
+    async def _run_memory_command(self, action: str, user_text: str) -> str:
+        """Execute a memory command as a model-free, still-rendered turn."""
+        self.bus.publish("turn_start", self.channel, conversation_id=self.conversation_id)
+        self.pending_suggestion = None  # a memory command changes direction
+        reply = ""
+        try:
+            hindi = detect_language(user_text) == "Hindi"
+            store = self.memory.store if self.memory is not None else None
+            if action in ("new_chat", "clear"):
+                self.conversation_id = await self.db.create_conversation(self.channel)
+                reply = "नई बातचीत शुरू कर दी।" if hindi else "Started a fresh conversation."
+            elif action == "forget_last":
+                result = (
+                    await store.forget_last() if store else {"error": "memory unavailable"}
+                )
+                if result.get("forgotten"):
+                    reply = (
+                        f"ठीक है, यह भूल गया: {result['forgotten'][0]}"
+                        if hindi
+                        else f"Done — forgotten: {result['forgotten'][0]}"
+                    )
+                else:
+                    reply = (
+                        "भूलने के लिए हाल में कुछ नहीं है।"
+                        if hindi
+                        else "Nothing recent to forget."
+                    )
+            elif action == "wipe":
+                if store is None:
+                    reply = (
+                        "याददाश्त उपलब्ध नहीं है — मिटाने के लिए कुछ नहीं।"
+                        if hindi
+                        else "Memory isn't available — there's nothing to wipe."
+                    )
+                else:
+                    self.pending_wipe = True
+                    reply = (
+                        "इससे मेरी पूरी याददाश्त — सभी तथ्य और पुरानी बातचीत — मिट जाएगी। "
+                        "पक्का करने के लिए कहें: confirm wipe।"
+                        if hindi
+                        else "This will erase ALL my memory — facts and past conversations. "
+                        "Say 'confirm wipe' to proceed, or anything else to cancel."
+                    )
+            elif action == "wipe_confirm":
+                if store is None:
+                    reply = (
+                        "याददाश्त उपलब्ध नहीं है — कुछ नहीं मिटाया।"
+                        if hindi
+                        else "Memory isn't available — nothing was wiped."
+                    )
+                else:
+                    counts = await store.wipe_all()
+                    # Flush the live session: a fresh conversation so nothing
+                    # lingers in context until a restart.
+                    self.conversation_id = await self.db.create_conversation(self.channel)
+                    await self.db.add_audit(
+                        self.channel, "wipe_memory", "{}", "allow", 1,
+                        f"wiped {counts.get('facts', 0)} facts, "
+                        f"{counts.get('messages', 0)} messages",
+                    )
+                    reply = (
+                        "सब कुछ मिटा दिया। अब मुझे कुछ याद नहीं।"
+                        if hindi
+                        else "Memory wiped — I don't remember anything now."
+                    )
+            self.bus.publish("token", self.channel, text=reply)
+        finally:
+            brain = dict(getattr(self.provider, "active", None) or {})
+            self.bus.publish("turn_end", self.channel, reply=reply, status="ok", brain=brain)
+        return reply
+
+    async def _loop(
+        self, user_text: str, turn_id: int, *, proceed_hint: str | None = None
+    ) -> tuple[str, str]:
         summary: str | None = None
         memories: list[str] = []
+        past_context: str | None = None
         after_id = 0
         if self.memory is not None:
             try:
@@ -202,6 +376,20 @@ class AgentCore:
                 memories = [f["text"] for f in await self.memory.store.search(user_text)]
             except Exception:  # noqa: BLE001 — memory failure must not block a turn
                 summary, memories, after_id = None, [], 0
+            # Cross-session RAG (P4, engine v2): surface out-of-window past
+            # exchanges. Excludes this conversation's rows already in the raw
+            # history so it only adds genuinely older context.
+            rag_k = getattr(self.memory, "rag_k", 0)
+            if rag_k:
+                try:
+                    past = await self.memory.store.search_messages(
+                        user_text,
+                        k=rag_k,
+                        exclude_conversation=self.conversation_id,
+                    )
+                    past_context = _format_past_context(past)
+                except Exception:  # noqa: BLE001 — RAG is best-effort, never blocks
+                    past_context = None
 
         # Only user/assistant text is reloaded across restarts; tool traffic
         # lives within a single turn (see DECISIONS.md).
@@ -213,7 +401,10 @@ class AgentCore:
         )
         language = detect_language(user_text)
         messages: list[dict] = [
-            {"role": "system", "content": system_prompt(summary, memories, language)},
+            {
+                "role": "system",
+                "content": system_prompt(summary, memories, language, past_context),
+            },
             *history,
             # Trailing nudge: the head-of-prompt language pin alone loses to a
             # history full of another language (observed live with the 9B) —
@@ -247,6 +438,18 @@ class AgentCore:
                 "allow",
                 1,
                 f"dropped {len(dropped)} poisoned context row(s)",
+            )
+
+        # P3 proceed: the user approved the next step this loop offered last turn.
+        # Push the model to act on it now (tools still pass through the gate).
+        if proceed_hint:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "The user just approved the next step you proposed "
+                    f'("{proceed_hint}"). Carry it out NOW with the appropriate '
+                    "tool — do not merely restate it.",
+                }
             )
 
         tools_succeeded = 0
@@ -329,6 +532,8 @@ class AgentCore:
                     suggestion = await self._suggest_next_step(messages, text)
                     if suggestion:
                         reply = f"{reply}\n\nNext: {suggestion}"
+                        # Arm proceed/cancel for the next turn's yes/no answer.
+                        self.pending_suggestion = suggestion
                 await self.db.add_message(
                     self.conversation_id, "assistant", reply, turn_id=turn_id
                 )
@@ -387,6 +592,8 @@ class AgentCore:
                 self.bus.publish("token", self.channel, text=chunk.delta)
             if chunk.tool_calls:
                 tool_calls = chunk.tool_calls
+            if chunk.usage:
+                self._accrue_tokens(chunk.usage)
         return _scrub_think("".join(text_parts)), tool_calls
 
     def _recovery_context(
@@ -417,6 +624,8 @@ class AgentCore:
                 if chunk.delta:
                     parts.append(chunk.delta)
                     self.bus.publish("token", self.channel, text=chunk.delta)
+                if chunk.usage:
+                    self._accrue_tokens(chunk.usage)
         except Exception:  # noqa: BLE001 — fall back to the "(no response)" placeholder
             return ""
         return _scrub_think("".join(parts))
@@ -434,9 +643,10 @@ class AgentCore:
                 {"role": "assistant", "content": final_text or "(task done)"},
                 {
                     "role": "user",
-                    "content": "In one short line, suggest the single most useful "
-                    "next step after what you just did. No preamble, no options — "
-                    "just the suggestion, in the same language as my previous message.",
+                    "content": "In one short line, OFFER the single most useful next "
+                    "step as a question I can answer yes/no (e.g. 'Want me to … ?'). "
+                    "No preamble, no options — just the offer, in the same language "
+                    "as my previous message.",
                 },
             ]
             parts: list[str] = []
@@ -448,6 +658,8 @@ class AgentCore:
                         self.bus.publish("token", self.channel, text="\n\nNext: ")
                     parts.append(chunk.delta)
                     self.bus.publish("token", self.channel, text=chunk.delta)
+                if chunk.usage:
+                    self._accrue_tokens(chunk.usage)
             return "".join(parts).strip()
         except asyncio.CancelledError:
             raise
@@ -469,6 +681,13 @@ class AgentCore:
             await self.memory.extractor.maybe_extract(self.conversation_id)
         except Exception:  # noqa: BLE001
             pass
+        # Live cross-session RAG embedding (P4, engine v2): embed this turn's new
+        # messages so they are searchable immediately — off the reply's path.
+        if getattr(self.memory, "rag_k", 0):
+            try:
+                await self.memory.store.embed_new_messages(self.conversation_id)
+            except Exception:  # noqa: BLE001
+                pass
 
     async def _execute_tool(self, tc: ToolCall, user_text: str) -> str:
         """Gate → execute → audit → events. Owns the whole tool lifecycle."""

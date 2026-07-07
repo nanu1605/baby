@@ -54,6 +54,20 @@ function addBrainBadge(bubble, brain) {
   bubble.appendChild(span);
 }
 
+/* Per-turn token spend (P5): ↑prompt ↓completion beside the brain chip. A local
+   (Ollama) turn is tagged "no quota" since it costs nothing. */
+function addTokenBadge(bubble, tokens, brain) {
+  if (!tokens || !tokens.total) return;
+  const local = brain && brain.tier === "daily";
+  const span = document.createElement("span");
+  span.className = "token-badge" + (local ? " local" : "");
+  span.textContent = `↑${tokens.prompt} ↓${tokens.completion}`;
+  span.title = local
+    ? `local — no quota (${tokens.total} tokens)`
+    : `${tokens.total} tokens this turn`;
+  bubble.appendChild(span);
+}
+
 function setTurnRunning(running) {
   $("send-btn").disabled = running;
   const ind = $("turn-indicator");
@@ -78,6 +92,7 @@ const chat = reconnectingSocket("/ws/chat", (msg) => {
       if (msg.reply) streamingBubble.textContent = msg.reply;
       else if (!streamingBubble.textContent) streamingBubble.textContent = "…";
       addBrainBadge(streamingBubble, msg.brain);
+      addTokenBadge(streamingBubble, msg.tokens, msg.brain);
       streamingBubble = null;
     }
     setTurnRunning(false);
@@ -222,14 +237,21 @@ function setGauge(prefix, used, total, percent) {
 
 let gameModeOn = false;
 
+const ROUTER_LABEL = {
+  cloud: "cloud", degraded: "cloud degraded", offline: "cloud offline", unknown: "cloud —",
+};
 function setRouterState(s) {
   const el = $("router-state");
   if (!el) return;
-  const state = s.game_mode ? "game" : (s.router && s.router.state) || "";
-  if (!state) { el.style.display = "none"; return; }
+  // Cloud health is ALWAYS on the header — never hidden, and never masked by
+  // "game mode" (game state lives on the 🎮 button, not this badge).
+  const state = (s.router && s.router.state) || "unknown";
   el.style.display = "";
   el.className = `badge ${state}`;
-  $("router-state-word").textContent = s.game_mode ? "game mode" : state;
+  $("router-state-word").textContent = ROUTER_LABEL[state] || state;
+  el.title = s.game_mode
+    ? "cloud router state — game mode on (all turns cloud)"
+    : "cloud router state";
   gameModeOn = !!s.game_mode;
   const btn = $("game-btn");
   btn.classList.toggle("on", gameModeOn);
@@ -245,8 +267,23 @@ async function pollStats() {
     setGauge("ram", s.ram.used_gb, s.ram.total_gb, s.ram.percent);
     if (s.gpu) setGauge("vram", s.gpu.vram_used_gb, s.gpu.vram_total_gb);
     else $("vram-val").textContent = "n/a";
+    setTokensBadge(s.tokens);
     if (!streamingBubble) setTurnRunning(s.turn_running);
   } catch { /* server briefly away — reconnect handles it */ }
+}
+
+/* Header token totals (P5): session ↑↓ with today + per-brain split on hover. */
+function setTokensBadge(tokens) {
+  const el = $("tokens-badge");
+  if (!el || !tokens) return;
+  const sess = tokens.session || { prompt: 0, completion: 0, total: 0 };
+  const today = tokens.today || { total: 0, by_brain: {} };
+  el.textContent = `↑${sess.prompt} ↓${sess.completion}`;
+  const brains = Object.entries(today.by_brain || {})
+    .map(([tier, n]) => `${tier}: ${n}`)
+    .join(" · ");
+  el.title = `session ${sess.total} · today ${today.total} tokens`
+    + (brains ? `\ntoday by brain — ${brains}` : "");
 }
 pollStats();
 setInterval(pollStats, 5000);
@@ -261,3 +298,50 @@ $("game-btn").addEventListener("click", async () => {
 });
 
 $("kill-btn").addEventListener("click", () => fetch("/kill", { method: "POST" }).catch(() => {}));
+
+/* ---------- memory browser ---------- */
+const memoryDialog = $("memory-dialog");
+
+async function renderMemory() {
+  let facts = [];
+  try { facts = await (await fetch("/memory")).json(); } catch { facts = []; }
+  const list = $("memory-list");
+  list.innerHTML = "";
+  const active = facts.filter((f) => f.active);
+  $("memory-count").textContent = `${active.length} remembered · ${facts.length - active.length} forgotten`;
+  if (!facts.length) {
+    list.innerHTML = `<div class="mem-empty">No memories yet.</div>`;
+    return;
+  }
+  for (const f of facts) {
+    const row = document.createElement("div");
+    row.className = `mem-row${f.active ? "" : " forgotten"}`;
+    const text = document.createElement("span");
+    text.className = "mem-text";
+    text.textContent = f.text;
+    const del = document.createElement("button");
+    del.className = "mem-del";
+    del.title = "Delete permanently";
+    del.textContent = "✕";
+    del.addEventListener("click", async () => {
+      await fetch(`/memory/fact/${f.id}`, { method: "DELETE" }).catch(() => {});
+      renderMemory();
+    });
+    row.append(text, del);
+    list.appendChild(row);
+  }
+}
+
+$("mem-btn").addEventListener("click", () => { renderMemory(); memoryDialog.showModal(); });
+$("memory-close").addEventListener("click", () => memoryDialog.close());
+$("memory-wipe").addEventListener("click", async () => {
+  const phrase = prompt("This erases ALL memory — facts AND past conversations.\nType WIPE to confirm:");
+  if (phrase == null) return;
+  const res = await fetch("/memory/wipe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phrase }),
+  }).catch(() => null);
+  if (res && res.ok) renderMemory();
+  else alert("Wipe cancelled — you must type WIPE exactly.");
+});

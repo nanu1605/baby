@@ -26,6 +26,8 @@ import re
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 
+from core.context import estimate_tokens as _estimate_tokens
+from core.context import trim as _trim
 from core.providers.base import ChatProvider, Chunk
 
 _PLANNING_RE = re.compile(r"\b(plan|design|architect|blueprint|roadmap|strategy)\b", re.IGNORECASE)
@@ -48,11 +50,6 @@ def _trailing_user_text(messages: list[dict]) -> str:
     return ""
 
 
-def _estimate_tokens(messages: list[dict]) -> int:
-    total = sum(len(str(m.get("content") or "")) for m in messages)
-    return total // 4  # rough chars→tokens; only feeds a threshold
-
-
 class RouterProvider:
     """ChatProvider that picks a brain per turn and falls back on failure."""
 
@@ -68,6 +65,8 @@ class RouterProvider:
         db=None,
         router_cfg: dict | None = None,
         heavy_cfg: dict | None = None,
+        history_budgets: dict[str, int] | None = None,
+        trim_enabled: bool = False,
     ) -> None:
         router_cfg = router_cfg or {}
         self.daily = daily
@@ -75,6 +74,9 @@ class RouterProvider:
         self.cloud = cloud
         self.bus = bus
         self.db = db
+        # P4 memory v2: per-brain history token budget, trimmed at dispatch.
+        self.history_budgets = history_budgets or {}
+        self.trim_enabled = bool(trim_enabled)
         self.escalate_on = set(
             router_cfg.get(
                 "escalate_on",
@@ -258,9 +260,12 @@ class RouterProvider:
                         text=f"router: {tier} failed — falling back to {candidate}",
                     )
                 self._audit(f"failover {candidate}", f"{tier} failed: {last_error}")
+            payload = messages
+            if self.trim_enabled:
+                payload = _trim(payload, self.history_budgets.get(candidate, 0))
             emitted = False
             try:
-                async for chunk in provider.chat(messages, tools=tools, **opts):
+                async for chunk in provider.chat(payload, tools=tools, **opts):
                     emitted = True
                     yield chunk
                 return
@@ -469,6 +474,8 @@ class CloudRouter:
         bus=None,
         db=None,
         router_cfg: dict | None = None,
+        history_budgets: dict[str, int] | None = None,
+        trim_enabled: bool = False,
     ) -> None:
         cfg = router_cfg or {}
         self.daily = daily
@@ -477,6 +484,9 @@ class CloudRouter:
         self.backstop = backstop
         self.bus = bus
         self.db = db
+        # P4 memory v2: per-brain history token budget, trimmed at dispatch.
+        self.history_budgets = history_budgets or {}
+        self.trim_enabled = bool(trim_enabled)
         self.explicit_phrases = tuple(
             p.lower() for p in cfg.get("explicit_phrases", _DEFAULT_EXPLICIT)
         )
@@ -765,6 +775,11 @@ class CloudRouter:
 
             self._note_decision(tier, reason if rung_no == 0 else f"fallback from {ladder[0]}")
             payload = messages if tier == "daily" else self._redact_pinned(messages)
+            if self.trim_enabled:
+                # Re-trim the same array per brain (incl. mid-loop fallback and
+                # privacy-pin handoffs) — the rolling summary substitutes for
+                # dropped turns; system prompt + summary + RAG block are pinned.
+                payload = _trim(payload, self.history_budgets.get(tier, 0))
             call_opts = opts
             if tier == "daily" and self.game_mode:
                 # Pin/offline-forced local serves during game mode must not
@@ -933,6 +948,7 @@ def build_nim_providers(config: dict) -> dict:
     cooldown = (
         config.get("router", {}).get("health", {}).get("cooldown_429_s", 90)
     )
+    emit_usage = bool(config.get("telemetry", {}).get("emit_usage", True))
     for slot in slots:
         cfg = models.get(slot, {})
         key = os.environ.get(cfg.get("api_key_env") or "NVIDIA_API_KEY", "")
@@ -943,6 +959,7 @@ def build_nim_providers(config: dict) -> dict:
                 temperature=cfg.get("temperature", 0.7),
                 base_url=cfg.get("base_url", NIM_OPENAI_URL),
                 cooldown_s=float(cooldown),
+                emit_usage=emit_usage,
             )
     return slots
 
@@ -959,6 +976,13 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
 
     mode = config.get("router", {}).get("mode", "local_primary")
     models = config.get("models", {})
+    # P4 memory v2: per-brain history budgets, applied only when engine: v2.
+    trim_enabled = str(config.get("memory", {}).get("engine", "v1")) == "v2"
+    # P5 telemetry: ask every host for token usage (stream_options.include_usage).
+    emit_usage = bool(config.get("telemetry", {}).get("emit_usage", True))
+
+    def _hist_budget(slot: str) -> int:
+        return int(models.get(slot, {}).get("max_history_tokens", 0) or 0)
 
     if mode == "cloud_primary":
         daily_cfg = models.get("daily", {})
@@ -967,6 +991,7 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
             temperature=daily_cfg.get("temperature", 0.7),
             keep_alive=daily_cfg.get("keep_alive", "24h"),
             num_ctx=daily_cfg.get("num_ctx", 8192),
+            emit_usage=emit_usage,
         )
         nim = build_nim_providers(config)
         backstop = None
@@ -975,7 +1000,9 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
         if cloud_cfg.get("model") and gemini_key:
             from core.providers.gemini import GeminiProvider
 
-            backstop = GeminiProvider(model=cloud_cfg["model"], api_key=gemini_key)
+            backstop = GeminiProvider(
+                model=cloud_cfg["model"], api_key=gemini_key, emit_usage=emit_usage
+            )
         if nim["nim_primary"] is None:
             # No key or no model set — cloud-primary is impossible; fail loud
             # instead of silently degrading to a local-only ladder.
@@ -992,6 +1019,13 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
             bus=bus,
             db=db,
             router_cfg=config.get("router", {}),
+            history_budgets={
+                "daily": _hist_budget("daily"),
+                "nim_primary": _hist_budget("nim_primary"),
+                "nim_heavy": _hist_budget("nim_heavy"),
+                "backstop": _hist_budget("cloud"),
+            },
+            trim_enabled=trim_enabled,
         )
 
     daily_cfg = models.get("daily", {})
@@ -1000,6 +1034,7 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
         temperature=daily_cfg.get("temperature", 0.7),
         keep_alive=daily_cfg.get("keep_alive", "24h"),
         num_ctx=daily_cfg.get("num_ctx", 8192),
+        emit_usage=emit_usage,
     )
 
     heavy = None
@@ -1010,6 +1045,7 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
             temperature=heavy_cfg.get("temperature", 0.5),
             keep_alive=heavy_cfg.get("keep_alive", "10m"),
             num_ctx=heavy_cfg.get("num_ctx", 8192),
+            emit_usage=emit_usage,
         )
 
     cloud = None
@@ -1018,7 +1054,9 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
     if cloud_cfg.get("model") and api_key:
         from core.providers.gemini import GeminiProvider
 
-        cloud = GeminiProvider(model=cloud_cfg["model"], api_key=api_key)
+        cloud = GeminiProvider(
+            model=cloud_cfg["model"], api_key=api_key, emit_usage=emit_usage
+        )
 
     if heavy is None and cloud is None:
         return daily
@@ -1030,4 +1068,10 @@ def build_provider(config: dict, *, bus=None, db=None) -> ChatProvider:
         db=db,
         router_cfg=config.get("router", {}),
         heavy_cfg=heavy_cfg,
+        history_budgets={
+            "daily": _hist_budget("daily"),
+            "heavy": _hist_budget("heavy"),
+            "cloud": _hist_budget("cloud"),
+        },
+        trim_enabled=trim_enabled,
     )

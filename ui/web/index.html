@@ -14,11 +14,13 @@
     <span class="dot"></span><span id="router-state-word">…</span>
   </div>
   <button id="game-btn" title="Game mode: unload the local brain, answer via cloud">🎮</button>
+  <button id="mem-btn" title="Memory: browse learned facts, forget, or wipe">🧠</button>
   <div class="gauges">
     <div class="gauge"><span>CPU</span><div class="bar"><div id="cpu-bar"></div></div><em id="cpu-val">–</em></div>
     <div class="gauge"><span>RAM</span><div class="bar"><div id="ram-bar"></div></div><em id="ram-val">–</em></div>
     <div class="gauge"><span>VRAM</span><div class="bar"><div id="vram-bar"></div></div><em id="vram-val">–</em></div>
   </div>
+  <div class="badge" id="tokens-badge" title="tokens — session / today">tok –</div>
   <div class="spacer"></div>
   <div id="turn-indicator" class="idle">idle</div>
   <button id="kill-btn" title="Cancel the current turn">■ Stop</button>
@@ -38,6 +40,16 @@
     <div id="feed"></div>
   </section>
 </main>
+
+<dialog id="memory-dialog">
+  <h3>Memory</h3>
+  <div id="memory-count" class="mem-count"></div>
+  <div id="memory-list"></div>
+  <div class="dialog-buttons">
+    <button id="memory-wipe" class="deny">Wipe all…</button>
+    <button id="memory-close" class="approve">Close</button>
+  </div>
+</dialog>
 
 <dialog id="confirm-dialog">
   <h3>Baby wants to run:</h3>

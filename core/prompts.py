@@ -109,12 +109,19 @@ def system_prompt(
     summary: str | None = None,
     memories: list[str] | None = None,
     language: str | None = None,
+    past_context: str | None = None,
 ) -> str:
-    """Persona + optional rolling summary + recalled facts + language pin."""
+    """Persona + optional rolling summary + recalled facts + past context + pin."""
     parts = [BASE_PERSONA]
     if memories:
         facts = "\n".join(f"- {m}" for m in memories)
         parts.append(f"## What Baby remembers\n{facts}")
+    if past_context:
+        parts.append(
+            "## Relevant past context\n"
+            "Earlier conversations that may relate to this turn (use only if "
+            f"relevant; do not assume the user is repeating themselves):\n{past_context}"
+        )
     if summary:
         parts.append(f"## Conversation so far\n{summary}")
     if language:

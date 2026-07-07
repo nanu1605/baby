@@ -22,12 +22,14 @@ class OllamaProvider:
         temperature: float = 0.7,
         keep_alive: str = "24h",
         num_ctx: int = 8192,
+        emit_usage: bool = True,
     ) -> None:
         self.model = model
         self.base_url = base_url
         self.temperature = temperature
         self.keep_alive = keep_alive
         self.num_ctx = num_ctx
+        self.emit_usage = emit_usage  # native eval counts via include_usage (P5)
         self._client = AsyncOpenAI(base_url=base_url, api_key="ollama")
 
     async def chat(
@@ -54,7 +56,7 @@ class OllamaProvider:
         # (summary, extraction, next-step) must pass it.
         if opts.get("reasoning_effort"):
             extra_body["reasoning_effort"] = opts["reasoning_effort"]
-        stream = await self._client.chat.completions.create(
+        create_kwargs: dict = dict(
             model=self.model,
             messages=messages,
             tools=tools or None,
@@ -63,6 +65,9 @@ class OllamaProvider:
             stream=True,
             extra_body=extra_body,
         )
+        if self.emit_usage:
+            create_kwargs["stream_options"] = {"include_usage": True}
+        stream = await self._client.chat.completions.create(**create_kwargs)
         async for chunk in accumulate_stream(stream):
             yield chunk
 

@@ -24,6 +24,7 @@ import re
 import threading
 import time
 
+from core.intents import is_end_phrase
 from voice.tts import split_sentences
 
 _PUNCT_RE = re.compile(r"[^\w\s]|[_।]", re.UNICODE)
@@ -93,12 +94,33 @@ class VoicePipeline:
         self.announce_q: queue.Queue = queue.Queue(maxsize=5)
         self.kill_phrases = tuple(cfg.get("kill_phrases", ("baby stop", "baby ruk ja")))
         self.max_utterance_s = float(cfg.get("max_utterance_s", 30))
+        # Grace to START speaking after the wake beep. The VAD's own short
+        # pre-speech timeout (vad_speech_wait_ms) used to close a fresh wake
+        # in ~5 s ("heard nothing" before the user finished asking) — the
+        # pipeline now owns this window so wake and follow-up feel the same.
+        self.listen_grace_s = float(cfg.get("listen_grace_s", 10))
         self.barge_in = bool(cfg.get("barge_in", True))
         self.barge_in_threshold = float(cfg.get("barge_in_threshold", 0.6))
+        # P3 conversation mode: after Baby speaks, keep the mic hot for a
+        # wake-word-free follow-up until an end phrase or window_s of silence.
+        conv = cfg.get("conversation", {})
+        self.conversation_enabled = bool(conv.get("enabled", True))
+        self.conversation_window_s = float(conv.get("window_s", 60))
+        self.conversation_cue = bool(conv.get("cue", True))
+        self.end_phrases = tuple(
+            conv.get(
+                "end_phrases",
+                ("baby stop listening", "stop listening", "bas", "bas baby", "so jao"),
+            )
+        )
 
         self._text_buf = ""
         self._turn_future = None
         self._stopping = threading.Event()
+        # Kill switch: force-stop live playback + the running turn (the UI /kill
+        # cancelled the turn future but Baby kept speaking the already-queued
+        # sentences — observed live). Set cross-thread, honored in _respond.
+        self._interrupt = threading.Event()
         self._ptt = threading.Event()
         self._thread: threading.Thread | None = None
         self._bridge_future = None
@@ -141,9 +163,10 @@ class VoicePipeline:
             from voice.wakeword import WakeWord
 
             self.wake = WakeWord(
-                model_path=self.cfg.get("wakeword_model", "models/hey_baby.onnx"),
+                model_path=self.cfg.get("wakeword_model", "models/jarvis.onnx"),
                 threshold=float(self.cfg.get("wakeword_threshold", 0.55)),
                 builtin_fallback=self.cfg.get("wakeword_builtin_fallback", "hey_jarvis"),
+                extra_models=self.cfg.get("wakeword_models", []),
             )
         return self.wake.load() or ""
 
@@ -244,8 +267,12 @@ class VoicePipeline:
     def cancel_turn(self) -> None:
         """Public: the UI kill switch must reach VOICE turns too (observed
         live: a stalled voice turn survived /kill because only the UI-tracked
-        task was cancelled)."""
+        task was cancelled). Force-stops the running turn AND any in-flight
+        speech — Baby used to keep speaking the already-queued sentences after
+        /kill because only the turn future was cancelled, not playback."""
+        self._interrupt.set()
         self._cancel_turn()
+        self._drain_sentences()
 
     def turn_running(self) -> bool:
         return self._turn_future is not None and not self._turn_future.done()
@@ -366,20 +393,35 @@ class VoicePipeline:
         # PTT bypasses speaker verification: whoever pressed the hotkey is at
         # the keyboard and already owns the PC.
         self._listen_source = source
-        self.audio.beep()
-        self.audio.drain()
+        # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
+        if source != "followup" or self.conversation_cue:
+            self.audio.beep()
+        self.audio.drain()  # never transcribe Baby's own just-played speech
         frames.clear()
+        self._drain_sentences()  # drop any stale sentinel from a cancelled turn
         self.vad.reset()
         self.state = LISTENING
-        self._publish("status", text="voice: listening")
+        followup = source == "followup"
+        self._publish("status", text="voice: listening" + (" (follow-up)" if followup else ""))
 
     def _listen(self, frames) -> None:
         import numpy as np
 
         recorded: list = []
-        deadline = time.monotonic() + self.max_utterance_s
+        # Grace to START speaking: a follow-up waits the full conversation
+        # window, a fresh wake waits listen_grace_s. Both ignore the VAD's own
+        # short pre-speech timeout (which used to close a wake in ~5 s before
+        # the user finished asking) — the pipeline owns the window here, and
+        # only silence AFTER speech ends the capture.
+        followup = self._listen_source == "followup"
+        grace = self.conversation_window_s if followup else self.listen_grace_s
+        speech_deadline = time.monotonic() + grace
+        hard_deadline = speech_deadline + self.max_utterance_s  # cap a runaway
         while not self._stopping.is_set():
-            if time.monotonic() > deadline:
+            now = time.monotonic()
+            if not getattr(self.vad, "speech_started", False) and now > speech_deadline:
+                break  # nobody spoke within the grace window
+            if now > hard_deadline:
                 break
             frame = self.audio.read(timeout=0.5)
             if frame is None:
@@ -389,6 +431,9 @@ class VoicePipeline:
             while (chunk := frames.pop(_VAD_FRAME)) is not None:
                 recorded.append(chunk)
                 if self.vad.utterance_done(chunk):
+                    if not getattr(self.vad, "speech_started", False):
+                        recorded.clear()  # was all pre-speech silence — keep waiting
+                        break
                     done = True
                     break
             if done:
@@ -396,14 +441,31 @@ class VoicePipeline:
 
         self.state = IDLE
         # No speech at all (false wake, or the user stayed quiet): skip the
-        # expensive STT call on pure silence and say so in the feed.
+        # expensive STT call on pure silence and say so in the feed. In a
+        # follow-up window, silence is how the conversation ends.
         if not recorded or not getattr(self.vad, "speech_started", True):
-            self._publish("status", text="voice: heard nothing")
+            if followup:
+                self._session_cue()
+                self._publish("status", text="voice: conversation ended (silence)")
+            else:
+                self._publish("status", text="voice: heard nothing")
             return
         pcm = np.concatenate(recorded)
         text, lang = self.stt.transcribe(pcm)
         if not text:
-            self._publish("status", text="voice: heard nothing")
+            if followup:
+                self._session_cue()
+                self._publish("status", text="voice: conversation ended (silence)")
+            else:
+                self._publish("status", text="voice: heard nothing")
+            return
+        # Conversation end phrase ("baby stop listening", "bas") cleanly closes
+        # the follow-up window. Checked BEFORE the kill phrase so "baby stop
+        # listening" ends the session as a session-close, not as a mid-turn kill
+        # (the kill phrase "baby stop" would otherwise shadow it).
+        if followup and is_end_phrase(text, self.end_phrases):
+            self._session_cue()
+            self._publish("status", text="voice: conversation ended")
             return
         if is_kill_phrase(text, self.kill_phrases):
             self._cancel_turn()
@@ -452,6 +514,10 @@ class VoicePipeline:
                     )
         self._set_verified(verified)
         self._publish("status", text=f"voice: heard {text!r}")
+        # A kill switch pressed while idle must not abort this fresh turn, and a
+        # stale sentinel from a cancelled prior turn must not end it early.
+        self._interrupt.clear()
+        self._drain_sentences()
         self._turn_future = self._submit(text)
         self.state = RESPONDING
 
@@ -468,13 +534,29 @@ class VoicePipeline:
         stop_playback = threading.Event()
         speech_frames = 0
         while not self._stopping.is_set():
+            # Kill switch: stop everything now — no follow-up window, unlike a
+            # barge-in or a clean turn end.
+            if self._interrupt.is_set():
+                self._abort_speaking(stop_playback)
+                return
             try:
                 sentence = self.sentence_q.get(timeout=0.1)
             except queue.Empty:
                 sentence = _NOTHING
             if sentence is None:  # end-of-turn sentinel
                 self._turn_future = None
-                self.state = IDLE
+                # A kill switch that landed as the turn was ending must not open
+                # a follow-up window (the cancelled turn still emits a sentinel).
+                if self._interrupt.is_set():
+                    self._abort_speaking(stop_playback)
+                    return
+                # Conversation mode: keep the mic hot for a wake-word-free
+                # follow-up (opens only now that playback is fully done, so Baby
+                # never transcribes its own speech). Disabled → back to IDLE.
+                if self.conversation_enabled:
+                    self._enter_listening(frames, source="followup")
+                else:
+                    self.state = IDLE
                 return
             if sentence is not _NOTHING:
                 pcm, sample_rate = self.tts.synth(sentence)
@@ -485,6 +567,11 @@ class VoicePipeline:
                 )
                 player.start()
                 while player.is_alive():
+                    if self._interrupt.is_set():  # kill switch mid-sentence
+                        stop_playback.set()
+                        player.join(timeout=1.0)
+                        self._abort_speaking(stop_playback)
+                        return
                     speech_frames = self._barge_in_step(frames, speech_frames, stop_playback)
                     if stop_playback.is_set():
                         player.join(timeout=1.0)
@@ -502,6 +589,24 @@ class VoicePipeline:
                 self._publish("status", text="voice: interrupted")
                 self._enter_listening(frames)
                 return
+
+    def _abort_speaking(self, stop_playback) -> None:
+        """Kill switch reached a live turn: halt playback, cancel the turn,
+        drop queued speech, go fully idle (no follow-up window)."""
+        stop_playback.set()
+        self._cancel_turn()
+        self._drain_sentences()
+        self._interrupt.clear()
+        self.state = IDLE
+        self._publish("status", text="voice: stopped by kill switch")
+
+    def _session_cue(self) -> None:
+        """Soft audio cue marking a conversation window opening/closing."""
+        if self.conversation_cue:
+            try:
+                self.audio.beep()
+            except Exception:  # noqa: BLE001 — the cue is cosmetic
+                pass
 
     def _barge_in_step(self, frames, speech_frames: int, stop_playback) -> int:
         """One mic poll during playback; sets stop on sustained speech."""

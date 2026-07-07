@@ -24,6 +24,17 @@ from db.database import Database
 
 WEB_DIR = Path(__file__).parent / "web"
 
+
+class _NoCacheStatic(StaticFiles):
+    """Serve app.js/style.css with no-store so a UI edit always lands on the
+    next refresh — the browser used to hold a stale app.js (observed live: a
+    fixed header badge kept rendering the old way until a hard refresh)."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
 _CHAT_KINDS = {"turn_start", "token", "turn_end", "error"}
 _ACTIVITY_KINDS = {
     "tool_start",
@@ -51,6 +62,7 @@ class UIContext:
     pool: object | None = None  # workers.queue.WorkerPool, attached in run_ui
     orchestrator: object | None = None  # workers.orchestrator.Orchestrator
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
+    session_start: str = ""  # P5: SQLite-format ts marking this process's boot
 
     def turn_running(self) -> bool:
         if self.current_turn is not None and not self.current_turn.done():
@@ -63,7 +75,7 @@ class UIContext:
 
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
-    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+    app.mount("/static", _NoCacheStatic(directory=WEB_DIR), name="static")
 
     @app.get("/")
     async def index():
@@ -104,6 +116,12 @@ def create_app(ctx: UIContext) -> FastAPI:
         if ctx.voice is not None:
             verifier = getattr(ctx.voice, "verifier", None)
             data["speaker_verify"] = getattr(verifier, "note", "off") if verifier else "off"
+        # P5 token telemetry: session (since boot) + today totals, per-brain split.
+        since = ctx.session_start or await ctx.db.now()
+        data["tokens"] = {
+            "session": await ctx.db.usage_session(since),
+            "today": await ctx.db.usage_today(),
+        }
         return data
 
     @app.get("/tasks")
@@ -145,6 +163,34 @@ def create_app(ctx: UIContext) -> FastAPI:
         if ctx.memory is None:
             return []
         return await ctx.memory.store.list_facts(limit)
+
+    @app.delete("/memory/fact/{fact_id}")
+    async def memory_delete_fact(fact_id: int):
+        if ctx.memory is None:
+            return JSONResponse({"error": "memory unavailable"}, status_code=404)
+        result = await ctx.memory.store.delete_fact(fact_id)
+        if "error" in result:
+            return JSONResponse(result, status_code=404)
+        return result
+
+    @app.post("/memory/wipe")
+    async def memory_wipe(body: dict):
+        """Erase ALL memory. Challenge-gated: the body must carry phrase 'WIPE'
+        (the browser modal makes the user type it), then the live UI session is
+        flushed to a fresh conversation so nothing lingers until a restart."""
+        if ctx.memory is None:
+            return JSONResponse({"error": "memory unavailable"}, status_code=404)
+        if str(body.get("phrase", "")).strip().upper() != "WIPE":
+            return JSONResponse({"error": "type WIPE to confirm"}, status_code=400)
+        counts = await ctx.memory.store.wipe_all()
+        ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
+        ctx.agent.pending_suggestion = None
+        await ctx.db.add_audit(
+            "ui", "wipe_memory", "{}", "allow", 1,
+            f"wiped {counts.get('facts', 0)} facts, {counts.get('messages', 0)} messages",
+        )
+        ctx.bus.publish("status", "ui", text="memory wiped")
+        return counts
 
     @app.post("/confirm/{confirm_id}")
     async def confirm(confirm_id: str, body: dict):
@@ -358,6 +404,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
     )
     ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=config, memory=memory)
+    ctx.session_start = await db.now()  # P5: bound "session" token totals to boot
     app = create_app(ctx)
 
     ui_cfg = config.get("ui", {})
@@ -443,7 +490,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from workers.scheduler import Scheduler
 
     scheduler = Scheduler(
-        db=db, bus=bus, provider=provider, gate=gate, config=config, notifier=notifier
+        db=db, bus=bus, provider=provider, gate=gate, config=config,
+        notifier=notifier, memory=memory,
     )
     await scheduler.start()
 

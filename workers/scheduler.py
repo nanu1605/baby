@@ -23,13 +23,14 @@ _INCLUDE_TEXT = {
 
 
 class Scheduler:
-    def __init__(self, *, db, bus, provider, gate, config: dict, notifier) -> None:
+    def __init__(self, *, db, bus, provider, gate, config: dict, notifier, memory=None) -> None:
         self.db = db
         self.bus = bus
         self.provider = provider
         self.gate = gate
         self.config = config
         self.notifier = notifier
+        self.memory = memory  # P4: nightly cross-session embedding reconciler
         self._scheduler = None
 
     async def start(self) -> None:
@@ -74,7 +75,40 @@ class Scheduler:
                 self.bus.publish(
                     "status", "scheduler", text="scheduler: briefing cron is invalid — skipped"
                 )
+
+        # P4 memory v2: nightly reconciler embeds any messages the live post-turn
+        # pass missed (crash, engine flip). Registered as code, not a model prompt.
+        if self.memory is not None and getattr(self.memory, "rag_k", 0):
+            cron = self.config.get("memory", {}).get("rag_nightly_cron", "0 3 * * *")
+            try:
+                self._scheduler.add_job(
+                    self._reconcile_embeddings,
+                    CronTrigger.from_crontab(cron),
+                    id="memory-embed-reconcile",
+                )
+            except ValueError:
+                self.bus.publish(
+                    "status", "scheduler", text="scheduler: memory reconcile cron invalid — skipped"
+                )
         self._scheduler.start()
+
+    async def _reconcile_embeddings(self) -> None:
+        """Embed any not-yet-embedded ok messages across every conversation."""
+        if self.memory is None:
+            return
+        total = 0
+        try:
+            for cid in await self.db.list_conversation_ids():
+                total += await self.memory.store.embed_new_messages(cid)
+        except Exception as exc:  # noqa: BLE001 — a failed reconcile must not crash the loop
+            self.bus.publish(
+                "error", "scheduler", text=f"scheduler: embed reconcile failed: {exc}"
+            )
+            return
+        if total:
+            self.bus.publish(
+                "status", "scheduler", text=f"scheduler: embedded {total} new message(s)"
+            )
 
     async def stop(self) -> None:
         if self._scheduler is not None:

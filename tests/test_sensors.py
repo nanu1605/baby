@@ -119,7 +119,11 @@ def test_parse_sensor_tree_excludes_thresholds():
                 "Value": "",
                 "Children": [
                     {"Text": "Core (Tctl/Tdie)", "Value": "48.6 °C", "Children": []},
-                    {"Text": "Thermal Sensor Critical High Limit", "Value": "85.0 °C", "Children": []},
+                    {
+                        "Text": "Thermal Sensor Critical High Limit",
+                        "Value": "85.0 °C",
+                        "Children": [],
+                    },
                     {"Text": "Warning Temperature", "Value": "74.0 °C", "Children": []},
                     {"Text": "Temperature Sensor Resolution", "Value": "0.3 °C", "Children": []},
                 ],

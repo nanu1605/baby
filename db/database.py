@@ -54,7 +54,7 @@ class Database:
         (CREATE TABLE IF NOT EXISTS never alters an existing table)."""
         cur = await self.conn.execute("PRAGMA table_info(conversations)")
         have = {row["name"] for row in await cur.fetchall()}
-        for column in ("summarized_upto", "extracted_upto"):
+        for column in ("summarized_upto", "extracted_upto", "message_embedded_upto"):
             if column not in have:
                 await self.conn.execute(
                     f"ALTER TABLE conversations ADD COLUMN {column} INTEGER DEFAULT 0"
@@ -132,6 +132,16 @@ class Database:
             cur = await self.conn.execute(sql, params)
             return await cur.fetchall()
 
+    async def now(self) -> str:
+        """Current UTC time in SQLite's own datetime format (P5 session marker).
+
+        Using the DB's clock keeps `ts >= since` a plain string compare against
+        usage_log.ts (both 'YYYY-MM-DD HH:MM:SS'); a Python ISO 'T' separator
+        would sort wrong against the space-separated stored timestamps.
+        """
+        row = await self._fetchone("SELECT datetime('now') AS ts")
+        return row["ts"]
+
     # -- conversations ------------------------------------------------------
 
     async def create_conversation(self, channel: str) -> int:
@@ -162,6 +172,60 @@ class Database:
             " result_summary) VALUES (?, ?, ?, ?, ?, ?)",
             (channel, tool, args, safety_class, approved, result_summary),
         )
+
+    # -- token usage (P5 telemetry) -----------------------------------------
+
+    async def add_usage(
+        self,
+        conversation_id: int,
+        turn_id: int | None,
+        channel: str,
+        brain_tier: str | None,
+        brain_model: str | None,
+        tokens: dict,
+    ) -> int:
+        """Record one turn's aggregated token spend (prompt/completion/total)."""
+        return await self._write(
+            "INSERT INTO usage_log (conversation_id, turn_id, channel, brain_tier,"
+            " brain_model, prompt_tokens, completion_tokens, total_tokens)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                conversation_id, turn_id, channel, brain_tier, brain_model,
+                int(tokens.get("prompt", 0)), int(tokens.get("completion", 0)),
+                int(tokens.get("total", 0)),
+            ),
+        )
+
+    async def usage_today(self) -> dict:
+        """Today's totals + per-brain breakdown (local calendar day)."""
+        rows = await self._fetchall(
+            "SELECT brain_tier, SUM(prompt_tokens) AS prompt,"
+            " SUM(completion_tokens) AS completion, SUM(total_tokens) AS total"
+            " FROM usage_log WHERE date(ts, 'localtime') = date('now', 'localtime')"
+            " GROUP BY brain_tier"
+        )
+        return self._usage_summary(rows)
+
+    async def usage_session(self, since_iso: str) -> dict:
+        """Totals + per-brain breakdown since a process-start ISO timestamp."""
+        rows = await self._fetchall(
+            "SELECT brain_tier, SUM(prompt_tokens) AS prompt,"
+            " SUM(completion_tokens) AS completion, SUM(total_tokens) AS total"
+            " FROM usage_log WHERE ts >= ? GROUP BY brain_tier",
+            (since_iso,),
+        )
+        return self._usage_summary(rows)
+
+    @staticmethod
+    def _usage_summary(rows) -> dict:
+        """Grouped rows → {prompt, completion, total, by_brain: {tier: total}}."""
+        out = {"prompt": 0, "completion": 0, "total": 0, "by_brain": {}}
+        for row in rows:
+            out["prompt"] += row["prompt"] or 0
+            out["completion"] += row["completion"] or 0
+            out["total"] += row["total"] or 0
+            out["by_brain"][row["brain_tier"] or "unknown"] = row["total"] or 0
+        return out
 
     # -- messages -----------------------------------------------------------
 
@@ -283,6 +347,39 @@ class Database:
             "UPDATE conversations SET extracted_upto = ? WHERE id = ?",
             (upto, conversation_id),
         )
+
+    async def get_message_embedded_upto(self, conversation_id: int) -> int:
+        row = await self._fetchone(
+            "SELECT message_embedded_upto FROM conversations WHERE id = ?",
+            (conversation_id,),
+        )
+        return (row["message_embedded_upto"] or 0) if row else 0
+
+    async def set_message_embedded_upto(self, conversation_id: int, upto: int) -> None:
+        await self._write(
+            "UPDATE conversations SET message_embedded_upto = ? WHERE id = ?",
+            (upto, conversation_id),
+        )
+
+    async def list_conversation_ids(self) -> list[int]:
+        """All conversation ids, oldest first — the nightly embed reconciler."""
+        rows = await self._fetchall("SELECT id FROM conversations ORDER BY id")
+        return [r["id"] for r in rows]
+
+    async def first_incomplete_message(
+        self, conversation_id: int, after_id: int, up_to_id: int
+    ) -> int | None:
+        """Smallest user/assistant message id in (after_id, up_to_id] not yet
+        'ok'. The embed watermark stops just before it so a row that is
+        transiently 'failed' at scan time (a boot reconcile) and later repaired
+        to 'ok' is still picked up on a later pass instead of being skipped."""
+        row = await self._fetchone(
+            "SELECT MIN(id) AS m FROM messages WHERE conversation_id = ?"
+            " AND id > ? AND id <= ? AND status != 'ok'"
+            " AND role IN ('user', 'assistant')",
+            (conversation_id, after_id, up_to_id),
+        )
+        return row["m"] if row and row["m"] is not None else None
 
     # -- background tasks -----------------------------------------------------
 

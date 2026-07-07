@@ -230,12 +230,14 @@ def _cfg(**over):
         "barge_in": True,
         "barge_in_threshold": 0.6,
         "push_to_talk_hotkey": "",
+        # Classic one-shot path by default; conversation-mode tests opt in.
+        "conversation": {"enabled": False},
     }
     cfg.update(over)
     return cfg
 
 
-async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None):
+async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None, cfg_over=None):
     provider = FakeProvider(script)
     conv_id = await db.create_conversation("voice")
     bus = EventBus()
@@ -244,7 +246,7 @@ async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None)
         asyncio.get_running_loop(),
         agent,
         bus,
-        _cfg(),
+        _cfg(**(cfg_over or {})),
         audio=FakeAudio(frames),
         wake=FakeWake(),
         vad=FakeVAD(),
@@ -396,6 +398,57 @@ async def test_empty_transcript_never_submits(db):
     assert provider.requests == []
 
 
+# -- 6b. conversation mode (P3): wake-free follow-ups --------------------------
+
+_CONV = {"conversation": {"enabled": True, "cue": True, "window_s": 60, "end_phrases": ["bas"]}}
+
+
+async def test_conversation_mode_opens_followup_after_reply(db):
+    frames = [WAKE]
+    pipeline, provider, _ = await _make_pipeline(db, ["It is noon."], frames=frames, cfg_over=_CONV)
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    from voice.audio_io import FrameBuffer
+
+    fb = FrameBuffer()
+    await asyncio.to_thread(pipeline._idle, fb)
+    await asyncio.to_thread(pipeline._listen, fb)
+    await asyncio.sleep(0.1)
+    await asyncio.to_thread(pipeline._respond, fb)
+    bridge.cancel()
+    # Instead of going IDLE, the mic re-opens for a wake-free follow-up.
+    assert pipeline.state == LISTENING
+    assert pipeline._listen_source == "followup"
+
+
+async def test_followup_end_phrase_closes_session(db):
+    pipeline, provider, _ = await _make_pipeline(
+        db, ["never"], stt_text="bas", cfg_over=_CONV
+    )
+    pipeline._listen_source = "followup"  # we are in a follow-up window
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "idle"  # end phrase closes the session
+    assert provider.requests == []  # and does NOT start a new turn
+
+
+async def test_followup_normal_speech_submits_without_wake(db):
+    pipeline, provider, _ = await _make_pipeline(
+        db, ["Sure."], stt_text="what about tomorrow", cfg_over=_CONV
+    )
+    pipeline._listen_source = "followup"
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"  # a new turn, no wake word needed
+    await asyncio.sleep(0.1)
+    assert provider.requests
+
+
 async def test_ptt_path_enters_listening(db):
     pipeline, _, _ = await _make_pipeline(db, [])
     pipeline._ptt.set()
@@ -407,15 +460,29 @@ async def test_ptt_path_enters_listening(db):
 
 
 async def test_silent_capture_skips_stt(db):
-    """False wake / user stays quiet: give up after the wait, never call STT."""
-    pipeline, provider, _ = await _make_pipeline(db, ["never"])
-    pipeline.audio.frames += [SILENCE] * 6  # wait_frames_done=5 → gives up
+    """False wake / user stays quiet: give up after the grace, never call STT."""
+    pipeline, provider, _ = await _make_pipeline(db, ["never"], cfg_over={"listen_grace_s": 0.2})
+    pipeline.audio.frames += [SILENCE] * 6  # no speech ever → grace elapses
     from voice.audio_io import FrameBuffer
 
     await asyncio.to_thread(pipeline._listen, FrameBuffer())
     assert pipeline.state == "idle"
     assert pipeline.stt.calls == 0
     assert provider.requests == []
+
+
+async def test_wake_grace_survives_long_pre_speech_pause(db):
+    """A wake listen must NOT close at the VAD's short pre-speech timeout: the
+    user can pause well past it (here 7 silent frames > wait_frames_done=5)
+    before starting to talk, and the utterance is still captured + submitted."""
+    pipeline, provider, _ = await _make_pipeline(db, ["Reply."])  # grace default 10s
+    pipeline.audio.frames += [SILENCE] * 7 + [SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"
+    await asyncio.sleep(0.1)
+    assert provider.requests  # captured despite the long initial silence
 
 
 async def test_pause_before_speaking_still_captured(db):
@@ -573,6 +640,46 @@ async def test_kill_phrase_after_barge_in_cancels_and_never_submits(db):
     assert fake_turn.cancelled()
 
 
+async def test_kill_switch_stops_playback_and_goes_idle(db):
+    """UI /kill during a spoken reply: playback halts, the turn is cancelled,
+    queued speech is dropped, and Baby goes IDLE — NOT into a follow-up window,
+    even with conversation mode on (observed live: Baby kept talking after
+    /kill because only the turn future was cancelled, not playback)."""
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over=_CONV)
+    pipeline.sentence_q.put("A long sentence still being spoken right now.")
+    fake_turn = concurrent.futures.Future()
+    pipeline._turn_future = fake_turn
+
+    def trip():
+        time.sleep(0.03)
+        pipeline.cancel_turn()  # the UI kill switch
+
+    threading.Thread(target=trip, daemon=True).start()
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    assert pipeline.state == "idle"          # hard stop, not a follow-up window
+    assert fake_turn.cancelled()
+    assert pipeline.sentence_q.empty()
+    assert not pipeline._interrupt.is_set()  # flag consumed
+
+
+async def test_kill_switch_while_idle_does_not_abort_next_turn(db):
+    """A kill pressed while nothing is speaking must not leak into and abort the
+    next real turn: the flag is cleared when a fresh turn is submitted."""
+    pipeline, provider, _ = await _make_pipeline(db, ["It is noon."])
+    pipeline.cancel_turn()  # kill while idle — interrupt now set
+    assert pipeline._interrupt.is_set()
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"      # fresh turn runs normally
+    assert not pipeline._interrupt.is_set()     # stale flag cleared on submit
+    await asyncio.sleep(0.1)
+    assert provider.requests
+
+
 # -- 9. ready cue -----------------------------------------------------------------
 
 
@@ -654,9 +761,62 @@ def test_prerender_writes_valid_riff(tmp_path, monkeypatch):
 def test_wakeword_falls_back_to_builtin(tmp_path):
     from voice.wakeword import WakeWord
 
-    ww = WakeWord(model_path=tmp_path / "hey_baby.onnx")  # absent
+    ww = WakeWord(model_path=tmp_path / "jarvis.onnx")  # absent
     assert ww.load() == "hey_jarvis"
     assert ww.active_model == "hey_jarvis"
+
+
+def test_wakeword_loads_custom_alongside_builtin(tmp_path, monkeypatch):
+    import openwakeword.model as owm
+
+    from voice.wakeword import WakeWord
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx"):
+            captured["models"] = list(wakeword_models)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    custom = tmp_path / "jarvis.onnx"
+    custom.write_bytes(b"stub")  # load() only checks existence before handing to Model
+    ww = WakeWord(model_path=custom)
+    name = ww.load()
+    # Both the custom model AND the pretrained fallback are loaded and scored.
+    assert str(custom) in captured["models"]
+    assert "hey_jarvis" in captured["models"]
+    assert name == "jarvis+hey_jarvis"
+
+
+def test_wakeword_empty_fallback_never_loads_all(tmp_path, monkeypatch):
+    # A blanked fallback with no custom model must NOT hand Model([]) — that
+    # loads EVERY bundled wake word (alexa, timer…). Fall back to hey_jarvis.
+    import openwakeword.model as owm
+
+    from voice.wakeword import WakeWord
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx"):
+            captured["models"] = list(wakeword_models)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    ww = WakeWord(model_path=tmp_path / "absent.onnx", builtin_fallback="")
+    ww.load()
+    assert captured["models"] == ["hey_jarvis"]  # never [] (which loads all)
 
 
 # -- 11. markdown never reaches the speaker -----------------------------------------

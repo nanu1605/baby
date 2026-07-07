@@ -1,5 +1,76 @@
 # Changelog
 
+## Unreleased — v2 conversational & reliable (feature/v2-conversational-reliability)
+
+- P0 (2026-07-06): failing repros committed first — `tests/test_sensors.py`,
+  `tests/test_db_hygiene.py`, `tests/test_loop_guard.py`. Version → `2.0.0-dev`.
+- P1 (2026-07-06): sensors + tool contract (#6). New `get_sensors` tool reads
+  CPU/GPU temps, fans and voltages from LibreHardwareMonitor's Remote Web Server
+  (JSON at `http://127.0.0.1:8085/data.json`; LHM dropped WMI in 0.9.x),
+  degrading to a structured `{error, hint}` when LHM is absent; `setup.ps1`
+  installs + autostarts LHM. `registry.dispatch` now wraps empty tool returns
+  (`None`/`""`/`{}`) as an error, and the agent serves an honest audited line
+  instead of the literal `"(no response)"` on empty output.
+- P2 (2026-07-06): DB hygiene — never feed poison (#7). `messages` gains
+  `turn_id` + `status`; a turn that errors is quarantined whole and never
+  reloads; a hard-kill leftover (no assistant row) is failed at boot;
+  `core/context.py::sanitize_messages` is a strict gate that makes every
+  provider payload OpenAI-valid (orphaned tool rows, malformed args, empty
+  content dropped and audited as `context_sanitizer`); a rejected context
+  self-heals from the rolling summary and retries once.
+  `scripts/migrate_v2_db.py` backs up, adds columns, quarantines existing poison.
+- P3 (2026-07-06): conversation mode + proceed/cancel (#2, #4). After Baby
+  speaks, the mic stays hot for a **wake-word-free follow-up** (VAD-only) until
+  an end phrase ("baby stop listening", "bas") or `conversation.window_s` (60 s)
+  of silence — `conversation.enabled` flag, default on. A next-step offer becomes
+  a yes/no: "haan" re-runs it **through the safety gate**, "nahi" skips, anything
+  else is a fresh turn (`AgentCore.pending_suggestion`, one-shot). New
+  `core/intents.py` is the single multilingual (EN/HI/Hinglish) yes/no parser,
+  now also serving the CLI CONFIRM prompt. Wake word runs a custom "jarvis" model
+  **alongside** pretrained "hey_jarvis" (openWakeWord multi-model); train
+  `models/jarvis.onnx` per `scripts/wakeword_training.md`.
+- P4 (2026-07-07): memory v2 — bigger context + clear/wipe (#3, #5). Behind
+  `memory.engine: v2` (v1 is the one-line rollback). **Budgeted context:** a
+  pure `core/context.py::trim(messages, budget)` runs at each provider dispatch
+  (both routers, incl. mid-loop fallback) sizing history to that brain's
+  `max_history_tokens` (daily ~6K, cloud ~28K) — system prompt, rolling summary
+  and the RAG block are pinned, whole turns drop oldest-first, a
+  tool_call/tool_result pair is never split, and the newest turn always
+  survives; no reliance on Ollama `num_ctx` truncation. **Cross-session RAG:** a
+  `message_vectors` vec0 table mirrors `fact_vectors`; every turn injects a
+  dated "Relevant past context" block (top-k) drawn from past conversations.
+  Messages embed live in post-turn maintenance plus a nightly reconciler, with
+  `scripts/backfill_message_vectors.py` for existing history (status='ok' only).
+  **Clear/forget/wipe** are deterministic, model-free commands intercepted in
+  `run_turn` for every channel (voice/text/UI): "new chat"/"clear" rotate the
+  conversation, "forget that" drops the newest fact, and "wipe all memory" is a
+  two-step challenge ("confirm wipe"/"haan sab mitao", or a typed WIPE in the UI
+  modal) that erases facts + vectors + raw turns + summaries, VACUUMs, resets
+  the embed watermark (so the nightly job never re-embeds pre-wipe content),
+  flushes the live session, and is audited. New UI: a 🧠 memory browser
+  (per-fact delete + Wipe all).
+- P3 fixes (2026-07-07): three live-test bugs. (1) A fresh wake listen closed
+  after ~5 s of pre-speech silence ("heard nothing") — the pipeline now owns a
+  `voice.listen_grace_s` (10 s) window to start talking, ignoring the VAD's
+  short internal timeout, so wake and follow-up feel the same. (2) The cloud
+  health badge is now **always** on the UI header (was hidden when the router
+  reported no state, and masked by "game mode"); game state moved fully to the
+  🎮 button. (3) The kill switch (`/kill` / ■ Stop) now force-stops **live TTS
+  playback** as well as the running turn — a thread-safe interrupt drops the
+  queued sentences and returns Baby to idle (no follow-up window); previously
+  only the turn future was cancelled and Baby kept speaking.
+- P5 (2026-07-07): token telemetry (#8). Every OpenAI-wire brain
+  (NIM/OpenRouter, Gemini, Ollama) now reports token usage:
+  `stream_options.include_usage` is requested per call (guarded by
+  `telemetry.emit_usage`, default on), `accumulate_stream` reads the trailing
+  usage chunk into `Chunk.usage`, and the agent sums every generation of a turn
+  (main loop + final-answer + next-step) into one row of the new `usage_log`
+  table (keyed to the P2 `turn_id`, auto-created on connect). The UI shows
+  per-turn `↑prompt ↓completion` beside the brain badge — local turns tagged
+  "no quota" — and the header carries session + today totals with a per-brain
+  split (`/stats.tokens`). A host that omits usage degrades to blank counts,
+  never a crash. Version finalized to `2.0.0`.
+
 ## v1.1.1 — reliability hotfix (2026-07-06)
 
 Bug fixes cherry-picked ahead of the v2 features: dead sensors, silent

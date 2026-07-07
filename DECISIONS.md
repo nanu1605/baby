@@ -496,3 +496,88 @@ Running log of non-obvious choices made during the build. Newest last.
     existing DB. The sanitizer running on every assembly is what makes
     persistent poison impossible — the next turn is already clean, so the
     same debris can never re-break a call.
+88. **Conversation mode + proceed/cancel (P3)**: three choices. (a) The
+    follow-up window reuses the existing LISTENING state with a
+    `source="followup"` flag rather than a new state — after playback's
+    `None` sentinel the pipeline calls `_enter_listening(source="followup")`
+    (soft cue, no wake beep), and `_listen` uses `conversation.window_s` as
+    the no-speech timeout and checks `is_end_phrase`. The window opens only
+    AFTER playback fully ends and drains the mic + resets VAD, so Baby never
+    transcribes its own speech. Default-on, one flag (`conversation.enabled`)
+    to disable. (b) Proceed/cancel is "approach A": a one-shot
+    `AgentCore.pending_suggestion` armed when a turn offers a next step; a
+    short "yes" re-submits it as a normal turn with a system nudge (so tools
+    STILL pass the safety gate — approve-to-proceed never bypasses a
+    CONFIRM), a short "no" acks with no model call, anything else expires it
+    and runs as a fresh turn. Not a structured tool-exec — reusing the loop
+    keeps the gate authoritative. (c) `core/intents.py` is the single
+    multilingual yes/no source (EN/HI/Hinglish), replacing the inline
+    `clients/cli.py` set; it matches only SHORT transcripts and a negation
+    token ("nahi karo") overrides an affirmative verb ("karo"). (d) Wake
+    word runs the custom "jarvis" model ALONGSIDE pretrained "hey_jarvis"
+    (openWakeWord scores a model list; `detected()` takes the max — no
+    scoring change needed); the custom `models/jarvis.onnx` is the owner's
+    Colab step and everything ships demoable on the pretrained model.
+89. **Memory v2 — budget trim at the dispatch seam (P4)**: per-brain history
+    budgets are enforced by ONE pure `core/context.py::trim(messages, budget)`
+    called at each concrete provider dispatch — in both routers, including the
+    mid-loop fallback and privacy-pin handoffs (re-trim the same array to the
+    new brain's `max_history_tokens`; the rolling summary substitutes for
+    dropped turns). Trim pins every `system` message (head prompt, rolling
+    summary, RAG block, trailing nudge) and tool schemas; it drops whole turns
+    oldest-first, never splits a `tool_call`/`tool_result` pair, and always
+    keeps the newest turn. This is the ONE owner-authorized seam in the
+    otherwise-frozen v1.1.0 router — states, ladder and rate bucket are
+    untouched; the only new call is `trim()` where a provider is invoked, and
+    it is a no-op under `memory.engine: v1` or an unset budget. We do NOT rely
+    on Ollama `num_ctx` truncation (silent, front-drops the pinned summary).
+90. **Memory v2 — cross-session RAG + true-amnesia wipe (P4)**. (a) Past
+    messages are embedded into a `message_vectors` vec0 table that mirrors
+    `fact_vectors`; each turn injects a dated "Relevant past context" block
+    (top-k=4, `min_similarity` floor) via `store.search_messages`, excluding
+    the current conversation's in-window rows. Embedding is **live** (post-turn
+    maintenance, off the reply path) PLUS a nightly reconciler + one-time
+    backfill — so same-session and prior-session recall both work. All of this
+    rides `memory.engine: v2` (`rag_k` = 0 under v1 disables injection AND live
+    embed for a one-line rollback). (b) Clear/forget/wipe are deterministic
+    commands intercepted at the TOP of `AgentCore.run_turn` (one impl reaches
+    cli/ui/voice/telegram, model-free): "new chat"/"clear" rotate the
+    conversation, "forget that" deactivates the newest fact, "wipe all memory"
+    ARMS a one-shot `pending_wipe` challenge that only an explicit "confirm
+    wipe"/"haan sab mitao" completes — a stray "yes" never erases. (c) Wipe =
+    true amnesia: `store.wipe_all()` deletes facts + all vectors + **raw
+    messages** + summaries and resets every watermark, then VACUUMs; two guards
+    keep it from un-wiping — dropping raw turns + resetting the embed watermark
+    means the nightly reconciler finds nothing pre-wipe to re-embed, and the
+    handler flushes the live session to a fresh conversation id so Baby stops
+    "remembering" immediately, not after a restart. `audit_log` is retained
+    (the wipe is audited); the two-step challenge (voice/text) or a typed
+    "WIPE" (UI modal) is its safety — never a single action.
+91. **Token telemetry — usage_log at turn grain, capture at the shared seam
+    (P5)**. Every OpenAI-wire response already carries a `usage` object; we
+    stopped throwing it away. (a) Providers request
+    `stream_options={"include_usage": true}` (NIM/OpenRouter, Gemini, Ollama),
+    guarded by `telemetry.emit_usage` (default true) so a host that 4xxs on the
+    param can be turned off per deploy without a code change. (b) The shared
+    `accumulate_stream` reads usage off ANY event and captures it into
+    `Chunk.usage`. The include_usage trailer arrives AFTER `finish_reason` (an
+    event with empty `choices`), but the terminating `done` chunk (which carries
+    tool_calls and ends the turn) is still yielded AT `finish_reason` — the
+    trailer is then read best-effort with a bounded wait (`_TRAILER_TIMEOUT_S`)
+    that swallows any stall or drop. This matters because the router treats a
+    long post-content stall as a mid-reply abort with no failover: draining
+    unboundedly toward the trailer would let a slow/dropped trailer fail an
+    already-complete reply or lose a tool round (caught in P5 adversarial
+    review). Capture is null-safe, so a host that omits usage degrades to blank
+    counts, never a crash. (c) A turn spends
+    tokens across several generations (tool-loop rounds + the empty-reply
+    finalizer + the next-step offer); the agent SUMS them into `self._turn_tokens`
+    and writes ONE `usage_log` row per turn. We chose a dedicated `usage_log`
+    table (keyed to the P2 `turn_id`) over new `audit_log` columns because audit
+    is tool-grain (one row per tool call) — the wrong grain for per-turn totals;
+    the table auto-creates via `CREATE TABLE IF NOT EXISTS` on connect, so no
+    migration-script row is needed. (d) Ollama reports native eval counts through
+    the same wire fields; those turns are recorded and labeled "local — no quota"
+    in the UI since they cost nothing. This stays within the frozen-router rule:
+    the only provider-layer change is asking for a field the API already sends
+    plus reading it — no router state/ladder/bucket touched.
