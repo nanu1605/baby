@@ -24,6 +24,17 @@ from db.database import Database
 
 WEB_DIR = Path(__file__).parent / "web"
 
+
+class _NoCacheStatic(StaticFiles):
+    """Serve app.js/style.css with no-store so a UI edit always lands on the
+    next refresh — the browser used to hold a stale app.js (observed live: a
+    fixed header badge kept rendering the old way until a hard refresh)."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
 _CHAT_KINDS = {"turn_start", "token", "turn_end", "error"}
 _ACTIVITY_KINDS = {
     "tool_start",
@@ -63,7 +74,7 @@ class UIContext:
 
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
-    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+    app.mount("/static", _NoCacheStatic(directory=WEB_DIR), name="static")
 
     @app.get("/")
     async def index():
