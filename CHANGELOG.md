@@ -29,6 +29,16 @@
   now also serving the CLI CONFIRM prompt. Wake word runs a custom "jarvis" model
   **alongside** pretrained "hey_jarvis" (openWakeWord multi-model); train
   `models/jarvis.onnx` per `scripts/wakeword_training.md`.
+- P3 fixes (2026-07-07): three live-test bugs. (1) A fresh wake listen closed
+  after ~5 s of pre-speech silence ("heard nothing") — the pipeline now owns a
+  `voice.listen_grace_s` (10 s) window to start talking, ignoring the VAD's
+  short internal timeout, so wake and follow-up feel the same. (2) The cloud
+  health badge is now **always** on the UI header (was hidden when the router
+  reported no state, and masked by "game mode"); game state moved fully to the
+  🎮 button. (3) The kill switch (`/kill` / ■ Stop) now force-stops **live TTS
+  playback** as well as the running turn — a thread-safe interrupt drops the
+  queued sentences and returns Baby to idle (no follow-up window); previously
+  only the turn future was cancelled and Baby kept speaking.
 
 ## Unreleased — NIM cloud-primary migration (feature/nim-cloud-primary-router)
 

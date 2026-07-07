@@ -460,15 +460,29 @@ async def test_ptt_path_enters_listening(db):
 
 
 async def test_silent_capture_skips_stt(db):
-    """False wake / user stays quiet: give up after the wait, never call STT."""
-    pipeline, provider, _ = await _make_pipeline(db, ["never"])
-    pipeline.audio.frames += [SILENCE] * 6  # wait_frames_done=5 → gives up
+    """False wake / user stays quiet: give up after the grace, never call STT."""
+    pipeline, provider, _ = await _make_pipeline(db, ["never"], cfg_over={"listen_grace_s": 0.2})
+    pipeline.audio.frames += [SILENCE] * 6  # no speech ever → grace elapses
     from voice.audio_io import FrameBuffer
 
     await asyncio.to_thread(pipeline._listen, FrameBuffer())
     assert pipeline.state == "idle"
     assert pipeline.stt.calls == 0
     assert provider.requests == []
+
+
+async def test_wake_grace_survives_long_pre_speech_pause(db):
+    """A wake listen must NOT close at the VAD's short pre-speech timeout: the
+    user can pause well past it (here 7 silent frames > wait_frames_done=5)
+    before starting to talk, and the utterance is still captured + submitted."""
+    pipeline, provider, _ = await _make_pipeline(db, ["Reply."])  # grace default 10s
+    pipeline.audio.frames += [SILENCE] * 7 + [SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"
+    await asyncio.sleep(0.1)
+    assert provider.requests  # captured despite the long initial silence
 
 
 async def test_pause_before_speaking_still_captured(db):
@@ -624,6 +638,46 @@ async def test_kill_phrase_after_barge_in_cancels_and_never_submits(db):
     assert pipeline.state == "idle"
     assert provider.requests == []
     assert fake_turn.cancelled()
+
+
+async def test_kill_switch_stops_playback_and_goes_idle(db):
+    """UI /kill during a spoken reply: playback halts, the turn is cancelled,
+    queued speech is dropped, and Baby goes IDLE — NOT into a follow-up window,
+    even with conversation mode on (observed live: Baby kept talking after
+    /kill because only the turn future was cancelled, not playback)."""
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over=_CONV)
+    pipeline.sentence_q.put("A long sentence still being spoken right now.")
+    fake_turn = concurrent.futures.Future()
+    pipeline._turn_future = fake_turn
+
+    def trip():
+        time.sleep(0.03)
+        pipeline.cancel_turn()  # the UI kill switch
+
+    threading.Thread(target=trip, daemon=True).start()
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    assert pipeline.state == "idle"          # hard stop, not a follow-up window
+    assert fake_turn.cancelled()
+    assert pipeline.sentence_q.empty()
+    assert not pipeline._interrupt.is_set()  # flag consumed
+
+
+async def test_kill_switch_while_idle_does_not_abort_next_turn(db):
+    """A kill pressed while nothing is speaking must not leak into and abort the
+    next real turn: the flag is cleared when a fresh turn is submitted."""
+    pipeline, provider, _ = await _make_pipeline(db, ["It is noon."])
+    pipeline.cancel_turn()  # kill while idle — interrupt now set
+    assert pipeline._interrupt.is_set()
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.state == "responding"      # fresh turn runs normally
+    assert not pipeline._interrupt.is_set()     # stale flag cleared on submit
+    await asyncio.sleep(0.1)
+    assert provider.requests
 
 
 # -- 9. ready cue -----------------------------------------------------------------

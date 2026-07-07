@@ -222,14 +222,21 @@ function setGauge(prefix, used, total, percent) {
 
 let gameModeOn = false;
 
+const ROUTER_LABEL = {
+  cloud: "cloud", degraded: "cloud degraded", offline: "cloud offline", unknown: "cloud —",
+};
 function setRouterState(s) {
   const el = $("router-state");
   if (!el) return;
-  const state = s.game_mode ? "game" : (s.router && s.router.state) || "";
-  if (!state) { el.style.display = "none"; return; }
+  // Cloud health is ALWAYS on the header — never hidden, and never masked by
+  // "game mode" (game state lives on the 🎮 button, not this badge).
+  const state = (s.router && s.router.state) || "unknown";
   el.style.display = "";
   el.className = `badge ${state}`;
-  $("router-state-word").textContent = s.game_mode ? "game mode" : state;
+  $("router-state-word").textContent = ROUTER_LABEL[state] || state;
+  el.title = s.game_mode
+    ? "cloud router state — game mode on (all turns cloud)"
+    : "cloud router state";
   gameModeOn = !!s.game_mode;
   const btn = $("game-btn");
   btn.classList.toggle("on", gameModeOn);

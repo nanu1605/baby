@@ -63,6 +63,7 @@ voice:
   push_to_talk_hotkey: ctrl+alt+b
   kill_phrases: ["baby stop", "baby ruk ja"]
   max_utterance_s: 30
+  listen_grace_s: 10                    # seconds to START talking after the wake beep before "heard nothing"
   stt:
     model: large-v3-turbo               # 'small' = 4x faster, worse Hindi (DECISIONS)
     device: cpu                         # GPU is fully owned by the 9B LLM (DECISIONS)

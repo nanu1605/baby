@@ -27,6 +27,12 @@ Prereqs: `conversation.enabled: true` (config.yaml, default). The pretrained
       a new turn (listen only opens after playback fully ends).
 - [ ] Barge-in still works: interrupt Baby mid-sentence by speaking → it stops
       and listens.
+- [ ] Wake, then pause **~8 s** before asking → Baby is still listening and
+      captures the question (does NOT close at ~5 s with `voice: heard nothing`).
+      Tune `voice.listen_grace_s` if you want a longer/shorter window.
+- [ ] Kill switch while speaking: during a long reply press **■ Stop** in the UI
+      → Baby's voice cuts off within a beat AND the turn stops (feed:
+      `voice: stopped by kill switch`); it returns to idle, no follow-up window.
 
 ## 2. Proceed / cancel (#4)
 
