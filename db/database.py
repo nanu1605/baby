@@ -54,7 +54,7 @@ class Database:
         (CREATE TABLE IF NOT EXISTS never alters an existing table)."""
         cur = await self.conn.execute("PRAGMA table_info(conversations)")
         have = {row["name"] for row in await cur.fetchall()}
-        for column in ("summarized_upto", "extracted_upto"):
+        for column in ("summarized_upto", "extracted_upto", "message_embedded_upto"):
             if column not in have:
                 await self.conn.execute(
                     f"ALTER TABLE conversations ADD COLUMN {column} INTEGER DEFAULT 0"
@@ -283,6 +283,39 @@ class Database:
             "UPDATE conversations SET extracted_upto = ? WHERE id = ?",
             (upto, conversation_id),
         )
+
+    async def get_message_embedded_upto(self, conversation_id: int) -> int:
+        row = await self._fetchone(
+            "SELECT message_embedded_upto FROM conversations WHERE id = ?",
+            (conversation_id,),
+        )
+        return (row["message_embedded_upto"] or 0) if row else 0
+
+    async def set_message_embedded_upto(self, conversation_id: int, upto: int) -> None:
+        await self._write(
+            "UPDATE conversations SET message_embedded_upto = ? WHERE id = ?",
+            (upto, conversation_id),
+        )
+
+    async def list_conversation_ids(self) -> list[int]:
+        """All conversation ids, oldest first — the nightly embed reconciler."""
+        rows = await self._fetchall("SELECT id FROM conversations ORDER BY id")
+        return [r["id"] for r in rows]
+
+    async def first_incomplete_message(
+        self, conversation_id: int, after_id: int, up_to_id: int
+    ) -> int | None:
+        """Smallest user/assistant message id in (after_id, up_to_id] not yet
+        'ok'. The embed watermark stops just before it so a row that is
+        transiently 'failed' at scan time (a boot reconcile) and later repaired
+        to 'ok' is still picked up on a later pass instead of being skipped."""
+        row = await self._fetchone(
+            "SELECT MIN(id) AS m FROM messages WHERE conversation_id = ?"
+            " AND id > ? AND id <= ? AND status != 'ok'"
+            " AND role IN ('user', 'assistant')",
+            (conversation_id, after_id, up_to_id),
+        )
+        return row["m"] if row and row["m"] is not None else None
 
     # -- background tasks -----------------------------------------------------
 

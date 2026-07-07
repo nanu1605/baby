@@ -8,6 +8,7 @@ models:
     provider: ollama
     model: qwen3.5:9b-q4_K_M            # verified tag (no -instruct variant published)
     num_ctx: 8192
+    max_history_tokens: 6000            # P4: usable history budget (num_ctx − system/summary/reply headroom)
     temperature: 0.7
     keep_alive: 24h
   # heavy (local qwen3.6:35b-a3b) removed at N5 — the heavy tier is
@@ -16,6 +17,7 @@ models:
   cloud:
     provider: gemini
     model: gemini-flash-latest          # free tier; key in .env; optional
+    max_history_tokens: 28000           # P4: deep cross-session history on the cloud brain
   nim_primary:
     provider: nvidia                    # generic OpenAI-compatible client
     base_url: https://openrouter.ai/api/v1
@@ -24,11 +26,13 @@ models:
     # NIM rollback: base_url https://integrate.api.nvidia.com/v1, drop
     # api_key_env, model minimaxai/minimax-m2.7 (served 0/45 on the
     # 2026-07-06 soak day — congestion; see DECISIONS.md)
+    max_history_tokens: 28000           # P4: deep cross-session history on the cloud primary
     temperature: 0.7
   nim_heavy:
     provider: nvidia
     base_url: https://integrate.api.nvidia.com/v1
     model: z-ai/glm-5.2                 # N1 bench winner (heavy): planning 5/5; slow (~130s) but background-only
+    max_history_tokens: 28000           # P4: heavy planning brain carries deep history
     temperature: 0.5
   embedder: intfloat/multilingual-e5-small
 
@@ -107,12 +111,15 @@ search:
   max_results: 6
 
 memory:
+  engine: v2                            # P4: v2 = budgeted context + cross-session RAG; v1 = rollback (uniform history, no message RAG)
   k: 5                                  # facts injected per turn
   min_similarity: 0.80                  # e5 scores cluster high; tune with real facts
   dedup_similarity: 0.90                # spec section 12
   summarize_every: 10                   # messages between rolling-summary updates
   extract_every: 20                     # messages between fact-extraction passes
   keep_recent: 10                       # newest messages never folded into summary
+  rag_k: 4                              # P4: cross-session past-message snippets injected per turn
+  rag_nightly_cron: "0 3 * * *"         # P4: nightly message-embedding reconciler
 
 persona:
   suggest_next_step: true               # feature #8: extra call after a real task

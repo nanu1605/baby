@@ -426,3 +426,82 @@ async def test_ambiguous_ok_cancel_declines_not_proceeds(db):
     reply = await agent.run_turn("ok cancel")
     assert "skip" in reply.lower()  # decline ack
     assert provider.requests == []  # no model call, no execution
+
+
+# -- P4d: clear / forget / wipe memory commands (deterministic, all channels) --
+
+
+async def _make_agent_with_memory(db, script=None):
+    from memory import Memory
+    from memory.extractor import FactExtractor
+    from memory.store import MemoryStore
+    from memory.summarizer import Summarizer
+    from tests.test_memory import FakeEmbedder
+
+    provider = FakeProvider(script or [])
+    store = MemoryStore(db, FakeEmbedder(), k=5, min_similarity=0.1, dedup_similarity=0.9)
+    await store.init()
+    conv = await db.create_conversation("cli")
+    mem = Memory(
+        store=store,
+        summarizer=Summarizer(provider, db),
+        extractor=FactExtractor(provider, db, store),
+        rag_k=4,
+    )
+    agent = AgentCore(provider, db, conv, channel="cli", memory=mem)
+    return agent, provider, store
+
+
+async def test_new_chat_command_switches_conversation(db):
+    agent, provider, _ = await _make_agent_with_memory(db)
+    old = agent.conversation_id
+    reply = await agent.run_turn("new chat")
+    assert agent.conversation_id != old  # fresh conversation
+    assert provider.requests == []  # no model call
+    assert "fresh" in reply.lower()
+
+
+async def test_forget_that_deactivates_last_fact(db):
+    agent, provider, store = await _make_agent_with_memory(db)
+    await store.add_fact("owner likes tea")
+    await store.add_fact("owner lives in Indore")
+    reply = await agent.run_turn("forget that")
+    assert provider.requests == []  # deterministic, no model
+    assert "Indore" in reply
+    active = [f["text"] for f in await store.search("owner")]
+    assert "owner lives in Indore" not in active
+    assert "owner likes tea" in active
+
+
+async def test_wipe_is_two_step_then_confirms_and_flushes(db):
+    agent, provider, store = await _make_agent_with_memory(db)
+    await store.add_fact("secret fact")
+    old = agent.conversation_id
+    await agent.run_turn("wipe all memory")  # arms the challenge only
+    assert agent.pending_wipe is True
+    assert await store.count_active() == 1  # nothing erased yet
+    assert provider.requests == []
+
+    await agent.run_turn("confirm wipe")
+    assert agent.pending_wipe is False
+    assert await store.count_active() == 0  # facts gone
+    assert agent.conversation_id != old  # live session flushed
+    rows = await db._fetchall("SELECT tool FROM audit_log WHERE tool = 'wipe_memory'")
+    assert len(rows) == 1  # the wipe is audited
+
+
+async def test_single_wipe_word_never_erases(db):
+    agent, provider, store = await _make_agent_with_memory(db)
+    await store.add_fact("keep me")
+    await agent.run_turn("wipe all memory")  # arms
+    await agent.run_turn("actually never mind")  # not a confirmation → cancels
+    assert agent.pending_wipe is False
+    assert await store.count_active() == 1  # untouched
+
+
+async def test_stray_yes_never_wipes(db):
+    agent, provider, store = await _make_agent_with_memory(db)
+    await store.add_fact("keep me")
+    await agent.run_turn("wipe all memory")
+    await agent.run_turn("yes")  # a bare yes must never confirm a wipe
+    assert await store.count_active() == 1

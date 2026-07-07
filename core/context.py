@@ -29,6 +29,69 @@ from typing import Any
 _ROLES = ("system", "user", "assistant", "tool")
 
 
+def estimate_tokens(messages: list[dict]) -> int:
+    """Rough chars→tokens over message content; only ever feeds a threshold."""
+    total = sum(len(str(m.get("content") or "")) for m in messages)
+    return total // 4
+
+
+def _blocks(indexed: list[tuple[int, dict]]) -> list[list[tuple[int, dict]]]:
+    """Group non-system messages into atomic blocks. An assistant message that
+    carries tool_calls binds the contiguous tool responses that answer it into
+    one block, so trimming can never split a tool_call/tool_result pair."""
+    blocks: list[list[tuple[int, dict]]] = []
+    i, n = 0, len(indexed)
+    while i < n:
+        _, msg = indexed[i]
+        group = [indexed[i]]
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            j = i + 1
+            while j < n and indexed[j][1].get("role") == "tool":
+                group.append(indexed[j])
+                j += 1
+            i = j
+        else:
+            i += 1
+        blocks.append(group)
+    return blocks
+
+
+def trim(messages: list[dict], budget: int | None) -> list[dict]:
+    """Drop the oldest conversational turns until history fits ``budget`` tokens.
+
+    Runs at each provider dispatch (per-brain budget). Inviolable: every
+    ``system`` message (head prompt, rolling summary, RAG block, trailing
+    nudge) is kept wherever it sits — ``budget`` covers conversational history
+    only. The CURRENT turn is pinned whole: everything from the last user
+    message to the end (its user question plus any in-flight tool rounds)
+    survives even when it alone exceeds the budget, so the model never loses
+    what was asked. Older turns drop oldest-first; a tool_call/tool_result pair
+    is never split. ``budget`` of 0/None is a no-op (the engine: v1 rollback).
+    """
+    if not budget or budget <= 0:
+        return list(messages)
+    msgs = list(messages)
+    non_sys = [(i, m) for i, m in enumerate(msgs) if m.get("role") != "system"]
+    if estimate_tokens([m for _, m in non_sys]) <= budget:
+        return msgs
+    # Pin the current turn: from the last user message to the end. Only the
+    # history BEFORE it is droppable (the trailing system nudge sits after the
+    # user message but is a system row, so it is already pinned separately).
+    last_user = next(
+        (k for k in range(len(non_sys) - 1, -1, -1) if non_sys[k][1].get("role") == "user"),
+        None,
+    )
+    droppable = non_sys if last_user is None else non_sys[:last_user]
+    remaining = estimate_tokens([m for _, m in non_sys])
+    drop: set[int] = set()
+    for group in _blocks(droppable):  # oldest first
+        if remaining <= budget:
+            break
+        remaining -= estimate_tokens([m for _, m in group])
+        drop.update(idx for idx, _ in group)
+    return [m for i, m in enumerate(msgs) if i not in drop]
+
+
 def _valid_json(value: Any) -> bool:
     if not isinstance(value, str):
         return False

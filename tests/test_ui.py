@@ -183,3 +183,68 @@ def test_ws_game_command_bypasses_model(ui):
     assert calls == [True]
     assert [m["type"] for m in msgs] == ["turn_start", "token", "turn_end"]
     assert provider.requests == []  # the model never ran
+
+
+# -- P4e: memory browser endpoints --------------------------------------------
+
+
+def _ui_with_memory(tmp_path):
+    from memory import Memory
+    from memory.extractor import FactExtractor
+    from memory.store import MemoryStore
+    from memory.summarizer import Summarizer
+    from tests.test_memory import FakeEmbedder
+
+    db = Database(tmp_path / "uimem.db")
+    conv_id = asyncio.run(_connect(db))
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    provider = FakeProvider([])
+
+    async def build():
+        store = MemoryStore(db, FakeEmbedder(), k=5, min_similarity=0.1, dedup_similarity=0.9)
+        await store.init()
+        return store
+
+    store = asyncio.run(build())
+    mem = Memory(
+        store=store,
+        summarizer=Summarizer(provider, db),
+        extractor=FactExtractor(provider, db, store),
+    )
+    agent = AgentCore(provider, db, conv_id, channel="ui", bus=bus, gate=gate, memory=mem)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config={}, memory=mem)
+    return TestClient(create_app(ctx)), ctx, store, db
+
+
+def test_memory_delete_fact(tmp_path):
+    client, _, store, db = _ui_with_memory(tmp_path)
+    try:
+        fid = asyncio.run(store.add_fact("owner likes chai"))["id"]
+        assert any(f["id"] == fid for f in client.get("/memory").json())
+        resp = client.request("DELETE", f"/memory/fact/{fid}")
+        assert resp.status_code == 200 and resp.json()["deleted"] == fid
+        assert not any(f["id"] == fid for f in client.get("/memory").json())
+    finally:
+        asyncio.run(db.close())
+
+
+def test_memory_wipe_requires_typed_phrase(tmp_path):
+    client, ctx, store, db = _ui_with_memory(tmp_path)
+    try:
+        asyncio.run(store.add_fact("secret"))
+        old_conv = ctx.agent.conversation_id
+        assert client.post("/memory/wipe", json={"phrase": "nope"}).status_code == 400
+        assert asyncio.run(store.count_active()) == 1  # nothing erased
+        resp = client.post("/memory/wipe", json={"phrase": "WIPE"})
+        assert resp.status_code == 200
+        assert asyncio.run(store.count_active()) == 0  # wiped
+        assert ctx.agent.conversation_id != old_conv  # live session flushed
+    finally:
+        asyncio.run(db.close())
+
+
+def test_memory_endpoints_404_without_memory(ui):
+    client, _, _ = ui  # the default fixture has no memory
+    assert client.request("DELETE", "/memory/fact/1").status_code == 404
+    assert client.post("/memory/wipe", json={"phrase": "WIPE"}).status_code == 404

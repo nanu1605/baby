@@ -518,3 +518,38 @@ Running log of non-obvious choices made during the build. Newest last.
     (openWakeWord scores a model list; `detected()` takes the max — no
     scoring change needed); the custom `models/jarvis.onnx` is the owner's
     Colab step and everything ships demoable on the pretrained model.
+89. **Memory v2 — budget trim at the dispatch seam (P4)**: per-brain history
+    budgets are enforced by ONE pure `core/context.py::trim(messages, budget)`
+    called at each concrete provider dispatch — in both routers, including the
+    mid-loop fallback and privacy-pin handoffs (re-trim the same array to the
+    new brain's `max_history_tokens`; the rolling summary substitutes for
+    dropped turns). Trim pins every `system` message (head prompt, rolling
+    summary, RAG block, trailing nudge) and tool schemas; it drops whole turns
+    oldest-first, never splits a `tool_call`/`tool_result` pair, and always
+    keeps the newest turn. This is the ONE owner-authorized seam in the
+    otherwise-frozen v1.1.0 router — states, ladder and rate bucket are
+    untouched; the only new call is `trim()` where a provider is invoked, and
+    it is a no-op under `memory.engine: v1` or an unset budget. We do NOT rely
+    on Ollama `num_ctx` truncation (silent, front-drops the pinned summary).
+90. **Memory v2 — cross-session RAG + true-amnesia wipe (P4)**. (a) Past
+    messages are embedded into a `message_vectors` vec0 table that mirrors
+    `fact_vectors`; each turn injects a dated "Relevant past context" block
+    (top-k=4, `min_similarity` floor) via `store.search_messages`, excluding
+    the current conversation's in-window rows. Embedding is **live** (post-turn
+    maintenance, off the reply path) PLUS a nightly reconciler + one-time
+    backfill — so same-session and prior-session recall both work. All of this
+    rides `memory.engine: v2` (`rag_k` = 0 under v1 disables injection AND live
+    embed for a one-line rollback). (b) Clear/forget/wipe are deterministic
+    commands intercepted at the TOP of `AgentCore.run_turn` (one impl reaches
+    cli/ui/voice/telegram, model-free): "new chat"/"clear" rotate the
+    conversation, "forget that" deactivates the newest fact, "wipe all memory"
+    ARMS a one-shot `pending_wipe` challenge that only an explicit "confirm
+    wipe"/"haan sab mitao" completes — a stray "yes" never erases. (c) Wipe =
+    true amnesia: `store.wipe_all()` deletes facts + all vectors + **raw
+    messages** + summaries and resets every watermark, then VACUUMs; two guards
+    keep it from un-wiping — dropping raw turns + resetting the embed watermark
+    means the nightly reconciler finds nothing pre-wipe to re-embed, and the
+    handler flushes the live session to a fresh conversation id so Baby stops
+    "remembering" immediately, not after a restart. `audit_log` is retained
+    (the wipe is audited); the two-step challenge (voice/text) or a typed
+    "WIPE" (UI modal) is its safety — never a single action.

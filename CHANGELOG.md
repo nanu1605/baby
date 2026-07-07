@@ -29,6 +29,26 @@
   now also serving the CLI CONFIRM prompt. Wake word runs a custom "jarvis" model
   **alongside** pretrained "hey_jarvis" (openWakeWord multi-model); train
   `models/jarvis.onnx` per `scripts/wakeword_training.md`.
+- P4 (2026-07-07): memory v2 — bigger context + clear/wipe (#3, #5). Behind
+  `memory.engine: v2` (v1 is the one-line rollback). **Budgeted context:** a
+  pure `core/context.py::trim(messages, budget)` runs at each provider dispatch
+  (both routers, incl. mid-loop fallback) sizing history to that brain's
+  `max_history_tokens` (daily ~6K, cloud ~28K) — system prompt, rolling summary
+  and the RAG block are pinned, whole turns drop oldest-first, a
+  tool_call/tool_result pair is never split, and the newest turn always
+  survives; no reliance on Ollama `num_ctx` truncation. **Cross-session RAG:** a
+  `message_vectors` vec0 table mirrors `fact_vectors`; every turn injects a
+  dated "Relevant past context" block (top-k) drawn from past conversations.
+  Messages embed live in post-turn maintenance plus a nightly reconciler, with
+  `scripts/backfill_message_vectors.py` for existing history (status='ok' only).
+  **Clear/forget/wipe** are deterministic, model-free commands intercepted in
+  `run_turn` for every channel (voice/text/UI): "new chat"/"clear" rotate the
+  conversation, "forget that" drops the newest fact, and "wipe all memory" is a
+  two-step challenge ("confirm wipe"/"haan sab mitao", or a typed WIPE in the UI
+  modal) that erases facts + vectors + raw turns + summaries, VACUUMs, resets
+  the embed watermark (so the nightly job never re-embeds pre-wipe content),
+  flushes the live session, and is audited. New UI: a 🧠 memory browser
+  (per-fact delete + Wipe all).
 - P3 fixes (2026-07-07): three live-test bugs. (1) A fresh wake listen closed
   after ~5 s of pre-speech silence ("heard nothing") — the pipeline now owns a
   `voice.listen_grace_s` (10 s) window to start talking, ignoring the VAD's

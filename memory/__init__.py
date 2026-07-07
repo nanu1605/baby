@@ -22,6 +22,7 @@ class Memory:
     store: MemoryStore
     summarizer: Summarizer
     extractor: FactExtractor
+    rag_k: int = 0  # P4: cross-session past-message snippets per turn (0 = engine v1)
 
 
 async def build_memory(config: dict, db: Database, provider: ChatProvider) -> Memory | None:
@@ -44,6 +45,10 @@ async def build_memory(config: dict, db: Database, provider: ChatProvider) -> Me
         print(f"memory unavailable — continuing without it ({exc})")
         return None
     memory_tools.configure(store)
+    # Cross-session RAG (P4) rides the memory.engine flag: v2 injects past-
+    # message snippets and embeds new messages; v1 leaves both off (rollback).
+    engine_v2 = str(mem_cfg.get("engine", "v1")) == "v2"
+    rag_k = int(mem_cfg.get("rag_k", 4)) if engine_v2 else 0
     return Memory(
         store=store,
         summarizer=Summarizer(
@@ -53,4 +58,5 @@ async def build_memory(config: dict, db: Database, provider: ChatProvider) -> Me
             keep_recent=mem_cfg.get("keep_recent", 10),
         ),
         extractor=FactExtractor(provider, db, store, every=mem_cfg.get("extract_every", 20)),
+        rag_k=rag_k,
     )

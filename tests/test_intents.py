@@ -61,3 +61,43 @@ def test_end_phrase_matches_short_only():
     # A long utterance that merely contains a phrase must not close the session.
     assert is_end_phrase("bas ek aur baat batao phir", phrases) is False
     assert is_end_phrase("what is the weather", phrases) is False
+
+
+# -- P4 memory commands + wipe confirmation ----------------------------------
+
+import pytest as _pytest  # noqa: E402
+
+from core.intents import is_wipe_confirmation, parse_memory_command  # noqa: E402
+
+
+@_pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("new chat", "new_chat"),
+        ("nayi baat", "new_chat"),
+        ("clear conversation", "clear"),
+        ("forget that", "forget_last"),
+        ("woh bhool jao", "forget_last"),
+        ("wipe all memory", "wipe"),
+        ("sab kuch mita do", "wipe"),
+        ("forget everything", "wipe"),
+        ("what time is it", None),
+        ("forget that I told you my home address earlier today", None),  # too long
+    ],
+)
+def test_parse_memory_command(text, expected):
+    assert parse_memory_command(text) == expected
+
+
+@_pytest.mark.parametrize("text", ["confirm wipe", "haan sab mitao", "yes wipe", "सब मिटा दो"])
+def test_wipe_confirmation_true(text):
+    assert is_wipe_confirmation(text) is True
+
+
+@_pytest.mark.parametrize(
+    "text",
+    ["yes", "haan", "confirm", "please confirm the booking", "confirm my appointment", "ok"],
+)
+def test_bare_confirm_never_wipes(text):
+    # review #3: only an explicit wipe confirmation erases — never a stray yes/confirm
+    assert is_wipe_confirmation(text) is False

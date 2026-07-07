@@ -90,3 +90,63 @@ def parse_yes(text: str) -> bool:
 def is_end_phrase(text: str, phrases) -> bool:
     """True when a short utterance matches a configured conversation end phrase."""
     return _short_contains(text, phrases, _MAX_END_WORDS)
+
+
+# -- memory commands (P4): deterministic clear / forget / wipe ----------------
+# Short anchored phrases, so a real request that merely mentions "forget" ("forget
+# that I said my address earlier") stays a normal turn and reaches the model.
+_MAX_CMD_WORDS = 5
+
+_NEW_CHAT = (
+    "new chat", "new conversation", "start new chat", "start a new chat",
+    "fresh chat", "fresh conversation", "nayi baat", "nayi baat karo",
+    "naya chat", "naya conversation", "नई बात", "नयी बात",
+)
+_CLEAR = (
+    "clear conversation", "clear this conversation", "clear the conversation",
+    "clear chat", "clear this chat", "clear context",
+)
+_FORGET_LAST = (
+    "forget that", "forget this", "forget it", "forget last",
+    "bhool jao", "bhul jao", "woh bhool jao", "wo bhool jao", "bhool jaao",
+    "भूल जाओ", "वो भूल जाओ",
+)
+# Checked BEFORE forget_last so "forget everything" / "sab kuch bhool jao" wipe,
+# not just drop the last fact.
+_WIPE = (
+    "wipe all memory", "wipe memory", "wipe all", "wipe everything",
+    "erase all memory", "erase all my memory", "delete all memory",
+    "delete all my memory", "forget everything", "sab kuch mita do",
+    "sab mita do", "sari memory mita do", "sab kuch bhool jao",
+    "सब कुछ मिटा दो", "सब मिटा दो", "सब कुछ भूल जाओ",
+)
+# Confirmation must name the wipe explicitly — a bare "confirm" would fire on an
+# unrelated "please confirm the booking" while the challenge is armed.
+_WIPE_CONFIRM = (
+    "confirm wipe", "yes wipe", "wipe confirmed", "wipe it all", "confirm the wipe",
+    "haan sab mitao", "haan sab mita do", "sab mita do", "haan mita do",
+    "हाँ सब मिटा दो", "सब मिटा दो",
+)
+
+
+def parse_memory_command(text: str) -> str | None:
+    """Classify a short deterministic memory command, else None.
+
+    Returns "wipe" | "clear" | "new_chat" | "forget_last". Wipe is matched first
+    so its broader phrasing ("forget everything") is never mistaken for a
+    forget-last. Wipe only ARMS a challenge; is_wipe_confirmation completes it.
+    """
+    if _short_contains(text, _WIPE, _MAX_CMD_WORDS):
+        return "wipe"
+    if _short_contains(text, _CLEAR, _MAX_CMD_WORDS):
+        return "clear"
+    if _short_contains(text, _NEW_CHAT, _MAX_CMD_WORDS):
+        return "new_chat"
+    if _short_contains(text, _FORGET_LAST, _MAX_CMD_WORDS):
+        return "forget_last"
+    return None
+
+
+def is_wipe_confirmation(text: str) -> bool:
+    """True when a short reply confirms a pending 'wipe all memory' challenge."""
+    return _short_contains(text, _WIPE_CONFIRM, _MAX_CMD_WORDS)

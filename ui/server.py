@@ -157,6 +157,34 @@ def create_app(ctx: UIContext) -> FastAPI:
             return []
         return await ctx.memory.store.list_facts(limit)
 
+    @app.delete("/memory/fact/{fact_id}")
+    async def memory_delete_fact(fact_id: int):
+        if ctx.memory is None:
+            return JSONResponse({"error": "memory unavailable"}, status_code=404)
+        result = await ctx.memory.store.delete_fact(fact_id)
+        if "error" in result:
+            return JSONResponse(result, status_code=404)
+        return result
+
+    @app.post("/memory/wipe")
+    async def memory_wipe(body: dict):
+        """Erase ALL memory. Challenge-gated: the body must carry phrase 'WIPE'
+        (the browser modal makes the user type it), then the live UI session is
+        flushed to a fresh conversation so nothing lingers until a restart."""
+        if ctx.memory is None:
+            return JSONResponse({"error": "memory unavailable"}, status_code=404)
+        if str(body.get("phrase", "")).strip().upper() != "WIPE":
+            return JSONResponse({"error": "type WIPE to confirm"}, status_code=400)
+        counts = await ctx.memory.store.wipe_all()
+        ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
+        ctx.agent.pending_suggestion = None
+        await ctx.db.add_audit(
+            "ui", "wipe_memory", "{}", "allow", 1,
+            f"wiped {counts.get('facts', 0)} facts, {counts.get('messages', 0)} messages",
+        )
+        ctx.bus.publish("status", "ui", text="memory wiped")
+        return counts
+
     @app.post("/confirm/{confirm_id}")
     async def confirm(confirm_id: str, body: dict):
         approved = bool(body.get("approved", False))
@@ -454,7 +482,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from workers.scheduler import Scheduler
 
     scheduler = Scheduler(
-        db=db, bus=bus, provider=provider, gate=gate, config=config, notifier=notifier
+        db=db, bus=bus, provider=provider, gate=gate, config=config,
+        notifier=notifier, memory=memory,
     )
     await scheduler.start()
 

@@ -268,3 +268,50 @@ $("game-btn").addEventListener("click", async () => {
 });
 
 $("kill-btn").addEventListener("click", () => fetch("/kill", { method: "POST" }).catch(() => {}));
+
+/* ---------- memory browser ---------- */
+const memoryDialog = $("memory-dialog");
+
+async function renderMemory() {
+  let facts = [];
+  try { facts = await (await fetch("/memory")).json(); } catch { facts = []; }
+  const list = $("memory-list");
+  list.innerHTML = "";
+  const active = facts.filter((f) => f.active);
+  $("memory-count").textContent = `${active.length} remembered · ${facts.length - active.length} forgotten`;
+  if (!facts.length) {
+    list.innerHTML = `<div class="mem-empty">No memories yet.</div>`;
+    return;
+  }
+  for (const f of facts) {
+    const row = document.createElement("div");
+    row.className = `mem-row${f.active ? "" : " forgotten"}`;
+    const text = document.createElement("span");
+    text.className = "mem-text";
+    text.textContent = f.text;
+    const del = document.createElement("button");
+    del.className = "mem-del";
+    del.title = "Delete permanently";
+    del.textContent = "✕";
+    del.addEventListener("click", async () => {
+      await fetch(`/memory/fact/${f.id}`, { method: "DELETE" }).catch(() => {});
+      renderMemory();
+    });
+    row.append(text, del);
+    list.appendChild(row);
+  }
+}
+
+$("mem-btn").addEventListener("click", () => { renderMemory(); memoryDialog.showModal(); });
+$("memory-close").addEventListener("click", () => memoryDialog.close());
+$("memory-wipe").addEventListener("click", async () => {
+  const phrase = prompt("This erases ALL memory — facts AND past conversations.\nType WIPE to confirm:");
+  if (phrase == null) return;
+  const res = await fetch("/memory/wipe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ phrase }),
+  }).catch(() => null);
+  if (res && res.ok) renderMemory();
+  else alert("Wipe cancelled — you must type WIPE exactly.");
+});
