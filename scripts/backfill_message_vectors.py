@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from pathlib import Path
 
-from db.database import Database
-from memory.embedder import Embedder
-from memory.store import MemoryStore
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from db.database import Database  # noqa: E402
+from memory.embedder import Embedder  # noqa: E402
+from memory.store import MemoryStore  # noqa: E402
 
 
 async def _run(db_path: Path, model: str) -> None:
