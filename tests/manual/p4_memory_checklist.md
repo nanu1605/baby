@@ -3,7 +3,9 @@
 Covers V2 items #3 (bigger cross-session memory) and #5 (clear/forget/wipe).
 Requires `memory.engine: v2` (config.yaml, default). **Back up `baby.db` first**
 (`backups/baby-<date>.db`) and run the one-time backfill so existing history is
-searchable: `uv run python scripts/backfill_message_vectors.py`.
+searchable: `uv run python scripts/backfill_message_vectors.py`. (On a fresh or
+already-wiped DB it prints `0 message(s) embedded` — expected: live embedding
+handles new turns, so the backfill only matters for pre-v2 history.)
 
 ## 0. Automated gate (must be green)
 
