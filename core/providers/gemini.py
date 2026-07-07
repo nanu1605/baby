@@ -64,10 +64,12 @@ class GeminiProvider:
         api_key: str,
         temperature: float = 0.7,
         base_url: str = GEMINI_OPENAI_URL,
+        emit_usage: bool = True,
     ) -> None:
         self.model = model
         self.api_key = api_key
         self.temperature = temperature
+        self.emit_usage = emit_usage  # stream_options.include_usage (P5 telemetry)
         self.unhealthy_until = 0.0  # monotonic deadline of the current cooldown
         self._client = AsyncOpenAI(base_url=base_url, api_key=api_key)
 
@@ -80,15 +82,18 @@ class GeminiProvider:
         tools: list[dict] | None = None,
         **opts,
     ) -> AsyncIterator[Chunk]:
+        create_kwargs: dict = dict(
+            model=self.model,
+            messages=sanitize_history(messages),
+            tools=tools or None,
+            temperature=opts.get("temperature", self.temperature),
+            max_tokens=opts.get("max_tokens"),
+            stream=True,
+        )
+        if self.emit_usage:
+            create_kwargs["stream_options"] = {"include_usage": True}
         try:
-            stream = await self._client.chat.completions.create(
-                model=self.model,
-                messages=sanitize_history(messages),
-                tools=tools or None,
-                temperature=opts.get("temperature", self.temperature),
-                max_tokens=opts.get("max_tokens"),
-                stream=True,
-            )
+            stream = await self._client.chat.completions.create(**create_kwargs)
             async for chunk in accumulate_stream(stream):
                 yield chunk
         except APIStatusError as exc:

@@ -59,6 +59,17 @@
   playback** as well as the running turn — a thread-safe interrupt drops the
   queued sentences and returns Baby to idle (no follow-up window); previously
   only the turn future was cancelled and Baby kept speaking.
+- P5 (2026-07-07): token telemetry (#8). Every OpenAI-wire brain
+  (NIM/OpenRouter, Gemini, Ollama) now reports token usage:
+  `stream_options.include_usage` is requested per call (guarded by
+  `telemetry.emit_usage`, default on), `accumulate_stream` reads the trailing
+  usage chunk into `Chunk.usage`, and the agent sums every generation of a turn
+  (main loop + final-answer + next-step) into one row of the new `usage_log`
+  table (keyed to the P2 `turn_id`, auto-created on connect). The UI shows
+  per-turn `↑prompt ↓completion` beside the brain badge — local turns tagged
+  "no quota" — and the header carries session + today totals with a per-brain
+  split (`/stats.tokens`). A host that omits usage degrades to blank counts,
+  never a crash. Version finalized to `2.0.0`.
 
 ## Unreleased — NIM cloud-primary migration (feature/nim-cloud-primary-router)
 

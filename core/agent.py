@@ -162,9 +162,21 @@ class AgentCore:
         # P4 wipe-all: a "wipe all memory" arms this one-shot challenge; only the
         # next turn's explicit confirmation erases everything.
         self.pending_wipe: bool = False
+        # P5 telemetry: token usage summed across every model call of one turn
+        # (main loop rounds + final-answer + next-step). Reset per run_turn.
+        self._turn_tokens: dict = {"prompt": 0, "completion": 0, "total": 0}
+
+    def _accrue_tokens(self, usage: dict | None) -> None:
+        """Add one generation's reported usage to this turn's running total (P5)."""
+        if not usage:
+            return
+        self._turn_tokens["prompt"] += int(usage.get("prompt_tokens", 0) or 0)
+        self._turn_tokens["completion"] += int(usage.get("completion_tokens", 0) or 0)
+        self._turn_tokens["total"] += int(usage.get("total_tokens", 0) or 0)
 
     async def run_turn(self, user_text: str) -> str:
         """Process one user message; returns the final assistant reply."""
+        self._turn_tokens = {"prompt": 0, "completion": 0, "total": 0}  # P5 fresh count
         # P4: deterministic memory commands (new chat / forget that / wipe) run
         # model-free and reach every channel here (all funnel through run_turn).
         mem_action = self._memory_action(user_text)
@@ -233,8 +245,21 @@ class AgentCore:
             # the router's active decision within milliseconds. The badge shows
             # the brain that authored the final answer of this turn.
             brain = dict(getattr(self.provider, "active", None) or {})
+            # P5: persist this turn's token spend (skip cancelled — awaiting the
+            # DB while a CancelledError unwinds is fragile, and a cancelled turn
+            # is debris anyway). Best-effort: telemetry never fails a turn.
+            tokens = dict(self._turn_tokens)
+            if status != "cancelled" and tokens["total"] > 0:
+                try:
+                    await self.db.add_usage(
+                        self.conversation_id, turn_id, self.channel,
+                        brain.get("tier"), brain.get("model"), tokens,
+                    )
+                except Exception:  # noqa: BLE001 — telemetry is never load-bearing
+                    pass
             self.bus.publish(
-                "turn_end", self.channel, reply=reply, status=status, brain=brain
+                "turn_end", self.channel, reply=reply, status=status,
+                brain=brain, tokens=tokens,
             )
             # Router hook (Phase 4): lets the provider arm retry_after_failure
             # escalation for this channel's next turn. No-op for plain providers.
@@ -567,6 +592,8 @@ class AgentCore:
                 self.bus.publish("token", self.channel, text=chunk.delta)
             if chunk.tool_calls:
                 tool_calls = chunk.tool_calls
+            if chunk.usage:
+                self._accrue_tokens(chunk.usage)
         return _scrub_think("".join(text_parts)), tool_calls
 
     def _recovery_context(
@@ -597,6 +624,8 @@ class AgentCore:
                 if chunk.delta:
                     parts.append(chunk.delta)
                     self.bus.publish("token", self.channel, text=chunk.delta)
+                if chunk.usage:
+                    self._accrue_tokens(chunk.usage)
         except Exception:  # noqa: BLE001 — fall back to the "(no response)" placeholder
             return ""
         return _scrub_think("".join(parts))
@@ -629,6 +658,8 @@ class AgentCore:
                         self.bus.publish("token", self.channel, text="\n\nNext: ")
                     parts.append(chunk.delta)
                     self.bus.publish("token", self.channel, text=chunk.delta)
+                if chunk.usage:
+                    self._accrue_tokens(chunk.usage)
             return "".join(parts).strip()
         except asyncio.CancelledError:
             raise

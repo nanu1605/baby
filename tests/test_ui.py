@@ -61,6 +61,24 @@ def test_stats_shape(ui):
     assert data["turn_running"] is False
 
 
+def test_stats_tokens_block(ui):
+    client, ctx, _ = ui
+    # Empty usage_log: the block is present and zeroed, never missing.
+    data = client.get("/stats").json()
+    assert data["tokens"]["today"]["total"] == 0
+    assert data["tokens"]["session"]["total"] == 0
+    # A recorded turn shows up in today + session, grouped by brain.
+    ctx.session_start = "2000-01-01 00:00:00"  # capture all rows deterministically
+    asyncio.run(ctx.db.add_usage(
+        ctx.agent.conversation_id, 1, "ui", "nim_primary", "m/x",
+        {"prompt": 12, "completion": 8, "total": 20},
+    ))
+    data = client.get("/stats").json()
+    assert data["tokens"]["today"]["total"] == 20
+    assert data["tokens"]["today"]["by_brain"] == {"nim_primary": 20}
+    assert data["tokens"]["session"]["total"] == 20
+
+
 def test_confirm_unknown_404(ui):
     client, _, _ = ui
     resp = client.post("/confirm/nope", json={"approved": True})

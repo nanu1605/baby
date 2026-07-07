@@ -553,3 +553,31 @@ Running log of non-obvious choices made during the build. Newest last.
     "remembering" immediately, not after a restart. `audit_log` is retained
     (the wipe is audited); the two-step challenge (voice/text) or a typed
     "WIPE" (UI modal) is its safety — never a single action.
+91. **Token telemetry — usage_log at turn grain, capture at the shared seam
+    (P5)**. Every OpenAI-wire response already carries a `usage` object; we
+    stopped throwing it away. (a) Providers request
+    `stream_options={"include_usage": true}` (NIM/OpenRouter, Gemini, Ollama),
+    guarded by `telemetry.emit_usage` (default true) so a host that 4xxs on the
+    param can be turned off per deploy without a code change. (b) The shared
+    `accumulate_stream` reads usage off ANY event and captures it into
+    `Chunk.usage`. The include_usage trailer arrives AFTER `finish_reason` (an
+    event with empty `choices`), but the terminating `done` chunk (which carries
+    tool_calls and ends the turn) is still yielded AT `finish_reason` — the
+    trailer is then read best-effort with a bounded wait (`_TRAILER_TIMEOUT_S`)
+    that swallows any stall or drop. This matters because the router treats a
+    long post-content stall as a mid-reply abort with no failover: draining
+    unboundedly toward the trailer would let a slow/dropped trailer fail an
+    already-complete reply or lose a tool round (caught in P5 adversarial
+    review). Capture is null-safe, so a host that omits usage degrades to blank
+    counts, never a crash. (c) A turn spends
+    tokens across several generations (tool-loop rounds + the empty-reply
+    finalizer + the next-step offer); the agent SUMS them into `self._turn_tokens`
+    and writes ONE `usage_log` row per turn. We chose a dedicated `usage_log`
+    table (keyed to the P2 `turn_id`) over new `audit_log` columns because audit
+    is tool-grain (one row per tool call) — the wrong grain for per-turn totals;
+    the table auto-creates via `CREATE TABLE IF NOT EXISTS` on connect, so no
+    migration-script row is needed. (d) Ollama reports native eval counts through
+    the same wire fields; those turns are recorded and labeled "local — no quota"
+    in the UI since they cost nothing. This stays within the frozen-router rule:
+    the only provider-layer change is asking for a field the API already sends
+    plus reading it — no router state/ladder/bucket touched.

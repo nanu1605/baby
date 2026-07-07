@@ -121,6 +121,9 @@ memory:
   rag_k: 4                              # P4: cross-session past-message snippets injected per turn
   rag_nightly_cron: "0 3 * * *"         # P4: nightly message-embedding reconciler
 
+telemetry:
+  emit_usage: true                      # P5: ask each brain for token usage (stream_options.include_usage); set false for a host that 4xxs on the param
+
 persona:
   suggest_next_step: true               # feature #8: extra call after a real task
 

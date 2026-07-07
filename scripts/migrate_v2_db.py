@@ -7,6 +7,10 @@ Safe by construction: backs up to ``backups/baby-<stamp>.db`` and verifies the
 copy opens before touching the live file. ``--dry-run`` operates on the backup
 copy only, so the live database is never modified. Idempotent — re-running just
 quarantines any newly-found poison.
+
+Note: later v2 tables (P4 ``message_vectors``, P5 ``usage_log``) need no step
+here — they are ``CREATE TABLE IF NOT EXISTS`` in ``schema.sql`` and auto-create
+on the next ``Database.connect()``.
 """
 
 from __future__ import annotations

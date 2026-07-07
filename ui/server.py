@@ -62,6 +62,7 @@ class UIContext:
     pool: object | None = None  # workers.queue.WorkerPool, attached in run_ui
     orchestrator: object | None = None  # workers.orchestrator.Orchestrator
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
+    session_start: str = ""  # P5: SQLite-format ts marking this process's boot
 
     def turn_running(self) -> bool:
         if self.current_turn is not None and not self.current_turn.done():
@@ -115,6 +116,12 @@ def create_app(ctx: UIContext) -> FastAPI:
         if ctx.voice is not None:
             verifier = getattr(ctx.voice, "verifier", None)
             data["speaker_verify"] = getattr(verifier, "note", "off") if verifier else "off"
+        # P5 token telemetry: session (since boot) + today totals, per-brain split.
+        since = ctx.session_start or await ctx.db.now()
+        data["tokens"] = {
+            "session": await ctx.db.usage_session(since),
+            "today": await ctx.db.usage_today(),
+        }
         return data
 
     @app.get("/tasks")
@@ -397,6 +404,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
     )
     ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=config, memory=memory)
+    ctx.session_start = await db.now()  # P5: bound "session" token totals to boot
     app = create_app(ctx)
 
     ui_cfg = config.get("ui", {})

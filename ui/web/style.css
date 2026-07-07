@@ -98,6 +98,13 @@ header {
 .brain-badge.local { color: var(--green); border-color: var(--green); }
 .brain-badge.nim { color: #2dd4bf; border-color: #2dd4bf; }
 .brain-badge.gemini { color: #c084fc; border-color: #c084fc; }
+.token-badge {
+  display: inline-block; margin-left: 6px; padding: 0 6px;
+  border-radius: 9px; font-size: .66rem; vertical-align: middle;
+  border: 1px dashed var(--border); color: var(--muted); letter-spacing: .02em;
+}
+.token-badge.local { border-style: dotted; opacity: .8; }
+#tokens-badge { font-variant-numeric: tabular-nums; }
 .msg.system-note { color: var(--muted); font-style: italic; font-size: .85rem; }
 .spacer { flex: 1; }
 #turn-indicator { font-size: .8rem; color: var(--muted); }

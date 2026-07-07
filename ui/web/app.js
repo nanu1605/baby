@@ -54,6 +54,20 @@ function addBrainBadge(bubble, brain) {
   bubble.appendChild(span);
 }
 
+/* Per-turn token spend (P5): ↑prompt ↓completion beside the brain chip. A local
+   (Ollama) turn is tagged "no quota" since it costs nothing. */
+function addTokenBadge(bubble, tokens, brain) {
+  if (!tokens || !tokens.total) return;
+  const local = brain && brain.tier === "daily";
+  const span = document.createElement("span");
+  span.className = "token-badge" + (local ? " local" : "");
+  span.textContent = `↑${tokens.prompt} ↓${tokens.completion}`;
+  span.title = local
+    ? `local — no quota (${tokens.total} tokens)`
+    : `${tokens.total} tokens this turn`;
+  bubble.appendChild(span);
+}
+
 function setTurnRunning(running) {
   $("send-btn").disabled = running;
   const ind = $("turn-indicator");
@@ -78,6 +92,7 @@ const chat = reconnectingSocket("/ws/chat", (msg) => {
       if (msg.reply) streamingBubble.textContent = msg.reply;
       else if (!streamingBubble.textContent) streamingBubble.textContent = "…";
       addBrainBadge(streamingBubble, msg.brain);
+      addTokenBadge(streamingBubble, msg.tokens, msg.brain);
       streamingBubble = null;
     }
     setTurnRunning(false);
@@ -252,8 +267,23 @@ async function pollStats() {
     setGauge("ram", s.ram.used_gb, s.ram.total_gb, s.ram.percent);
     if (s.gpu) setGauge("vram", s.gpu.vram_used_gb, s.gpu.vram_total_gb);
     else $("vram-val").textContent = "n/a";
+    setTokensBadge(s.tokens);
     if (!streamingBubble) setTurnRunning(s.turn_running);
   } catch { /* server briefly away — reconnect handles it */ }
+}
+
+/* Header token totals (P5): session ↑↓ with today + per-brain split on hover. */
+function setTokensBadge(tokens) {
+  const el = $("tokens-badge");
+  if (!el || !tokens) return;
+  const sess = tokens.session || { prompt: 0, completion: 0, total: 0 };
+  const today = tokens.today || { total: 0, by_brain: {} };
+  el.textContent = `↑${sess.prompt} ↓${sess.completion}`;
+  const brains = Object.entries(today.by_brain || {})
+    .map(([tier, n]) => `${tier}: ${n}`)
+    .join(" · ");
+  el.title = `session ${sess.total} · today ${today.total} tokens`
+    + (brains ? `\ntoday by brain — ${brains}` : "");
 }
 pollStats();
 setInterval(pollStats, 5000);

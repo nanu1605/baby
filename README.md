@@ -43,6 +43,11 @@ keeps everything working with the Wi-Fi cable pulled.
   the local 9B stays warm for offline, privacy-pinned and overflow turns. The
   activity feed narrates every routing decision; the header badge shows which
   brain answered.
+- **Token telemetry**: every answer carries its cost — `↑prompt ↓completion`
+  beside the brain badge (local turns tagged "no quota"), and the header shows
+  session + today totals with a per-brain split. Captured straight from each
+  provider's `usage` (NIM/OpenRouter, Gemini, Ollama) into a `usage_log` table
+  keyed by turn; `telemetry.emit_usage: false` opts a stubborn host out.
 - **Browser**: "open ollama.com and read me the headline" drives a real
   Chromium window with a persistent profile (logins survive restarts).
   Navigation and reading are free; the FIRST click/type on each site asks
@@ -182,3 +187,5 @@ Unit tests never touch the network — the agent loop is tested against a script
 | 4 ✅ | Background tasks, notifications, browser control, Telegram, autostart |
 | 5 ✅ | Multi-agent projects, screen awareness, speaker verification, Tailscale doc |
 | v1.1.0 ✅ | Cloud-primary brains (OpenRouter primary + NIM heavy + Gemini backstop), health-aware router, privacy/language pins, game mode, live E2E battery, soak-report tooling |
+| v1.1.1 ✅ | Hotfix: sensor tool contract (#6) + DB poison hygiene (#7) |
+| v2.0.0 ✅ | Conversation mode + proceed/cancel (#2, #4), memory v2 — budgeted context + cross-session RAG + clear/wipe (#3, #5), token telemetry (#8) |

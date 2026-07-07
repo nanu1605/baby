@@ -38,12 +38,14 @@ class NvidiaProvider:
         temperature: float = 0.7,
         base_url: str = NIM_OPENAI_URL,
         cooldown_s: float = COOLDOWN_429_S,
+        emit_usage: bool = True,
     ) -> None:
         self.model = model
         self.api_key = api_key
         self.temperature = temperature
         self.base_url = base_url
         self.cooldown_s = cooldown_s
+        self.emit_usage = emit_usage  # stream_options.include_usage (P5 telemetry)
         self.unhealthy_until = 0.0  # monotonic deadline of the current cooldown
         # AsyncOpenAI refuses an empty api_key; healthy() already reports a
         # missing key, so a placeholder keeps construction fail-soft.
@@ -58,15 +60,18 @@ class NvidiaProvider:
         tools: list[dict] | None = None,
         **opts,
     ) -> AsyncIterator[Chunk]:
+        create_kwargs: dict = dict(
+            model=self.model,
+            messages=messages,
+            tools=tools or None,
+            temperature=opts.get("temperature", self.temperature),
+            max_tokens=opts.get("max_tokens"),
+            stream=True,
+        )
+        if self.emit_usage:
+            create_kwargs["stream_options"] = {"include_usage": True}
         try:
-            stream = await self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=tools or None,
-                temperature=opts.get("temperature", self.temperature),
-                max_tokens=opts.get("max_tokens"),
-                stream=True,
-            )
+            stream = await self._client.chat.completions.create(**create_kwargs)
             async for chunk in accumulate_stream(stream):
                 yield chunk
         except APIStatusError as exc:

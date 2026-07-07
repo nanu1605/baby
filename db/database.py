@@ -132,6 +132,16 @@ class Database:
             cur = await self.conn.execute(sql, params)
             return await cur.fetchall()
 
+    async def now(self) -> str:
+        """Current UTC time in SQLite's own datetime format (P5 session marker).
+
+        Using the DB's clock keeps `ts >= since` a plain string compare against
+        usage_log.ts (both 'YYYY-MM-DD HH:MM:SS'); a Python ISO 'T' separator
+        would sort wrong against the space-separated stored timestamps.
+        """
+        row = await self._fetchone("SELECT datetime('now') AS ts")
+        return row["ts"]
+
     # -- conversations ------------------------------------------------------
 
     async def create_conversation(self, channel: str) -> int:
@@ -162,6 +172,60 @@ class Database:
             " result_summary) VALUES (?, ?, ?, ?, ?, ?)",
             (channel, tool, args, safety_class, approved, result_summary),
         )
+
+    # -- token usage (P5 telemetry) -----------------------------------------
+
+    async def add_usage(
+        self,
+        conversation_id: int,
+        turn_id: int | None,
+        channel: str,
+        brain_tier: str | None,
+        brain_model: str | None,
+        tokens: dict,
+    ) -> int:
+        """Record one turn's aggregated token spend (prompt/completion/total)."""
+        return await self._write(
+            "INSERT INTO usage_log (conversation_id, turn_id, channel, brain_tier,"
+            " brain_model, prompt_tokens, completion_tokens, total_tokens)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                conversation_id, turn_id, channel, brain_tier, brain_model,
+                int(tokens.get("prompt", 0)), int(tokens.get("completion", 0)),
+                int(tokens.get("total", 0)),
+            ),
+        )
+
+    async def usage_today(self) -> dict:
+        """Today's totals + per-brain breakdown (local calendar day)."""
+        rows = await self._fetchall(
+            "SELECT brain_tier, SUM(prompt_tokens) AS prompt,"
+            " SUM(completion_tokens) AS completion, SUM(total_tokens) AS total"
+            " FROM usage_log WHERE date(ts, 'localtime') = date('now', 'localtime')"
+            " GROUP BY brain_tier"
+        )
+        return self._usage_summary(rows)
+
+    async def usage_session(self, since_iso: str) -> dict:
+        """Totals + per-brain breakdown since a process-start ISO timestamp."""
+        rows = await self._fetchall(
+            "SELECT brain_tier, SUM(prompt_tokens) AS prompt,"
+            " SUM(completion_tokens) AS completion, SUM(total_tokens) AS total"
+            " FROM usage_log WHERE ts >= ? GROUP BY brain_tier",
+            (since_iso,),
+        )
+        return self._usage_summary(rows)
+
+    @staticmethod
+    def _usage_summary(rows) -> dict:
+        """Grouped rows → {prompt, completion, total, by_brain: {tier: total}}."""
+        out = {"prompt": 0, "completion": 0, "total": 0, "by_brain": {}}
+        for row in rows:
+            out["prompt"] += row["prompt"] or 0
+            out["completion"] += row["completion"] or 0
+            out["total"] += row["total"] or 0
+            out["by_brain"][row["brain_tier"] or "unknown"] = row["total"] or 0
+        return out
 
     # -- messages -----------------------------------------------------------
 
