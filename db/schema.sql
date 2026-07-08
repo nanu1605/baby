@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
   args TEXT NOT NULL,                  -- JSON
   safety_class TEXT,                   -- allow | confirm | deny
   approved INTEGER,
-  result_summary TEXT
+  result_summary TEXT,
+  duration_ms REAL                     -- B1: tool exec time; NULL for denied/dry-run/pre-B1 rows
 );
 
 CREATE TABLE IF NOT EXISTS usage_log (
@@ -96,3 +97,48 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- B1 search spine: external-content FTS5 mirrors of messages / tasks / audit_log.
+-- External content stores only the index (no duplicate text); queries join back
+-- to the base row by rowid. For messages the query ALSO joins WHERE status='ok',
+-- so quarantining a turn (a status UPDATE, content unchanged) drops it from
+-- search with no FTS re-sync needed. FTS5 is compiled into sqlite here.
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+  content, content='messages', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+  INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+  INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+  INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+END;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
+  title, spec, content='tasks', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS tasks_ai AFTER INSERT ON tasks BEGIN
+  INSERT INTO tasks_fts(rowid, title, spec) VALUES (new.id, new.title, new.spec);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_ad AFTER DELETE ON tasks BEGIN
+  INSERT INTO tasks_fts(tasks_fts, rowid, title, spec) VALUES('delete', old.id, old.title, old.spec);
+END;
+CREATE TRIGGER IF NOT EXISTS tasks_au AFTER UPDATE ON tasks BEGIN
+  INSERT INTO tasks_fts(tasks_fts, rowid, title, spec) VALUES('delete', old.id, old.title, old.spec);
+  INSERT INTO tasks_fts(rowid, title, spec) VALUES (new.id, new.title, new.spec);
+END;
+
+CREATE VIRTUAL TABLE IF NOT EXISTS audit_fts USING fts5(
+  tool, args, result_summary, content='audit_log', content_rowid='id'
+);
+CREATE TRIGGER IF NOT EXISTS audit_ai AFTER INSERT ON audit_log BEGIN
+  INSERT INTO audit_fts(rowid, tool, args, result_summary)
+    VALUES (new.id, new.tool, new.args, new.result_summary);
+END;
+CREATE TRIGGER IF NOT EXISTS audit_ad AFTER DELETE ON audit_log BEGIN
+  INSERT INTO audit_fts(audit_fts, rowid, tool, args, result_summary)
+    VALUES('delete', old.id, old.tool, old.args, old.result_summary);
+END;

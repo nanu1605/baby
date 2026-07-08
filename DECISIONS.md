@@ -621,3 +621,50 @@ Running log of non-obvious choices made during the build. Newest last.
     (GHSA-67mh-4wv8-2f99); it is dev-server-only and does not touch the static
     production build, but the tree is kept at 0 audit vulnerabilities.
     `package-lock.json` is committed as the true pin.
+96. **Auto-derived graph topology (B1a)**. `core/nodes.py::build_graph(config)`
+    returns `{nodes, edges}` for the v3 graph. Tool nodes are derived live from
+    `registry.schemas()` (add a `@tool` → a node appears, no edit) and brain nodes
+    from the config `models` block + router role map, so both track reality without
+    hand-maintenance. Only the fixed subsystems and the static call-path edges
+    (every brain routes through `safety_gate` before any `tool:*`) are declared by
+    hand — they are stable architecture. A tool's "safety class" on its node is a
+    heuristic (from the `classify_tool` branches) since the real class is decided
+    at call time from the args, not stored.
+97. **Additive event attribution (B1b)**. `source`/`target` (node ids) and
+    `turn_id` were added to bus events by passing extra kwargs to the existing
+    `publish(kind, channel, **payload)` — zero dataclass/signature change, and the
+    fields auto-appear in the ws JSON. `turn_id` was threaded into `_execute_tool`
+    (it wasn't in scope there). `/classic` ignores the unknown keys, so it is
+    unaffected. Token `source` falls back to `brain:daily` when the provider
+    reports no routing decision (a plain provider in tests). The router's decision
+    status stays quiet on the happy path (primary route) as before — only its
+    payload gained source/target, no new emissions.
+98. **Synthesized `/ws/state` (B1c)**. The gauge states `thinking / speaking /
+    executing` do NOT exist in the voice pipeline (only IDLE/LISTENING/RESPONDING).
+    A `_StateDeriver` folds the bus stream into them: turn_start→thinking, first
+    token→speaking, tool_start→executing (until all open tools close, tracked by
+    call_id), turn_end→idle; the voice "listening" status maps to listening.
+    `/ws/state` sends `{state, router, game_mode}` on change (router health +
+    game mode read live off the provider, since they change without a state
+    transition — e.g. Wi-Fi drop → cloud→degraded). This is the spec's biggest
+    factual gap vs the repo.
+99. **Per-node stats + additive `audit_log.duration_ms` (B1d)**. Tool latency
+    percentiles need a duration, which `audit_log` never stored — added a nullable
+    `duration_ms` column (idempotent ALTER) and time ONLY the `registry.dispatch`
+    call in `_execute_tool` (never the confirm wait, which is user think-time and
+    would poison latency). Old rows are NULL → excluded from percentiles. Brain
+    latency reuses the router's in-memory first-token samples (no new storage).
+    `ctx.scheduler` was also attached to `UIContext` (it was created but never
+    exposed) so scheduler/task-queue nodes can report jobs + depth.
+100. **External-content FTS5 + status join for search (B1e)**. Search is greenfield
+    FTS5 (compiled into sqlite here, not a loadable extension). The mirrors
+    (`messages_fts`/`tasks_fts`/`audit_fts`) use `content=` external-content tables
+    kept in sync by INSERT/UPDATE/DELETE triggers — no duplicated text. The
+    messages query joins back to `messages WHERE status='ok'`, so quarantining a
+    turn (a status UPDATE, content unchanged) drops it from search with no FTS
+    re-sync. `GET /api/search` fans out grouped by type (facts + conversations via
+    the vector store, activity + tasks via FTS) — cosine and bm25 ranks aren't
+    comparable, so there is no cross-type global ordering. The MATCH string is
+    built by quoting `\W`-split tokens (last one prefixed `*`), so arbitrary user
+    text and FTS operators can never raise a syntax error. `scripts/backfill_fts.py`
+    rebuilds the indexes for pre-B1 rows.

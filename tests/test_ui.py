@@ -105,6 +105,16 @@ def test_v3_flag_falls_back_to_classic_when_unbuilt(tmp_path, monkeypatch):
         asyncio.run(db.close())
 
 
+def test_ws_state_sends_initial_snapshot(ui):
+    # A fresh /ws/state client paints immediately: idle, with router + game_mode.
+    client, _, _ = ui
+    with client.websocket_connect("/ws/state") as ws:
+        snap = ws.receive_json()
+    assert snap["type"] == "state"
+    assert snap["state"] == "idle"
+    assert "router" in snap and "game_mode" in snap
+
+
 def test_stats_shape(ui):
     client, _, _ = ui
     data = client.get("/stats").json()

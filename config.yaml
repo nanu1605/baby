@@ -102,7 +102,7 @@ voice:
 ui:
   host: 127.0.0.1
   port: 8765
-  frontend: classic                     # v3 = "The Brain" React app (ui/app/dist); classic = vanilla ui/web (rollback). /classic always served regardless.
+  frontend: v3                     # v3 = "The Brain" React app (ui/app/dist); classic = vanilla ui/web (rollback). /classic always served regardless.
 
 startup:
   wait_for_model_s: 120                 # logon race: wait for Ollama before giving up

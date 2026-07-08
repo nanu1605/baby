@@ -51,6 +51,46 @@ _ACTIVITY_KINDS = {
 }
 
 
+class _StateDeriver:
+    """Fold the bus event stream into a single pipeline state for the gauge (B1c).
+
+    `thinking / speaking / executing` do not exist in the voice pipeline — it only
+    has IDLE/LISTENING/RESPONDING. They are SYNTHESIZED here from what the agent
+    actually emits: turn_start→thinking, first token→speaking, tool_start→
+    executing, tool_end→executing (while tools stay open) else thinking,
+    turn_end→idle; the voice "listening" status maps to listening.
+    """
+
+    _VOICE_IDLE = ("conversation ended", "heard nothing", "interrupted", "stopped")
+
+    def __init__(self) -> None:
+        self.state = "idle"
+        self._open: set = set()
+
+    def feed(self, event) -> str:
+        kind = event.kind
+        if kind == "turn_start":
+            self.state = "thinking"
+        elif kind == "token":
+            self.state = "speaking"
+        elif kind == "tool_start":
+            self._open.add(event.payload.get("call_id"))
+            self.state = "executing"
+        elif kind == "tool_end":
+            self._open.discard(event.payload.get("call_id"))
+            self.state = "executing" if self._open else "thinking"
+        elif kind == "turn_end":
+            self._open.clear()
+            self.state = "idle"
+        elif kind == "status" and event.channel == "voice":
+            text = str(event.payload.get("text", "")).lower()
+            if "listening" in text:
+                self.state = "listening"
+            elif any(k in text for k in self._VOICE_IDLE):
+                self.state = "idle"
+        return self.state
+
+
 @dataclass
 class UIContext:
     db: Database
@@ -62,6 +102,7 @@ class UIContext:
     current_turn: asyncio.Task | None = None
     pool: object | None = None  # workers.queue.WorkerPool, attached in run_ui
     orchestrator: object | None = None  # workers.orchestrator.Orchestrator
+    scheduler: object | None = None  # workers.scheduler.Scheduler, attached in run_ui
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
     session_start: str = ""  # P5: SQLite-format ts marking this process's boot
 
@@ -103,6 +144,118 @@ def create_app(ctx: UIContext) -> FastAPI:
     @app.get("/classic")
     async def classic():
         return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/api/graph")
+    async def api_graph():
+        # Topology of Baby's mind: subsystems + auto-derived tool/brain nodes.
+        from core.nodes import build_graph
+
+        return build_graph(ctx.config)
+
+    @app.get("/api/nodes/{node_id}/stats")
+    async def api_node_stats(node_id: str):
+        # Live per-node stats for the inspector drawer. Read-only; dispatch by the
+        # node-id prefix that core/nodes.py assigns.
+        provider = ctx.agent.provider
+        if node_id.startswith("tool:"):
+            name = node_id.split(":", 1)[1]
+            return {"id": node_id, "type": "tool", **(await ctx.db.audit_stats(name))}
+        if node_id.startswith("brain:"):
+            tier = node_id.split(":", 1)[1]
+            ranked = sorted((getattr(provider, "latency", None) or {}).get(tier) or [])
+
+            def _pct(p):
+                if not ranked:
+                    return None
+                return round(ranked[min(len(ranked) - 1, int(p * len(ranked)))], 1)
+
+            active = getattr(provider, "active", None) or {}
+            return {
+                "id": node_id,
+                "type": "brain",
+                "latency_ms": {"p50": _pct(0.5), "p95": _pct(0.95)},
+                "tokens": await ctx.db.usage_by_brain(tier),
+                "turns": (getattr(provider, "turn_counts", None) or {}).get(tier, 0),
+                "current": isinstance(active, dict) and active.get("tier") == tier,
+                "router_state": active.get("state") if isinstance(active, dict) else None,
+            }
+        if node_id == "task_queue":
+            running = ctx.pool.running_count() if ctx.pool is not None else 0
+            return {
+                "id": node_id,
+                "type": "infra",
+                "running": running,
+                "queued": await ctx.db.count_tasks("queued"),
+                "tasks": await ctx.db.list_tasks(limit=20),
+            }
+        if node_id == "scheduler":
+            jobs = []
+            if ctx.scheduler is not None:
+                for j in ctx.scheduler.jobs():
+                    jobs.append(
+                        {"id": getattr(j, "id", None),
+                         "next_run": str(getattr(j, "next_run_time", "") or "")}
+                    )
+            return {"id": node_id, "type": "infra", "jobs": jobs}
+        if node_id in ("mem_facts", "mem_rag", "mem_summaries"):
+            facts = await ctx.memory.store.count_active() if ctx.memory is not None else 0
+            return {"id": node_id, "type": "memory", "facts": facts}
+        # Subsystems without dedicated stats still return a valid, minimal payload
+        # so the inspector never hits an empty/404 drawer.
+        return {"id": node_id, "type": "subsystem"}
+
+    @app.get("/api/search")
+    async def api_search(q: str = ""):
+        # "Search the brain": fan out over facts (vector), conversations (vector +
+        # FTS), activity (audit FTS), tasks (FTS). Grouped by type — cosine and
+        # bm25 scores aren't comparable, so there's no cross-type global rank.
+        q = (q or "").strip()
+        groups: dict[str, list] = {"facts": [], "conversations": [], "activity": [], "tasks": []}
+        if not q:
+            return {"query": q, "groups": groups}
+
+        store = getattr(ctx.memory, "store", None) if ctx.memory is not None else None
+
+        if store is not None:
+            for f in await store.search(q, k=6, update_last_used=False):
+                groups["facts"].append({
+                    "type": "fact", "id": f["id"], "snippet": f["text"],
+                    "ts": None, "node_id": "mem_facts",
+                })
+
+        seen: set[int] = set()
+        if store is not None:
+            for m in await store.search_messages(q, k=4):
+                seen.add(m["id"])
+                groups["conversations"].append({
+                    "type": "conversation", "id": m["id"], "snippet": (m["text"] or "")[:200],
+                    "ts": m.get("created_at"), "node_id": "mem_rag",
+                    "conversation_id": m.get("conversation_id"),
+                })
+        for r in await ctx.db.search_messages_fts(q, limit=6):
+            if r["id"] in seen:
+                continue
+            groups["conversations"].append({
+                "type": "conversation", "id": r["id"], "snippet": (r["content"] or "")[:200],
+                "ts": r["created_at"], "node_id": "mem_rag",
+                "conversation_id": r["conversation_id"],
+            })
+
+        for r in await ctx.db.search_audit_fts(q, limit=8):
+            summary = r["result_summary"] or ""
+            groups["activity"].append({
+                "type": "activity", "id": r["id"],
+                "snippet": f'{r["tool"]}: {summary}'[:200],
+                "ts": r["ts"], "node_id": f'tool:{r["tool"]}',
+            })
+
+        for r in await ctx.db.search_tasks_fts(q, limit=8):
+            groups["tasks"].append({
+                "type": "task", "id": r["id"], "snippet": r["title"],
+                "ts": r["created_at"], "node_id": "task_queue", "status": r["status"],
+            })
+
+        return {"query": q, "groups": groups}
 
     @app.get("/stats")
     async def stats():
@@ -321,6 +474,50 @@ def create_app(ctx: UIContext) -> FastAPI:
         finally:
             pump.cancel()
 
+    def _state_snapshot(deriver: _StateDeriver) -> dict:
+        # Pipeline state comes from the event stream (deriver); router health +
+        # game mode are read live off the provider each time (they change without
+        # a state transition — e.g. Wi-Fi drops → cloud→degraded).
+        provider = ctx.agent.provider
+        active = getattr(provider, "active", None) or {}
+        router = active.get("state") if isinstance(active, dict) else None
+        return {
+            "type": "state",
+            "state": deriver.state,
+            "router": router or "unknown",
+            "game_mode": bool(getattr(provider, "game_mode", False)),
+        }
+
+    async def _state_pump(ws: WebSocket) -> None:
+        """Synthesize + push pipeline state; send only on change (plus an initial
+        snapshot so a fresh client paints immediately)."""
+        q = ctx.bus.subscribe()
+        deriver = _StateDeriver()
+        last = _state_snapshot(deriver)
+        try:
+            await ws.send_json(last)
+            while True:
+                event = await q.get()
+                deriver.feed(event)
+                snap = _state_snapshot(deriver)
+                if snap != last:
+                    await ws.send_json(snap)
+                    last = snap
+        finally:
+            ctx.bus.unsubscribe(q)
+
+    @app.websocket("/ws/state")
+    async def ws_state(ws: WebSocket):
+        await ws.accept()
+        pump = asyncio.create_task(_state_pump(ws))
+        try:
+            while True:
+                await ws.receive_text()  # keepalive pings; content ignored
+        except WebSocketDisconnect:
+            pass
+        finally:
+            pump.cancel()
+
     return app
 
 
@@ -517,6 +714,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         notifier=notifier, memory=memory,
     )
     await scheduler.start()
+    ctx.scheduler = scheduler  # B1: expose upcoming jobs to /api/nodes/{id}/stats
 
     telegram_bot = None
     if config.get("telegram", {}).get("enabled", False):

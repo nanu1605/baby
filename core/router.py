@@ -893,7 +893,8 @@ class CloudRouter:
         self.turn_counts[tier] = self.turn_counts.get(tier, 0) + 1
         if self.bus is not None and tier != "nim_primary":
             self.bus.publish(
-                "status", "router", text=f"router: using {tier} ({reason})"
+                "status", "router", text=f"router: using {tier} ({reason})",
+                source="router", target=f"brain:{tier}",
             )
         self._audit_row(f"route {tier}", reason)
 
@@ -911,7 +912,10 @@ class CloudRouter:
 
     def _note_skip(self, tier: str, detail: str) -> None:
         if self.bus is not None:
-            self.bus.publish("status", "router", text=f"router: {tier} skipped — {detail}")
+            self.bus.publish(
+                "status", "router", text=f"router: {tier} skipped — {detail}",
+                source="router", target=f"brain:{tier}",
+            )
         self._audit_row(f"skip {tier}", detail)
 
     def _audit_row(self, action: str, detail: str) -> None:
