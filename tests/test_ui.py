@@ -53,6 +53,58 @@ def test_index_serves_html(ui):
     assert "text/html" in resp.headers["content-type"]
 
 
+# -- B0: dual-UI flag (v3 shell vs classic rollback) --------------------------
+
+_CLASSIC_MARKER = "/static/app.js"  # only the vanilla ui/web shell references this
+
+
+def _v3_client(tmp_path, monkeypatch, dist_dir, frontend):
+    """A TestClient whose APP_DIST points at `dist_dir` (real npm build not
+    required) with the given ui.frontend flag."""
+    from ui import server as srv
+
+    monkeypatch.setattr(srv, "APP_DIST", dist_dir)
+    db = Database(tmp_path / "dual.db")
+    conv_id = asyncio.run(_connect(db))
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    agent = AgentCore(FakeProvider([]), db, conv_id, channel="ui", bus=bus, gate=gate)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config={"ui": {"frontend": frontend}})
+    return TestClient(srv.create_app(ctx)), db
+
+
+def test_default_frontend_is_classic(ui):
+    client, _, _ = ui  # fixture config has no ui.frontend key
+    assert _CLASSIC_MARKER in client.get("/").text
+
+
+def test_classic_route_always_served(ui):
+    client, _, _ = ui
+    resp = client.get("/classic")
+    assert resp.status_code == 200
+    assert _CLASSIC_MARKER in resp.text
+
+
+def test_v3_frontend_served_when_built(tmp_path, monkeypatch):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id=root>V3-SPA</div>", encoding="utf-8")
+    client, db = _v3_client(tmp_path, monkeypatch, dist, "v3")
+    try:
+        assert "V3-SPA" in client.get("/").text  # SPA served at /
+        assert _CLASSIC_MARKER in client.get("/classic").text  # rollback still works
+    finally:
+        asyncio.run(db.close())
+
+
+def test_v3_flag_falls_back_to_classic_when_unbuilt(tmp_path, monkeypatch):
+    client, db = _v3_client(tmp_path, monkeypatch, tmp_path / "no-dist", "v3")
+    try:
+        assert _CLASSIC_MARKER in client.get("/").text  # graceful fallback, no crash
+    finally:
+        asyncio.run(db.close())
+
+
 def test_stats_shape(ui):
     client, _, _ = ui
     data = client.get("/stats").json()

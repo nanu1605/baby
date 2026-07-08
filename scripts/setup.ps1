@@ -212,6 +212,39 @@ if ($lhmExe) {
     Write-Host "'Minimize to tray', and 'Remote Web Server' (Run, port 8085); run LHM as admin so temps populate." -ForegroundColor Cyan
 }
 
+# --- 3g. v3 "Brain" UI build: Node LTS + Vite build (v3.0.0) ------------------
+# ui/app (React + Vite) builds to static files that FastAPI serves at / when
+# ui.frontend: v3. Node is a BUILD-time dependency only - production serving is
+# static files (no Node at runtime). The classic UI stays at /classic regardless.
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing Node LTS via winget (build-time only)..." -ForegroundColor Yellow
+    try {
+        winget install --id OpenJS.NodeJS.LTS -e `
+            --accept-package-agreements --accept-source-agreements
+        # winget's PATH edit needs a fresh shell; refresh this session's PATH.
+        $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                    [Environment]::GetEnvironmentVariable("Path", "User")
+    } catch {
+        Write-Host "Node install skipped - the v3 UI won't build; classic UI stays at /." -ForegroundColor Yellow
+    }
+}
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    Write-Host "Building the v3 Brain UI (npm ci && npm run build)..." -ForegroundColor Yellow
+    Push-Location ui\app
+    try {
+        npm ci
+        if ($LASTEXITCODE -eq 0) {
+            npm run build
+            Write-Host "v3 UI built. Enable with  ui.frontend: v3  in config.yaml" -ForegroundColor Cyan
+            Write-Host "(rollback: ui.frontend: classic; /classic is always served)." -ForegroundColor Cyan
+        } else {
+            Write-Host "npm ci failed - v3 UI not built; classic UI stays available." -ForegroundColor Yellow
+        }
+    } finally { Pop-Location }
+} else {
+    Write-Host "Node unavailable - skipping v3 UI build. The classic UI works as before." -ForegroundColor Yellow
+}
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"

@@ -22,7 +22,8 @@ from core.bus import EventBus
 from core.safety import SafetyGate
 from db.database import Database
 
-WEB_DIR = Path(__file__).parent / "web"
+WEB_DIR = Path(__file__).parent / "web"  # vanilla UI (always at /classic)
+APP_DIST = Path(__file__).parent / "app" / "dist"  # built v3 SPA (served at / when ui.frontend=v3)
 
 
 class _NoCacheStatic(StaticFiles):
@@ -75,10 +76,32 @@ class UIContext:
 
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
+    # Vanilla UI assets — always mounted so /classic keeps working regardless of
+    # the ui.frontend flag (config-first rollback for the whole v3 branch).
     app.mount("/static", _NoCacheStatic(directory=WEB_DIR), name="static")
+    # v3 built assets (Vite emits absolute /assets/* refs). Present only after
+    # `npm run build`; absent in a source checkout, which is fine — we fall back.
+    if (APP_DIST / "assets").is_dir():
+        app.mount("/assets", _NoCacheStatic(directory=APP_DIST / "assets"), name="assets")
+    if ctx.config.get("ui", {}).get("frontend") == "v3" and not (APP_DIST / "index.html").is_file():
+        logging.getLogger(__name__).warning(
+            "ui.frontend=v3 but ui/app/dist is not built; serving classic UI. "
+            "Build it with: npm --prefix ui/app ci && npm run build"
+        )
+
+    def _v3_ready() -> bool:
+        frontend = ctx.config.get("ui", {}).get("frontend", "classic")
+        return frontend == "v3" and (APP_DIST / "index.html").is_file()
 
     @app.get("/")
     async def index():
+        # The flag picks the shell; /classic below is always reachable.
+        if _v3_ready():
+            return FileResponse(APP_DIST / "index.html")
+        return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/classic")
+    async def classic():
         return FileResponse(WEB_DIR / "index.html")
 
     @app.get("/stats")

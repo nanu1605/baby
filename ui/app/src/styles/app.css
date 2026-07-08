@@ -1,0 +1,133 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  letter-spacing: 0.5px;
+}
+.brand-sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.build-tag {
+  margin-left: var(--sp-2);
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+}
+.classic-link {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 2px 12px;
+  transition: color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.classic-link:hover {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* ---------- stage ---------- */
+.stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(
+      1200px 700px at 50% 38%,
+      rgba(110, 168, 254, 0.06),
+      transparent 70%
+    ),
+    var(--bg);
+}
+
+.hello {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  text-align: center;
+}
+.hello h1 {
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.hello .muted {
+  color: var(--muted);
+  max-width: 30ch;
+  line-height: 1.5;
+}
+
+/* the seed of the B3 status gauge — idle breathing */
+.core-orb {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 45%,
+    var(--accent),
+    var(--accent-dim) 60%,
+    transparent 72%
+  );
+  box-shadow: 0 0 60px 8px rgba(110, 168, 254, 0.25);
+  animation: breathe 4.5s var(--ease) infinite;
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .core-orb {
+    animation: none;
+  }
+}

@@ -581,3 +581,43 @@ Running log of non-obvious choices made during the build. Newest last.
     in the UI since they cost nothing. This stays within the frozen-router rule:
     the only provider-layer change is asking for a field the API already sends
     plus reading it — no router state/ladder/bucket touched.
+
+## v3 — The Brain (2026-07-08)
+
+92. **Ground-truth check vs the v3 spec's §0 (B0)**. The spec's stated "ground
+    truth" was verified against the repo; brain lineup matched (OpenRouter
+    `openai/gpt-4o-mini` primary, NIM `z-ai/glm-5.2` heavy, Gemini
+    `gemini-flash-latest` backstop, local `qwen3.5:9b`), but three claims were
+    stale and shape later phases: (a) the voice pipeline has only
+    `IDLE/LISTENING/RESPONDING` (`voice/pipeline.py:38`) — the spec's
+    `thinking/speaking/executing` do NOT exist, so B1's `/ws/state` must
+    SYNTHESIZE them from bus events, not read them off the pipeline; (b) there is
+    no FTS anywhere and `audit_log` is write-only, so the B5 omnibox is greenfield
+    FTS5 + new read methods; (c) `models/jarvis.onnx` is not on disk — the custom
+    wake word is still deferred (owner Colab step), the loader already handles a
+    model list via `max()`. Also: tool `schemas()` returns all tools unfiltered
+    (`tool_flags` is greenfield for B4), and task-cancel exists in code but is
+    unexposed while scheduler run-now does not exist (both new routes in B4).
+93. **Dual-UI serving, build-on-setup, dist NOT committed (B0)**. `create_app`
+    reads `ui.frontend` (`v3|classic`, default `classic`): `v3` serves the built
+    `ui/app/dist/index.html` at `/` with Vite's `/assets/*` mounted; the vanilla
+    `ui/web` shell is always mounted at `/classic` so the config-first rollback
+    holds for the whole branch. If `ui.frontend: v3` but `dist/` isn't built, `/`
+    falls back to classic with a logged warning (graceful, never a crash). The
+    built `dist/` is gitignored and produced by `scripts/setup.ps1`
+    (`npm ci && npm run build`) rather than committed — build artifacts don't
+    belong in git, and production serving needs no Node (static files only).
+94. **.gitignore anchoring for the Node subproject (B0)**. The existing
+    "graphify wrapper junk" rules (`node_modules/`, `package.json`,
+    `package-lock.json`) were unanchored and would have swallowed
+    `ui/app/package.json` + its lockfile (which MUST be committed for a
+    reproducible pinned build). Root-anchored them (`/node_modules/`,
+    `/package.json`, `/package-lock.json`) and added explicit
+    `ui/app/node_modules/` + `ui/app/dist/` ignores.
+95. **Frontend stack pins (B0)**. React 18.3.1, react-dom 18.3.1, zustand 5.0.2,
+    react-force-graph-2d 1.27.1 (canvas-2D — the GPU belongs to the LLM);
+    build tooling Vite 6.4.3, @vitejs/plugin-react 4.3.4, TypeScript 5.6.3. Vite
+    was bumped from 6.0.7 → 6.4.3 to clear the esbuild dev-server advisory
+    (GHSA-67mh-4wv8-2f99); it is dev-server-only and does not touch the static
+    production build, but the tree is kept at 0 audit vulnerabilities.
+    `package-lock.json` is committed as the true pin.

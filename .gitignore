@@ -29,7 +29,11 @@ graphify-out/
 # Owner voice profile - biometric, never publish
 models/owner_voice.json
 
-# Graphify wrapper junk (not a node project)
-node_modules/
-package.json
-package-lock.json
+# Graphify wrapper junk (not a node project) — root-anchored so ui/app/ is unaffected
+/node_modules/
+/package.json
+/package-lock.json
+
+# v3 frontend (ui/app) — build-on-setup: commit sources + lockfile, ignore installs/builds
+ui/app/node_modules/
+ui/app/dist/
