@@ -11,7 +11,12 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     fs: { allow: [path.resolve(__dirname, ".."), __dirname] },
+    // Tauri writes Rust build output under src-tauri/target; if Vite watches it,
+    // cargo locking build_script_build.exe mid-compile throws EBUSY. Never watch it.
+    watch: { ignored: ["**/src-tauri/**"] },
   },
+  // Keep cargo's compile output visible under `tauri dev`.
+  clearScreen: false,
   build: {
     outDir: "dist",
     emptyOutDir: true,

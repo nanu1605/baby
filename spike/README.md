@@ -90,11 +90,18 @@ scaffolds `ui/shell/`, and deletes `spike/`.
 
 ## Notes / honesty
 
-- **Pre-verified by Claude (no GPU needed):** both renderers typecheck + Vite-build
-  green, the Electron main/preload compile, and the shared scene bundles identically
-  under both shells (~1.14 MB each). **Not** verified here (needs your box): the Tauri
-  Rust compile, and the actual fps/VRAM/bloom on the 5060 Ti — that's the whole point
-  of you running it.
+- **fps is measured at vsync (uncapped).** The scene renders every rAF, so on a
+  144 Hz panel expect ~140 fps, not 60. That's fine and fair: both shells hit the
+  same vsync on the same monitor → apples-to-apples, and p50 well above 60 = headroom.
+  What matters is **p50 vs 60** (headroom) and the **1%-low** (stutter), compared
+  across the two shells.
+- **Verified live by Claude on this box:** the **Tauri** spike runs end-to-end —
+  window opens, WebView2 renders the bloom scene, the 60 s harness writes
+  `result.json` (a quick test run: p50 ~143, 1%-low ~45, no backend so VRAM null).
+  Both renderers also typecheck + Vite-build green and the Electron main/preload
+  compile. **Not** verified here: Electron's live run (its `node_modules` needs the
+  reboot fix), and the real **VRAM/bloom** numbers — start the backend + run it
+  yourself for those.
 - `webSecurity:false` (Electron) and `csp:null` (Tauri) are **spike-only** so the
   renderer can fetch `/stats` cross-origin. The shipped v4 shell will not do this.
 - The scene is a fixed stand-in sized like the real brain graph — **not** the real
