@@ -177,6 +177,50 @@ export interface NodeStats {
   facts?: number;
 }
 
+// -- B5 search omnibox (GET /api/search — grouped FTS/vector results) ---------
+
+export type SearchGroupKey = "facts" | "conversations" | "activity" | "tasks";
+export type SearchItemType = "fact" | "conversation" | "activity" | "task";
+
+/** Every result the server stamps with its anchor `node_id`; `ts` is null for facts. */
+interface SearchItemBase {
+  id: number;
+  snippet: string;
+  ts: string | null;
+  node_id: string;
+}
+export interface FactResult extends SearchItemBase {
+  type: "fact";
+}
+export interface ConversationResult extends SearchItemBase {
+  type: "conversation";
+  conversation_id?: number | null;
+}
+export interface ActivityResult extends SearchItemBase {
+  type: "activity";
+}
+export interface TaskResult extends SearchItemBase {
+  type: "task";
+  status?: string;
+}
+export type SearchItem =
+  | FactResult
+  | ConversationResult
+  | ActivityResult
+  | TaskResult;
+
+export interface SearchGroups {
+  facts: FactResult[];
+  conversations: ConversationResult[];
+  activity: ActivityResult[];
+  tasks: TaskResult[];
+}
+
+export interface SearchResponse {
+  query: string;
+  groups: SearchGroups;
+}
+
 /** One entry in the bounded live-event ring buffer. */
 export interface LiveEvent {
   seq: number;

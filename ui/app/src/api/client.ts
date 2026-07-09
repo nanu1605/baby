@@ -3,7 +3,14 @@
  * reuses every endpoint verbatim). Same-origin in production (dist served by
  * FastAPI); proxied to :8765 in dev (vite.config.ts).
  */
-import type { ChatMessage, GraphData, MemoryFact, NodeStats, Stats } from "../types";
+import type {
+  ChatMessage,
+  GraphData,
+  MemoryFact,
+  NodeStats,
+  SearchResponse,
+  Stats,
+} from "../types";
 
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url);
@@ -47,9 +54,9 @@ export const deleteFact = (id: number) =>
 
 export const wipeMemory = (phrase: string) => postJSON("/memory/wipe", { phrase });
 
-/** Stub for B5's omnibox — endpoint exists (B1), unused in B2. */
+/** B5 omnibox — grouped FTS/vector results (B1 backend stamps each anchor node_id). */
 export const search = (q: string) =>
-  getJSON<unknown>(`/api/search?q=${encodeURIComponent(q)}`);
+  getJSON<SearchResponse>(`/api/search?q=${encodeURIComponent(q)}`);
 
 // -- B4 node inspector + controls --------------------------------------------
 

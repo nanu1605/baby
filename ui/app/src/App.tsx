@@ -11,6 +11,7 @@ import ActivityPanel from "./components/ActivityPanel";
 import ConfirmModal from "./components/ConfirmModal";
 import MemoryDialog from "./components/MemoryDialog";
 import InspectorDrawer from "./components/InspectorDrawer";
+import Omnibox from "./components/Omnibox";
 import Toasts from "./components/Toasts";
 
 /**
@@ -71,6 +72,7 @@ export default function App() {
         )}
       </main>
 
+      <Omnibox />
       <InspectorDrawer />
       <ConfirmModal />
       <MemoryDialog />

@@ -54,6 +54,8 @@ interface BrainState {
   graph: GraphData | null;
   /** B4: the one-turn best-brain boost is armed (mirrors the server one-shot). */
   boostArmed: boolean;
+  /** B5: fact id to best-effort-highlight in the memory panel (search fly-to). */
+  focusFact: number | null;
 
   // chat
   messages: ChatMessage[];
@@ -79,6 +81,7 @@ interface BrainState {
   setGraph: (g: GraphData) => void;
   armBoost: () => void;
   disarmBoost: () => void;
+  setFocusFact: (id: number | null) => void;
 
   // chat reducers
   addUserMessage: (text: string) => void;
@@ -122,6 +125,7 @@ export const useBrain = create<BrainState>((set) => ({
   selectedNode: null,
   graph: null,
   boostArmed: false,
+  focusFact: null,
 
   messages: [],
   activeConfirm: null,
@@ -154,7 +158,13 @@ export const useBrain = create<BrainState>((set) => ({
           : [...st.events, e];
       return { events };
     }),
-  selectNode: (id) => set({ selectedNode: id }),
+  // Selecting anything other than mem_facts drops a pending fact highlight, so a
+  // search-driven focus never leaks onto a later manual open (B5).
+  selectNode: (id) =>
+    set((st) => ({
+      selectedNode: id,
+      focusFact: id === "mem_facts" ? st.focusFact : null,
+    })),
   setGraph: (g) => set({ graph: g }),
   armBoost: () => {
     setBoost(true).catch(() => {});
@@ -164,6 +174,7 @@ export const useBrain = create<BrainState>((set) => ({
     setBoost(false).catch(() => {});
     set({ boostArmed: false });
   },
+  setFocusFact: (id) => set({ focusFact: id }),
 
   addUserMessage: (text) =>
     set((st) => ({ messages: [...st.messages, { role: "user", text }] })),

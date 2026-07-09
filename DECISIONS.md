@@ -748,3 +748,36 @@ Running log of non-obvious choices made during the build. Newest last.
     inspector drawer — mounted as an overlay sibling — can resolve `selectedNode` → node;
     `MemoryPanel` is shared by the dialog and the memory-node drawer; a `#node/<id>`
     deep-link (two-way hash sync) drives selection + camera fly-to, reused by B5 search.
+
+108. **Omnibox reuses the `selectNode` cascade; zero backend change (B5)**. The
+    "Search the brain…" omnibox is pure frontend — the search backend (grouped FTS5 +
+    vector fan-out) shipped whole in B1. Selecting a result is a single
+    `useBrain.selectNode(item.node_id)`, which already drives camera fly-to (`BrainGraph`),
+    the `#node/<id>` hash (`useDeepLink`), and the inspector drawer — so no new focus
+    plumbing. The server stamps every result's anchor `node_id` (fact→`mem_facts`,
+    conversation→`mem_rag`, activity→`tool:<name>`, task→`task_queue`) and exposes no
+    comparable cross-type score (cosine vs bm25), so results are grouped, never globally
+    ranked: fixed group order (Facts → Conversations → Activity → Tasks), server
+    intra-group order preserved. Ordering/flatten/select-map + recents live in the pure,
+    unit-tested `ui/app/src/lib/searchResults.ts`.
+
+109. **Honest select + best-effort highlight; never fabricate a target (B5, owner
+    riders)**. `resultAction` reads only the server-stamped `node_id` — it never invents
+    an anchor — and the omnibox verifies that node exists in the loaded graph before
+    selecting, so a de-registered tool's audit row (missing `tool:<name>`) shows a toast
+    instead of opening a dangling empty drawer. A **fact** result requests a best-effort
+    highlight (`store.focusFact`): `MemoryPanel` rings + scrolls to that fact **only when
+    it's already in the loaded browse list** — un-present facts are not faked. Old **audit**
+    events get no scroll-to: the live-event ring is session-only, so there is no per-node
+    history to scroll to, and B5 adds no new fetch for one (revisit only on real need).
+    `focusFact` auto-clears whenever `selectedNode` moves off `mem_facts`.
+
+110. **Conversation results fly to `mem_rag` + Chat tab, not a fake reload (B5)**. Chat
+    is a single live stream — `/history` returns only the active `conversation_id` and
+    the only conversation control (`POST /conversation/new`) *replaces* it; there is no
+    load-arbitrary-conversation-by-id backend. So a conversation result flies the camera
+    to `mem_rag` and switches the right panel to the Chat tab (showing the real snippet
+    in the result), rather than pretending to reopen that past thread in the live stream.
+    A true read-only conversation viewer (new additive read endpoint + overlay) is parked
+    for a possible post-v3 PR. Recent searches persist in `localStorage`
+    (`baby.recentSearches`); the omnibox is focus-summoned via Ctrl/⌘-K or `/`.

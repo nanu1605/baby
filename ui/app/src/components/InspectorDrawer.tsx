@@ -15,6 +15,7 @@ export default function InspectorDrawer() {
   const selectedNode = useBrain((s) => s.selectedNode);
   const graph = useBrain((s) => s.graph);
   const events = useBrain((s) => s.events);
+  const focusFact = useBrain((s) => s.focusFact);
   const [stats, setStats] = useState<NodeStats | null>(null);
 
   const node = useMemo(
@@ -61,7 +62,13 @@ export default function InspectorDrawer() {
       </div>
       {node?.blurb && <p className="insp-blurb">{node.blurb}</p>}
       <div className="insp-body">
-        <Controls node={node} id={selectedNode} stats={stats} refresh={refresh} />
+        <Controls
+          node={node}
+          id={selectedNode}
+          stats={stats}
+          refresh={refresh}
+          focusFact={focusFact}
+        />
         <RecentEvents events={recent} />
       </div>
     </aside>
@@ -73,11 +80,13 @@ function Controls({
   id,
   stats,
   refresh,
+  focusFact,
 }: {
   node: GraphNode | null;
   id: string;
   stats: NodeStats | null;
   refresh: () => void;
+  focusFact: number | null;
 }) {
   if (id.startsWith("tool:")) return <ToolControls id={id} stats={stats} refresh={refresh} />;
   if (id.startsWith("brain:")) return <BrainControls id={id} stats={stats} />;
@@ -85,7 +94,8 @@ function Controls({
   if (id === "task_queue") return <TaskQueuePanel stats={stats} refresh={refresh} />;
   if (id === "scheduler") return <SchedulerPanel stats={stats} />;
   if (id === "mem_facts" || id === "mem_rag" || id === "mem_summaries")
-    return <MemoryPanel />;
+    // Only facts anchor to mem_facts, so only that node gets the search highlight.
+    return <MemoryPanel highlightId={id === "mem_facts" ? focusFact : null} />;
   if (node?.type === "voice") return <VoicePanel />;
   return <div className="insp-note">No live controls for this node.</div>;
 }

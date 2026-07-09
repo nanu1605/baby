@@ -875,3 +875,126 @@ dialog::backdrop {
   border-color: var(--red);
   color: var(--red);
 }
+
+/* ---------- omnibox: "Search the brain..." (B5) ---------- */
+.omnibox {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 92vw);
+  z-index: 45; /* above the inspector (40), below toasts (50) */
+  font-size: var(--fs-sm);
+}
+.omni-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-2);
+  padding: 8px 14px;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.omni-input-wrap:focus-within {
+  border-color: var(--accent-dim);
+}
+.omni-icon {
+  color: var(--muted);
+  flex: none;
+}
+.omni-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+.omni-input::placeholder {
+  color: var(--faint);
+}
+.omni-clear {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.9rem;
+  flex: none;
+}
+.omni-results {
+  margin-top: var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--sp-2);
+}
+.omni-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 8px 4px;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.omni-recent-head {
+  color: var(--muted);
+}
+.omni-group-count {
+  color: var(--faint);
+  margin-left: auto;
+}
+.omni-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.omni-row.active,
+.omni-row:hover {
+  background: var(--panel-2);
+}
+.omni-row-icon {
+  width: 1.2em;
+  text-align: center;
+  color: var(--muted);
+  flex: none;
+}
+.omni-row-snippet {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.omni-row-ts {
+  color: var(--faint);
+  font-size: var(--fs-xs);
+  flex: none;
+}
+.omni-empty,
+.omni-hint {
+  color: var(--muted);
+  padding: var(--sp-2) var(--sp-3);
+  line-height: 1.5;
+}
+.omni-hint-solo {
+  color: var(--faint);
+}
+
+/* fact reached via search — best-effort highlight in the memory panel (B5) */
+.mem-row.highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  background: var(--panel-3);
+}
