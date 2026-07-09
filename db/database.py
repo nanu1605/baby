@@ -631,6 +631,23 @@ class Database:
             "UPDATE schedules SET last_run = ? WHERE id = ?", (ts, schedule_id)
         )
 
+    # -- tool flags (B4: hide a disabled tool's schema from the model) -----------
+
+    async def set_tool_flag(self, name: str, enabled: bool) -> None:
+        """Enable/disable a tool by name (upsert). Caller validates the name is a
+        real registered tool — the gate is never a tool, so it can't be disabled."""
+        await self._write(
+            "INSERT INTO tool_flags (name, enabled, updated_at)"
+            " VALUES (?, ?, datetime('now'))"
+            " ON CONFLICT(name) DO UPDATE SET enabled = excluded.enabled,"
+            " updated_at = excluded.updated_at",
+            (name, 1 if enabled else 0),
+        )
+
+    async def disabled_tools(self) -> set[str]:
+        rows = await self._fetchall("SELECT name FROM tool_flags WHERE enabled = 0")
+        return {r["name"] for r in rows}
+
     async def get_history(self, conversation_id: int, limit: int = 50) -> list[dict]:
         """User/assistant messages with timestamps, oldest first — UI backfill."""
         rows = await self._fetchall(

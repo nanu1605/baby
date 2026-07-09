@@ -316,3 +316,38 @@ def test_set_voice_verified_toggles_flag():
     assert "voice" in gate.session.unverified_channels
     gate.set_voice_verified("voice", True)
     assert "voice" not in gate.session.unverified_channels
+
+
+# -- B4: tool_flags can never weaken the gate ----------------------------------
+
+
+def test_tool_flags_are_disjoint_from_the_gate():
+    """Disabling a tool hides its schema from the model, but the gate still
+    classifies every call — the disable seam (registry.schemas) and the gate
+    (classify_*) are structurally separate. Dangerous stays dangerous."""
+    from tools import registry
+    from tools.registry import tool
+
+    @tool
+    def _b4_gate_probe(x: str) -> str:
+        """A dummy tool for the immutability test."""
+        return x
+
+    # hidden from the model when disabled...
+    assert any(s["function"]["name"] == "_b4_gate_probe" for s in registry.schemas())
+    assert not any(
+        s["function"]["name"] == "_b4_gate_probe"
+        for s in registry.schemas({"_b4_gate_probe"})
+    )
+    # ...yet the gate's verdicts are unchanged and unbypassable
+    assert classify_shell("Remove-Item C:\\Windows -Recurse -Force").klass is SafetyClass.DENY
+    assert classify_shell("Get-ChildItem").klass is SafetyClass.ALLOW
+
+
+def test_safety_gate_is_not_a_tool_and_cannot_be_flagged():
+    """The safety gate is a subsystem, not a registered tool, so it can never be
+    represented as a tool_flag — 'disabling the gate' is unrepresentable."""
+    from tools import registry
+
+    assert registry.is_registered("safety_gate") is False
+    assert registry.is_registered("router") is False

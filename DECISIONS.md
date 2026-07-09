@@ -715,3 +715,36 @@ Running log of non-obvious choices made during the build. Newest last.
     `graphData.links` (identity match, no id lookup), so BrainGraph builds a
     `from>to → link` map once per topology. Particles are coalesced per edge (≥150ms
     apart → ≤~6/s/edge), so a burst of 50 tool events shows as one visible stream.
+
+105. **tool_flags: additive table, schema-hiding, gate untouched (B4)**. An additive
+    `CREATE TABLE IF NOT EXISTS tool_flags(name, enabled, updated_at)` (auto-creates on
+    connect; no `_migrate`, no backup). `registry.schemas(disabled)` hides a disabled
+    tool from the model; `AgentCore` reads `db.disabled_tools()` once per turn and passes
+    the set at the single `provider.chat` call. This is **structurally disjoint** from
+    the safety gate (`agent.py` `gate.classify` at a separate seam) — a disabled tool is
+    still classified normally, so no flag can ever weaken the gate. The flag **setter
+    rejects any name not in the live registry** (`registry.is_registered`), so the gate
+    (a subsystem node, not a tool) is unrepresentable as a flag. Enforced by
+    `tests/test_safety.py` (the forever-green file) + `tests/test_tool_flags.py`.
+
+106. **Best-brain boost, not a per-tier pin (B4)**. The brain "prefer this brain"
+    control reuses the existing `tier_hint="best"` as a **one-shot** `AgentCore`
+    field, consumed for exactly the next turn — zero router change. Verified precedence:
+    `tier_hint` is #7 in `CloudRouter._ladder`, strictly below every privacy/language
+    force-local pin (677/679/692) and offline/degraded (697/699), with `_redact_pinned`
+    (777) as a second layer — so a boost can never send local-pinned content to the
+    cloud, and a down-cloud boost still degrades to local. Honest placement: the control
+    lives ONLY on the `brain:nim_heavy` drawer + a chat-input ⚡ (a "boost armed" chip
+    with cancel; auto-clears on `turn_end`); other brain drawers are read-only (a
+    per-tier pin doesn't exist). Arming is audited as `explicit_request`. A true
+    per-tier pin is parked for a possible post-v3 PR.
+
+107. **Additive control endpoints + inspector plumbing (B4)**. `POST /api/tools/{name}/
+    flag`, `/api/brain/boost`, `/api/tasks/{id}/cancel` (`WorkerPool.cancel`),
+    `/api/scheduler/{id}/run` (new `Scheduler.run_now` invoking the job's own registered
+    coroutine — the exact cron path) — all non-destructive, plain POST, None-guarded.
+    `/api/nodes/{id}/stats` gained read-only `enabled` (tool) / `pinned_next_turn`
+    (brain). Frontend: the topology is lifted into the zustand store (`graph`) so the
+    inspector drawer — mounted as an overlay sibling — can resolve `selectedNode` → node;
+    `MemoryPanel` is shared by the dialog and the memory-node drawer; a `#node/<id>`
+    deep-link (two-way hash sync) drives selection + camera fly-to, reused by B5 search.

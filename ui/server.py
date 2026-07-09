@@ -159,7 +159,11 @@ def create_app(ctx: UIContext) -> FastAPI:
         provider = ctx.agent.provider
         if node_id.startswith("tool:"):
             name = node_id.split(":", 1)[1]
-            return {"id": node_id, "type": "tool", **(await ctx.db.audit_stats(name))}
+            enabled = name not in await ctx.db.disabled_tools()
+            return {
+                "id": node_id, "type": "tool", "enabled": enabled,
+                **(await ctx.db.audit_stats(name)),
+            }
         if node_id.startswith("brain:"):
             tier = node_id.split(":", 1)[1]
             ranked = sorted((getattr(provider, "latency", None) or {}).get(tier) or [])
@@ -178,6 +182,7 @@ def create_app(ctx: UIContext) -> FastAPI:
                 "turns": (getattr(provider, "turn_counts", None) or {}).get(tier, 0),
                 "current": isinstance(active, dict) and active.get("tier") == tier,
                 "router_state": active.get("state") if isinstance(active, dict) else None,
+                "pinned_next_turn": ctx.agent._tier_hint_once == "best",
             }
         if node_id == "task_queue":
             running = ctx.pool.running_count() if ctx.pool is not None else 0
@@ -396,6 +401,48 @@ def create_app(ctx: UIContext) -> FastAPI:
             return {"error": "game mode needs the cloud-primary router"}
         line = await provider.set_game_mode(bool(body.get("on", False)))
         return {"game_mode": provider.game_mode, "status": line}
+
+    @app.post("/api/tools/{name}/flag")
+    async def tool_flag(name: str, body: dict):
+        # Enable/disable a tool → its schema is (un)hidden from the model next
+        # turn. Reject any name that is not a real registered tool, so the safety
+        # gate (not a tool) can never be "disabled" through this seam.
+        from tools import registry
+
+        if not registry.is_registered(name):
+            return JSONResponse({"error": f"unknown tool: {name}"}, status_code=404)
+        enabled = bool(body.get("enabled", True))
+        await ctx.db.set_tool_flag(name, enabled)
+        return {"name": name, "enabled": enabled}
+
+    @app.post("/api/brain/boost")
+    async def brain_boost(body: dict):
+        # One-shot "prefer the strongest brain next turn" (tier_hint="best"). The
+        # router keeps it subordinate to every privacy/health pin. Arming is
+        # audited as an explicit user request.
+        on = bool(body.get("on", False))
+        ctx.agent._tier_hint_once = "best" if on else None
+        if on:
+            await ctx.db.add_audit(
+                "ui", "brain_boost", "{}", "allow", 1, "explicit_request: boost armed"
+            )
+        return {"armed": on}
+
+    @app.post("/api/tasks/{task_id}/cancel")
+    async def task_cancel(task_id: int):
+        if ctx.pool is None:
+            return JSONResponse({"error": "task queue unavailable"}, status_code=404)
+        cancelled = await ctx.pool.cancel(task_id)
+        return {"cancelled": bool(cancelled)}
+
+    @app.post("/api/scheduler/{job_id}/run")
+    async def scheduler_run(job_id: str):
+        if ctx.scheduler is None:
+            return JSONResponse({"error": "scheduler unavailable"}, status_code=404)
+        ran = await ctx.scheduler.run_now(job_id)
+        if not ran:
+            return JSONResponse({"error": f"unknown job: {job_id}"}, status_code=404)
+        return {"ran": True}
 
     def _report_turn_crash(task: asyncio.Task) -> None:
         if task.cancelled():

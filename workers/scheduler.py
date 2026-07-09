@@ -118,6 +118,17 @@ class Scheduler:
     def jobs(self) -> list:
         return self._scheduler.get_jobs() if self._scheduler else []
 
+    async def run_now(self, job_id: str) -> bool:
+        """Fire a scheduled job immediately (B4 run-now). Invokes the job's own
+        registered coroutine with its own kwargs — the exact cron path, so a
+        schedule row runs through `_fire` and the briefing/reconciler run as they
+        would on their cron. Returns False if no such job."""
+        for job in self.jobs():
+            if job.id == job_id:
+                await job.func(**(job.kwargs or {}))
+                return True
+        return False
+
     def _briefing_prompt(self) -> str:
         city = self.config.get("owner", {}).get("city", "my city")
         include = self.config.get("briefing", {}).get(

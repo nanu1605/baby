@@ -165,6 +165,14 @@ class AgentCore:
         # P5 telemetry: token usage summed across every model call of one turn
         # (main loop rounds + final-answer + next-step). Reset per run_turn.
         self._turn_tokens: dict = {"prompt": 0, "completion": 0, "total": 0}
+        # B4: one-shot "prefer the strongest brain next turn" boost. The UI arms
+        # it (tier_hint="best") between turns; run_turn consumes it for exactly one
+        # turn. The router keeps it subordinate to every privacy/health pin.
+        self._tier_hint_once: str | None = None
+        self._active_hint: str | None = None  # the hint in force for the current turn
+        # B4: tools disabled via tool_flags (read once per turn) — their schemas
+        # are hidden from the model. The safety gate is unaffected.
+        self._disabled_tools: set[str] = set()
 
     def _accrue_tokens(self, usage: dict | None) -> None:
         """Add one generation's reported usage to this turn's running total (P5)."""
@@ -197,6 +205,9 @@ class AgentCore:
             "turn_start", self.channel,
             conversation_id=self.conversation_id, turn_id=turn_id, source="baby_core",
         )
+        # B4: read tool flags + consume the one-shot brain boost for THIS turn.
+        self._disabled_tools = await self.db.disabled_tools()
+        self._active_hint, self._tier_hint_once = self._tier_hint_once, None
         status = "error"
         reply = ""
         try:
@@ -605,8 +616,12 @@ class AgentCore:
         tool_calls: list[ToolCall] = []
         # channel rides along for the router's per-channel first-token timeout
         # (voice falls to local faster than text); plain providers ignore it.
+        opts = {"tier_hint": self._active_hint} if self._active_hint else {}
         async for chunk in self.provider.chat(
-            messages, tools=registry.schemas(), channel=self.channel
+            messages,
+            tools=registry.schemas(self._disabled_tools),
+            channel=self.channel,
+            **opts,
         ):
             if chunk.delta:
                 text_parts.append(chunk.delta)

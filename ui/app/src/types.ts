@@ -133,6 +133,50 @@ export interface Stats {
   };
 }
 
+export interface TaskRow {
+  id: number;
+  title: string;
+  status: string;
+  [k: string]: unknown;
+}
+
+/** Loose union of `/api/nodes/{id}/stats` payloads (fields present per node type). */
+export interface NodeStats {
+  id: string;
+  type: string;
+  // tool
+  enabled?: boolean;
+  calls_today?: number;
+  calls_window?: number;
+  window_days?: number;
+  errors?: number;
+  error_rate?: number;
+  p50_ms?: number | null;
+  p95_ms?: number | null;
+  last_ts?: string | null;
+  // brain
+  latency_ms?: { p50: number | null; p95: number | null };
+  tokens?: {
+    prompt: number;
+    completion: number;
+    total: number;
+    turns?: number;
+    window_days?: number;
+  };
+  turns?: number;
+  current?: boolean;
+  router_state?: string | null;
+  pinned_next_turn?: boolean;
+  // task_queue
+  running?: number;
+  queued?: number;
+  tasks?: TaskRow[];
+  // scheduler
+  jobs?: { id: string; next_run: string }[];
+  // memory
+  facts?: number;
+}
+
 /** One entry in the bounded live-event ring buffer. */
 export interface LiveEvent {
   seq: number;

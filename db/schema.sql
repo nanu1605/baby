@@ -98,6 +98,16 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- B4 tool enable/disable. A disabled tool's schema is hidden from the model so
+-- it stops calling it; the safety gate is unaffected (it classifies every call
+-- regardless — a disjoint path). Rows exist only for tools the owner toggled;
+-- an absent row means enabled (the default).
+CREATE TABLE IF NOT EXISTS tool_flags (
+  name TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- B1 search spine: external-content FTS5 mirrors of messages / tasks / audit_log.
 -- External content stores only the index (no duplicate text); queries join back
 -- to the base row by rowid. For messages the query ALSO joins WHERE status='ok',

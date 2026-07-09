@@ -3,7 +3,7 @@
  * reuses every endpoint verbatim). Same-origin in production (dist served by
  * FastAPI); proxied to :8765 in dev (vite.config.ts).
  */
-import type { ChatMessage, GraphData, MemoryFact, Stats } from "../types";
+import type { ChatMessage, GraphData, MemoryFact, NodeStats, Stats } from "../types";
 
 async function getJSON<T>(url: string): Promise<T> {
   const r = await fetch(url);
@@ -50,3 +50,20 @@ export const wipeMemory = (phrase: string) => postJSON("/memory/wipe", { phrase 
 /** Stub for B5's omnibox — endpoint exists (B1), unused in B2. */
 export const search = (q: string) =>
   getJSON<unknown>(`/api/search?q=${encodeURIComponent(q)}`);
+
+// -- B4 node inspector + controls --------------------------------------------
+
+/** Live per-node stats. `id` may contain a colon (tool:x / brain:y) — a valid
+ *  path segment, sent as-is. */
+export const getNodeStats = (id: string) =>
+  getJSON<NodeStats>(`/api/nodes/${id}/stats`);
+
+export const setToolFlag = (name: string, enabled: boolean) =>
+  postJSON(`/api/tools/${name}/flag`, { enabled });
+
+export const setBoost = (on: boolean) => postJSON("/api/brain/boost", { on });
+
+export const cancelTask = (id: number) => postJSON(`/api/tasks/${id}/cancel`);
+
+export const runSchedule = (jobId: string) =>
+  postJSON(`/api/scheduler/${jobId}/run`);

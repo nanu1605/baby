@@ -47,9 +47,24 @@ def tool(func: Callable) -> Callable:
     return func
 
 
-def schemas() -> list[dict]:
-    """OpenAI-format tool schemas for every registered tool."""
-    return [entry["schema"] for entry in _TOOLS.values()]
+def schemas(disabled: set[str] | None = None) -> list[dict]:
+    """OpenAI-format tool schemas for every registered tool.
+
+    `disabled` (B4) hides those tools from the model so it stops calling them;
+    the schema list is rebuilt each call, so filtering is per-turn-safe. This
+    never touches the safety gate — a hidden tool that is somehow still invoked
+    is classified exactly as before (a disjoint path in core/agent.py)."""
+    return [
+        entry["schema"]
+        for entry in _TOOLS.values()
+        if not (disabled and entry["schema"]["function"]["name"] in disabled)
+    ]
+
+
+def is_registered(name: str) -> bool:
+    """True if `name` is a real registered tool (used to reject bogus tool_flags,
+    e.g. attempts to 'disable' the safety gate, which is not a tool)."""
+    return name in _TOOLS
 
 
 def _finalize(result: object) -> str:

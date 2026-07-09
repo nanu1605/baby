@@ -3,12 +3,14 @@ import { useChatSocket } from "./hooks/useChatSocket";
 import { useActivitySocket } from "./hooks/useActivitySocket";
 import { useStateSocket } from "./hooks/useStateSocket";
 import { useStats } from "./hooks/useStats";
+import { useDeepLink } from "./hooks/useDeepLink";
 import Header from "./components/Header";
 import BrainGraph from "./components/BrainGraph";
 import ChatPanel from "./components/ChatPanel";
 import ActivityPanel from "./components/ActivityPanel";
 import ConfirmModal from "./components/ConfirmModal";
 import MemoryDialog from "./components/MemoryDialog";
+import InspectorDrawer from "./components/InspectorDrawer";
 import Toasts from "./components/Toasts";
 
 /**
@@ -21,6 +23,7 @@ export default function App() {
   useActivitySocket();
   useStateSocket();
   useStats();
+  useDeepLink();
 
   const tab = useBrain((s) => s.rightTab);
   const collapsed = useBrain((s) => s.rightCollapsed);
@@ -68,6 +71,7 @@ export default function App() {
         )}
       </main>
 
+      <InspectorDrawer />
       <ConfirmModal />
       <MemoryDialog />
       <Toasts />

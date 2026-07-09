@@ -101,7 +101,12 @@ export default function BrainGraph() {
   const isLowPower = () => perfRef.current || reducedRef.current;
 
   useEffect(() => {
-    getGraph().then(setRaw).catch(() => setRaw({ nodes: [], edges: [] }));
+    getGraph()
+      .then((g) => {
+        setRaw(g);
+        useBrain.getState().setGraph(g); // lift topology for the inspector drawer
+      })
+      .catch(() => setRaw({ nodes: [], edges: [] }));
   }, []);
 
   const data = useMemo(() => {
@@ -155,6 +160,20 @@ export default function BrainGraph() {
     const id = setTimeout(() => { fgRef.current?.zoomToFit(300, 50); bump(); }, 60);
     return () => clearTimeout(id);
   }, [size.w, size.h, data]);
+
+  // Fly the camera to the selected node (graph click, drawer, deep-link, search).
+  useEffect(() => {
+    if (!selected) return;
+    const n = (data.nodes as { id: string; x?: number; y?: number }[]).find(
+      (x) => x.id === selected,
+    );
+    if (!n || typeof n.x !== "number" || typeof n.y !== "number") return;
+    const fg = fgRef.current;
+    if (!fg) return;
+    fg.centerAt(n.x, n.y, 600);
+    if ((fg.zoom?.() ?? 1) < 2) fg.zoom(2.2, 600);
+    bump();
+  }, [selected]);
 
   // The self-owned render clock: 60fps active / ~22fps idle / off in low-power-idle.
   const clockStarted = useRef(false);

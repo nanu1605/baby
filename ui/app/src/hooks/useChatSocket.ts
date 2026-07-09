@@ -45,6 +45,8 @@ export function useChatSocket(): void {
           });
           // The authoritative authoring brain → live recolor (backstop→cloud).
           b.setActiveBrain(remapBrainId(brain?.tier) ?? null);
+          // The one-turn boost is consumed server-side; clear its chip.
+          if (useBrain.getState().boostArmed) useBrain.setState({ boostArmed: false });
           break;
         case "busy":
           b.addSystemNote(

@@ -3,6 +3,7 @@ import type {
   Brain,
   ChatMessage,
   ConfirmReq,
+  GraphData,
   LiveEvent,
   PipelineState,
   RouterHealth,
@@ -10,6 +11,7 @@ import type {
   Toast,
   Tokens,
 } from "./types";
+import { setBoost } from "./api/client";
 
 /**
  * The single v3 store (spec §3). B0 defined the shell fields; B2 adds the chat
@@ -48,6 +50,10 @@ interface BrainState {
   performanceMode: boolean;
   events: LiveEvent[];
   selectedNode: string | null;
+  /** Full topology, lifted from BrainGraph so the inspector drawer can resolve ids. */
+  graph: GraphData | null;
+  /** B4: the one-turn best-brain boost is armed (mirrors the server one-shot). */
+  boostArmed: boolean;
 
   // chat
   messages: ChatMessage[];
@@ -70,6 +76,9 @@ interface BrainState {
   togglePerformanceMode: () => void;
   pushEvent: (e: LiveEvent) => void;
   selectNode: (id: string | null) => void;
+  setGraph: (g: GraphData) => void;
+  armBoost: () => void;
+  disarmBoost: () => void;
 
   // chat reducers
   addUserMessage: (text: string) => void;
@@ -111,6 +120,8 @@ export const useBrain = create<BrainState>((set) => ({
   performanceMode: loadPerfMode(),
   events: [],
   selectedNode: null,
+  graph: null,
+  boostArmed: false,
 
   messages: [],
   activeConfirm: null,
@@ -144,6 +155,15 @@ export const useBrain = create<BrainState>((set) => ({
       return { events };
     }),
   selectNode: (id) => set({ selectedNode: id }),
+  setGraph: (g) => set({ graph: g }),
+  armBoost: () => {
+    setBoost(true).catch(() => {});
+    set({ boostArmed: true });
+  },
+  disarmBoost: () => {
+    setBoost(false).catch(() => {});
+    set({ boostArmed: false });
+  },
 
   addUserMessage: (text) =>
     set((st) => ({ messages: [...st.messages, { role: "user", text }] })),
