@@ -648,6 +648,41 @@ class Database:
         rows = await self._fetchall("SELECT name FROM tool_flags WHERE enabled = 0")
         return {r["name"] for r in rows}
 
+    # -- speaker profiles (B6: multi-centroid voice verification v2) --------------
+
+    async def add_speaker_centroid(
+        self, label: str, model: str, dim: int, centroid: bytes, kind: str | None = None
+    ) -> int:
+        """Store one enrolment centroid (struct.pack float32 blob). A profile is the
+        SET of rows sharing (label, model); verify scores an utterance by max-cosine
+        over them. Additive-only — never mutates an existing row."""
+        return await self._write(
+            "INSERT INTO speaker_profiles (label, model, dim, centroid, kind)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (label, model, int(dim), centroid, kind),
+        )
+
+    async def speaker_centroids(self, label: str, model: str) -> list[dict]:
+        """Every centroid for one (label, model), newest first. Model-scoped so a
+        CAM++ profile is never handed to a TitaNet extractor."""
+        rows = await self._fetchall(
+            "SELECT id, dim, centroid, kind, created_at FROM speaker_profiles"
+            " WHERE label = ? AND model = ? ORDER BY id DESC",
+            (label, model),
+        )
+        return [dict(r) for r in rows]
+
+    async def clear_speaker_profile(self, label: str, model: str | None = None) -> None:
+        """Drop a profile before a fresh (non-append) enrolment. model=None wipes
+        every model's centroids for the label."""
+        if model is None:
+            await self._write("DELETE FROM speaker_profiles WHERE label = ?", (label,))
+            return
+        await self._write(
+            "DELETE FROM speaker_profiles WHERE label = ? AND model = ?",
+            (label, model),
+        )
+
     async def get_history(self, conversation_id: int, limit: int = 50) -> list[dict]:
         """User/assistant messages with timestamps, oldest first — UI backfill."""
         rows = await self._fetchall(

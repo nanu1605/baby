@@ -179,7 +179,27 @@ if (-not (Test-Path $spkModel)) {
 } else {
     Write-Host "Speaker verification model: OK"
 }
-Write-Host "Enroll your voice (one-time, ~2 min):  uv run python scripts\enroll_voice.py"
+# B6 speaker-verify v2 bench candidates (~143 MB, one-time). All fail-soft — a
+# missing model just drops out of the bench; the B7 FAR/FRR report picks the
+# winner. sherpa-onnx / ONNX runtime only (no torch).
+$spkBase = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models"
+$spkBench = @(
+    "3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",   # ERes2Net (en), 25 MB
+    "nemo_en_titanet_large.onnx",                          # TitaNet-large (ECAPA-family), 96 MB
+    "nemo_en_speakerverification_speakernet.onnx"          # SpeakerNet (ECAPA-family, light), 22 MB
+)
+foreach ($m in $spkBench) {
+    $dest = "models\$m"
+    if (-not (Test-Path $dest)) {
+        Write-Host "Downloading speaker bench model $m..." -ForegroundColor Yellow
+        try {
+            Invoke-WebRequest "$spkBase/$m" -OutFile $dest -TimeoutSec 600
+        } catch {
+            Write-Host "  $m download failed - it drops out of the speaker bench." -ForegroundColor Yellow
+        }
+    }
+}
+Write-Host "Enroll your voice v2 (guided, ~90s):  uv run python scripts\enroll_voice_v2.py"
 
 # --- 3f. Hardware sensors: LibreHardwareMonitor (P1) ---------------------------
 # Windows exposes no CPU temperature to psutil (that API is Linux-only), so Baby

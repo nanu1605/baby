@@ -296,7 +296,14 @@ def create_app(ctx: UIContext) -> FastAPI:
             data["vision"] = screen_cfg.get("model") or "daily multimodal"
         if ctx.voice is not None:
             verifier = getattr(ctx.voice, "verifier", None)
-            data["speaker_verify"] = getattr(verifier, "note", "off") if verifier else "off"
+            note = getattr(verifier, "note", "off") if verifier else "off"
+            # B6: append the live session-trust tier + smoothed score when on.
+            trust = getattr(ctx.voice, "session_trust", None)
+            if trust is not None and getattr(verifier, "enabled", False):
+                note += f" · trust {trust.tier}"
+                if trust.smoothed is not None:
+                    note += f" ({trust.smoothed:.2f})"
+            data["speaker_verify"] = note
         # P5 token telemetry: session (since boot) + today totals, per-brain split.
         since = ctx.session_start or await ctx.db.now()
         data["tokens"] = {

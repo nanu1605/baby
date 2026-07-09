@@ -781,3 +781,45 @@ Running log of non-obvious choices made during the build. Newest last.
     A true read-only conversation viewer (new additive read endpoint + overlay) is parked
     for a possible post-v3 PR. Recent searches persist in `localStorage`
     (`baby.recentSearches`); the omnibox is focus-summoned via Ctrl/⌘-K or `/`.
+
+111. **Speaker-verify v2 stays on sherpa-onnx (no torch); TitaNet-large is the
+    ECAPA-lineage bench candidate (B6)**. v1's CAM++ false-rejected natural speech —
+    the hypothesis is method, not model. The bench re-tests the incumbent CAM++
+    (`wespeaker_en_voxceleb_CAM++.onnx`) against ERes2Net-en
+    (`3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx`) and TitaNet-large
+    (`nemo_en_titanet_large.onnx`), plus SpeakerNet
+    (`nemo_en_speakerverification_speakernet.onnx`) as a near-zero-cost 4th. There is
+    no ready SpeechBrain-ECAPA ONNX in the sherpa-onnx release and a real export needs
+    torch/Colab (rejected), so TitaNet (NeMo, ECAPA-lineage) stands in for "an ECAPA
+    export". `setup.ps1` downloads all candidates fail-soft (~143 MB, bench-only). The
+    B7 FAR/FRR report (`scripts/speaker_report.py`) picks the winner → set in config.
+
+112. **The 3-tier trust ladder collapses to the existing binary gate flag — zero
+    safety-gate logic change (B6)**. The gate exposes one binary signal
+    (`SafetySession.unverified_channels`: in-set → blanket DENY = chat-only; absent →
+    normal). Frozen-ground forbids adding gate logic and the spec says "feed-only", so
+    the voice layer computes the tier and writes the same
+    `SafetyGate.set_voice_verified(channel, bool)`: **trusted** and **uncertain** →
+    `True` (allow-through; CONFIRM/DENY still hit the on-screen modal, voice-yes already
+    rejected — Decision #46), **unknown** → `False` (chat-only). Tier is display-only
+    (surfaced on the `speaker_verify` node). Trust is a `SessionTrust` smoother
+    (optimistic-demote): a fresh non-PTT session starts TRUSTED and drops to UNKNOWN
+    only when the smoothed score stays ≤ reject for `demote_after` utterances — no
+    single shaky utterance locks the owner out (v1's failure). PTT still auto-trusts;
+    "baby stop" is checked before verification so it never depends on trust. A profile
+    is now a SET of centroids (`speaker_profiles` table, one row per mic-position/
+    session, `struct.pack` float32 BLOB) scored by MAX cosine — robust to distance/
+    energy variance; single-mean is the 1-centroid case. Load is DB-centroids-first with
+    the v1 `owner_voice.json` mean as fallback, so every existing test + v1 enrolment
+    still works.
+
+113. **`mode: observe` + additive per-utterance audit logging feed the B7 soak (B6)**.
+    A third mode `observe` (alongside `chat_only`/`ignore`) scores + logs every utterance
+    but never enforces — the B7 3-day soak runs mechanism-on / gate-off to collect
+    `(score, tier, decision, model)` as `add_audit("speaker_verify", …)` rows (mirroring
+    the router's overloaded audit pattern; v1 logged nothing). `speaker_report.py` reads
+    them back per model and computes FAR/FRR from time-windowed ground truth (owner
+    window vs an optional non-owner window). B6 ships `enabled: false`; B7 flips it on
+    only if owner FRR ≤ 2% AND 0 non-owner accepted — shipping OFF with findings is an
+    acceptable outcome. Wake-word (`models/jarvis.onnx`) remains an owner Colab item;
+    `wakeword_models: []` + the list-loader already support it with no code change.

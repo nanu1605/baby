@@ -152,3 +152,19 @@ CREATE TRIGGER IF NOT EXISTS audit_ad AFTER DELETE ON audit_log BEGIN
   INSERT INTO audit_fts(audit_fts, rowid, tool, args, result_summary)
     VALUES('delete', old.id, old.tool, old.args, old.result_summary);
 END;
+
+-- B6 speaker verification v2: multi-centroid voice profiles. One row per centroid
+-- (an enrollment segment / mic position / session), so a profile is a SET of
+-- centroids scored by max-cosine — robust to the distance/energy variance that
+-- single-mean v1 false-rejected. model+dim tie a centroid to its extractor (a CAM++
+-- centroid can't be scored by a TitaNet extractor). Additive; no _migrate entry
+-- (CREATE TABLE IF NOT EXISTS handles it), no backup step.
+CREATE TABLE IF NOT EXISTS speaker_profiles (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL DEFAULT 'owner',
+  model TEXT NOT NULL,                 -- onnx filename the centroid was embedded with
+  dim INTEGER NOT NULL,
+  centroid BLOB NOT NULL,              -- struct.pack float32, mirror memory/store._pack
+  kind TEXT,                           -- near | normal | far | turned | session2 ...
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
