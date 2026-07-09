@@ -15,6 +15,7 @@ export default function Header() {
   const router = useBrain((s) => s.router);
   const gameMode = useBrain((s) => s.gameMode);
   const performanceMode = useBrain((s) => s.performanceMode);
+  const renderTier = useBrain((s) => s.renderTier);
   const ws = useBrain((s) => s.ws);
 
   // All three sockets up ⇒ healthy. Otherwise show an honest pill: "connecting…"
@@ -45,6 +46,15 @@ export default function Header() {
       </span>
 
       <span className={`state-chip ${pipeline}`}>{pipeline}</span>
+
+      {renderTier !== "full3d" && (
+        <span
+          className={`tier-chip tier-${renderTier}`}
+          title="frame governor: 3D quality tier — demotes to hold 60 fps and free VRAM for the local model"
+        >
+          ⚙ {renderTier}
+        </span>
+      )}
 
       <div className="gauges">
         <Gauge label="cpu" percent={stats?.cpu_percent} />

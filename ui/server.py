@@ -50,6 +50,46 @@ _ACTIVITY_KINDS = {
     "project_done",
 }
 
+# V2 frame governor: VRAM is pushed onto /ws/state so the client-side watchdog can
+# demote 3D when the local model loads (spec §0.4 additive field). Both knobs below
+# keep it cheap: sample pynvml at most every _VRAM_SAMPLE_S, and quantize so the
+# exact-equality diff on the pump (_state_pump) does not fire on every wiggle.
+_VRAM_SAMPLE_S = 1.5
+_STATE_TICK_S = 1.5
+_VRAM_BUCKET_GB = 0.25
+
+
+def _quantize_vram(used_gb: float, bucket: float = _VRAM_BUCKET_GB) -> float:
+    """Bucket VRAM to `bucket` GB so /ws/state's exact-equality diff stays quiet at
+    idle and only fires when usage crosses a bucket (e.g. the local 9B loading)."""
+    return round(round(used_gb / bucket) * bucket, 2)
+
+
+_DEFAULT_RENDER = {"target_fps": 60, "tier": "auto", "idle_full_on_desktop": True}
+
+
+def _render_config(config: dict) -> dict:
+    """Additive render.* config for the V2 frame governor, code-defaulted. Read the
+    same way as ui.frontend; never requires a config.yaml edit."""
+    raw = config.get("render") if isinstance(config, dict) else None
+    r = raw if isinstance(raw, dict) else {}
+
+    def _as_int(v, default: int) -> int:
+        # A malformed value (e.g. target_fps: "60fps") must degrade to the default,
+        # never 500 the whole /stats payload.
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "target_fps": _as_int(r.get("target_fps"), _DEFAULT_RENDER["target_fps"]),
+        "tier": str(r.get("tier", _DEFAULT_RENDER["tier"])),
+        "idle_full_on_desktop": bool(
+            r.get("idle_full_on_desktop", _DEFAULT_RENDER["idle_full_on_desktop"])
+        ),
+    }
+
 
 class _StateDeriver:
     """Fold the bus event stream into a single pipeline state for the gauge (B1c).
@@ -269,6 +309,7 @@ def create_app(ctx: UIContext) -> FastAPI:
         data = await asyncio.to_thread(snapshot)
         data["model"] = ctx.config.get("models", {}).get("daily", {}).get("model", "?")
         data["turn_running"] = ctx.turn_running()
+        data["render"] = _render_config(ctx.config)  # V2 governor knobs (code-defaulted)
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
@@ -528,6 +569,34 @@ def create_app(ctx: UIContext) -> FastAPI:
         finally:
             pump.cancel()
 
+    _vram_cache: dict = {"used": None, "total": None, "task": None}
+
+    def _read_gpu():
+        try:
+            from tools.system_stats import _gpu
+
+            return _gpu()
+        except Exception:  # noqa: BLE001 — no GPU is not an error
+            return None
+
+    async def _vram_sampler() -> None:
+        # One shared, throttled sampler for all /ws/state clients. The pynvml read
+        # runs OFF the event loop (like /stats' snapshot) so a wedged NVIDIA driver
+        # can never stall the single loop; _state_snapshot only reads the cache.
+        while True:
+            gpu = await asyncio.to_thread(_read_gpu)
+            if gpu:
+                _vram_cache["used"] = _quantize_vram(gpu["vram_used_gb"])
+                _vram_cache["total"] = gpu["vram_total_gb"]
+            else:
+                _vram_cache["used"] = None
+                _vram_cache["total"] = None
+            await asyncio.sleep(_VRAM_SAMPLE_S)
+
+    def _ensure_vram_sampler() -> None:
+        if _vram_cache["task"] is None:
+            _vram_cache["task"] = asyncio.ensure_future(_vram_sampler())
+
     def _state_snapshot(deriver: _StateDeriver) -> dict:
         # Pipeline state comes from the event stream (deriver); router health +
         # game mode are read live off the provider each time (they change without
@@ -535,29 +604,45 @@ def create_app(ctx: UIContext) -> FastAPI:
         provider = ctx.agent.provider
         active = getattr(provider, "active", None) or {}
         router = active.get("state") if isinstance(active, dict) else None
-        return {
+        snap = {
             "type": "state",
             "state": deriver.state,
             "router": router or "unknown",
             "game_mode": bool(getattr(provider, "game_mode", False)),
         }
+        used = _vram_cache["used"]
+        if used is not None:
+            snap["vram_used_gb"] = used
+            snap["vram_total_gb"] = _vram_cache["total"]
+        return snap
 
     async def _state_pump(ws: WebSocket) -> None:
         """Synthesize + push pipeline state; send only on change (plus an initial
-        snapshot so a fresh client paints immediately)."""
+        snapshot so a fresh client paints immediately). A periodic tick re-evaluates
+        even without a bus event so a VRAM-bucket change still reaches the client
+        (the governor's watchdog needs it while the pipeline is otherwise idle)."""
+        _ensure_vram_sampler()  # shared, lazy-started on the first /ws/state client
         q = ctx.bus.subscribe()
         deriver = _StateDeriver()
         last = _state_snapshot(deriver)
+        get_task = asyncio.ensure_future(q.get())
         try:
             await ws.send_json(last)
             while True:
-                event = await q.get()
-                deriver.feed(event)
+                tick = asyncio.ensure_future(asyncio.sleep(_STATE_TICK_S))
+                done, _ = await asyncio.wait(
+                    {get_task, tick}, return_when=asyncio.FIRST_COMPLETED
+                )
+                tick.cancel()
+                if get_task in done:
+                    deriver.feed(get_task.result())
+                    get_task = asyncio.ensure_future(q.get())  # re-arm; never lose an event
                 snap = _state_snapshot(deriver)
                 if snap != last:
                     await ws.send_json(snap)
                     last = snap
         finally:
+            get_task.cancel()
             ctx.bus.unsubscribe(q)
 
     @app.websocket("/ws/state")

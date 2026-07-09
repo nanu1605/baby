@@ -123,6 +123,22 @@ body {
   border-color: var(--state-executing);
 }
 
+/* V2 frame-governor tier chip — only rendered while demoted (lite3d / 2d). */
+.tier-chip {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  white-space: nowrap;
+}
+.tier-chip.tier-2d {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 /* gauges */
 .gauges {
   display: flex;

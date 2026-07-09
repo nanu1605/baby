@@ -117,6 +117,8 @@ export interface Stats {
   router?: { state?: string } | null;
   game_mode?: boolean;
   turn_running?: boolean;
+  /** V2 frame governor knobs (code-defaulted server-side). */
+  render?: { target_fps: number; tier: string; idle_full_on_desktop: boolean };
   tokens?: {
     session: {
       prompt: number;

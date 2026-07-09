@@ -964,3 +964,31 @@ Running log of non-obvious choices made during the build. Newest last.
       (which attaches). Keeping them separate is what makes "close the app ≠ stop the
       service" true. `-Remove` drops both; stopping the service stays an explicit,
       documented action, never an app menu item or an HTTP endpoint.
+
+123. **v4 frame governor: the 60 fps safety net, built before the 3D cliff (V2).**
+    Three pure, unit-tested TS modules under `ui/app/src/graph/governor/` form the
+    spine the V3 sphere + V4 motion ride on, and are testable now against the 2D
+    graph:
+    - **fixedTimestep** — a fixed-timestep accumulator: a frame advances real time,
+      runs as many FIXED sim steps as fit (clamped, so a backgrounded tab never
+      spirals trying to catch up), and exposes an interpolation alpha. This is the
+      30-vs-60 fps motion identity — the same sim rate regardless of paint rate.
+    - **tierMachine** — full3d → lite3d → 2d with hysteresis mirroring the router's
+      demote-fast / recover-slow shape: a short sustained pressure demotes (protect
+      the frame budget), promotion needs a long calm (no flapping). A lowered config
+      ceiling snaps down immediately; 2d is the floor.
+    - **vramWatchdog** — the collision-window enforcer of law #118: reads the VRAM
+      signal and fires when the local model is resident (used ≥ 80% of total, or free
+      ≤ 1.5 GB). Fail-open — no NVML → no pressure → the full experience.
+    `useGovernor` wires them to one rAF loop (frame pressure OR VRAM pressure → step
+    the tier machine → publish the tier), honoring the ⚡ performance opt-in as a
+    ceiling cap; a spurious multi-hundred-ms stall (tab resume) is ignored so it
+    cannot demote on a single spike. The ONLY backend touch is additive and squarely
+    inside spec §0.4: VRAM is pushed on **/ws/state**, QUANTIZED to 0.25 GB buckets so
+    the pump's exact-equality diff stays quiet at idle and fires only when usage
+    crosses a bucket (the 9B loading), plus a periodic tick on the pump so an
+    idle-time VRAM change still reaches the client. Additive `render.{target_fps,
+    tier, idle_full_on_desktop}` config, code-defaulted, exposed on /stats. A small
+    header tier chip surfaces a demote so it is observable in V2 — the 2D graph looks
+    the same at any tier, so the visible payoff is V3; V2 is the safety net that lands
+    first, on purpose.

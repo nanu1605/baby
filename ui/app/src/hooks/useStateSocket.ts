@@ -27,6 +27,10 @@ export function useStateSocket(): void {
       }
       if (typeof msg.router === "string") b.setRouter(normRouter(msg.router));
       if (typeof msg.game_mode === "boolean") b.setGameMode(msg.game_mode);
+      // V2: the additive throttled VRAM signal drives the governor's watchdog.
+      if (typeof msg.vram_used_gb === "number" && typeof msg.vram_total_gb === "number") {
+        b.setVram({ usedGb: msg.vram_used_gb, totalGb: msg.vram_total_gb });
+      }
     }, (up) => useBrain.getState().setWsStatus("state", up));
     return () => sock.close();
   }, []);

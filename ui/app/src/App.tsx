@@ -4,6 +4,7 @@ import { useActivitySocket } from "./hooks/useActivitySocket";
 import { useStateSocket } from "./hooks/useStateSocket";
 import { useStats } from "./hooks/useStats";
 import { useDeepLink } from "./hooks/useDeepLink";
+import { useGovernor } from "./graph/governor/useGovernor";
 import Header from "./components/Header";
 import BrainGraph from "./components/BrainGraph";
 import ChatPanel from "./components/ChatPanel";
@@ -25,6 +26,7 @@ export default function App() {
   useStateSocket();
   useStats();
   useDeepLink();
+  useGovernor();
 
   const tab = useBrain((s) => s.rightTab);
   const collapsed = useBrain((s) => s.rightCollapsed);

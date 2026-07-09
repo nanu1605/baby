@@ -12,6 +12,8 @@ import type {
   Tokens,
 } from "./types";
 import { setBoost } from "./api/client";
+import type { Tier } from "./graph/governor/tierMachine";
+import type { VramSignal } from "./graph/governor/vramWatchdog";
 
 /**
  * The single v3 store (spec §3). B0 defined the shell fields; B2 adds the chat
@@ -73,6 +75,14 @@ interface BrainState {
   activeBrain: string | null;
   /** B3 perf opt-in: stop the render clock when quiet, no particles, static core. */
   performanceMode: boolean;
+  /** V2 frame governor: VRAM signal off /ws/state (null = no NVML / not seen yet). */
+  vram: VramSignal | null;
+  /** V2 governor: current quality tier (full3d → lite3d → 2d floor). */
+  renderTier: Tier;
+  /** V2 governor: config ceiling from render.tier ("auto" → full3d). */
+  renderCeiling: Tier;
+  /** V2 governor: target fps from render.target_fps (default 60). */
+  targetFps: number;
   events: LiveEvent[];
   selectedNode: string | null;
   /** Full topology, lifted from BrainGraph so the inspector drawer can resolve ids. */
@@ -101,6 +111,10 @@ interface BrainState {
   setGameMode: (on: boolean) => void;
   setActiveBrain: (id: string | null) => void;
   togglePerformanceMode: () => void;
+  setVram: (v: VramSignal | null) => void;
+  setRenderTier: (t: Tier) => void;
+  setRenderCeiling: (t: Tier) => void;
+  setTargetFps: (fps: number) => void;
   pushEvent: (e: LiveEvent) => void;
   selectNode: (id: string | null) => void;
   setGraph: (g: GraphData) => void;
@@ -148,6 +162,10 @@ export const useBrain = create<BrainState>((set) => ({
   gameMode: false,
   activeBrain: null,
   performanceMode: loadPerfMode(),
+  vram: null,
+  renderTier: "full3d",
+  renderCeiling: "full3d",
+  targetFps: 60,
   events: [],
   selectedNode: null,
   graph: null,
@@ -178,6 +196,10 @@ export const useBrain = create<BrainState>((set) => ({
       }
       return { performanceMode: next };
     }),
+  setVram: (v) => set({ vram: v }),
+  setRenderTier: (t) => set((st) => (st.renderTier === t ? {} : { renderTier: t })),
+  setRenderCeiling: (t) => set((st) => (st.renderCeiling === t ? {} : { renderCeiling: t })),
+  setTargetFps: (fps) => set((st) => (st.targetFps === fps ? {} : { targetFps: fps })),
   pushEvent: (e) =>
     set((st) => {
       const events =

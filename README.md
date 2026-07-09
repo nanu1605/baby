@@ -237,6 +237,11 @@ ui:
   brain: 2d             # 2d (default) = the v3 canvas graph; 3d = the WebGL neural
                         # sphere (lands in V3). Non-bricking either way.
 
+render:                 # v4 frame governor (V2), all code-defaulted
+  target_fps: 60        # the frame budget the governor protects
+  tier: auto            # auto = full3d ceiling; lite3d / 2d cap the quality lower
+  idle_full_on_desktop: true
+
 voice:
   speaker_verify:
     enabled: false      # v2 ships OFF; flip on only if the FAR/FRR report clears
