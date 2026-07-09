@@ -575,6 +575,13 @@ def create_app(ctx: UIContext) -> FastAPI:
     return app
 
 
+def _shell_owns_tray(config: dict) -> bool:
+    """When ui.shell: native, the v4 desktop shell owns the system tray, so the
+    backend skips its own pystray icon to avoid a double tray (V1 reconciliation).
+    Additive config read — code-defaults to "browser"; changes no product logic."""
+    return str(config.get("ui", {}).get("shell", "browser")).strip().lower() == "native"
+
+
 def _toast(title: str, message: str) -> None:
     try:
         from winotify import Notification
@@ -796,7 +803,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             print("telegram failed to start — continuing without it")
 
     tray = None
-    if config.get("tray", {}).get("enabled", True):
+    if config.get("tray", {}).get("enabled", True) and not _shell_owns_tray(config):
         from ui.tray import TrayIcon
 
         loop = asyncio.get_running_loop()

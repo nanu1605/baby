@@ -8,14 +8,15 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-# V0 keeps the dependency + capability surface minimal. The tray "tray-icon"
-# feature and any process-spawn plumbing are added in V1 when their seams are wired
-# (see src/main.rs). Backend spawn will be Rust-side std::process::Command, so no
-# shell plugin / webview capability is ever exposed.
-tauri = { version = "2", features = [] }
+# tray-icon: the native status tray. image-png: load the bundled status dots from
+# PNG bytes. Backend spawn is Rust-side std::process::Command (no shell plugin, no
+# webview capability exposed); the tray status socket is a blocking tungstenite
+# client on its own thread (plain ws://, no TLS).
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tungstenite = "0.24"
 
 [profile.release]
 opt-level = "s"

@@ -933,3 +933,34 @@ Running log of non-obvious choices made during the build. Newest last.
     against the real 3D sphere in V3, where `ui.shell`/`ui.brain` rollback plus the
     cheap shell-swap keep the choice reversible. The `spike/` folder is deleted; the
     winner is scaffolded at `ui/shell/`.
+
+122. **v4 native shell parity — how it attaches, trays, and quits (V1).** The shell
+    is pure native chrome; V1 wires the Docker-Desktop lifecycle with zero product
+    logic and exactly one additive backend read.
+    - **Readiness = a reachable TCP :8765**, not an HTTP health check. uvicorn binds
+      only after `ready_check` loads the model (ui/server.py), so a connectable port
+      already means "model up" — the shell needs no `/stats` parsing and no health
+      endpoint (there is none; frozen ground stays intact).
+    - **Attach-or-spawn.** The shell probes :8765; if up it ATTACHES; else it SPAWNS
+      `pythonw run.py --all` (detached, no console) from `BABY_HOME` — the env var, or
+      the first ancestor of the exe that contains `run.py` + `.venv` (true in dev). An
+      installed shell with no repo shows a "start the backend" splash instead of
+      guessing. It records whether it was the spawner. In autostart native mode the "Baby Shell" task launches with `--attach-only`, so the shell WAITS for the always-on service to bind and never spawns a duplicate — the two logon tasks cannot race two backends and the service always persists.
+    - **Quit kills only what it spawned (#120).** "Quit Baby (app)" closes the window
+      and kills a shell-spawned backend; an attached always-on service is left
+      running. The window X hides to tray (close-to-tray); only the tray item quits.
+      No `POST /shutdown`, no remote HTTP shutdown of any kind.
+    - **Tray reconciliation.** When `ui.shell: native` the backend skips its pystray
+      tray (additive `_shell_owns_tray` read at ui/server.py) and the shell owns the
+      native tray. The shell folds the tray colour off **/ws/activity** (the socket
+      carrying confirm + task/tool/project, which /ws/state lacks): a pending
+      confirmation → red, any running tool/task/project → amber, else green. That
+      stream has no `turn_start`, so a no-tool chat reply does not flash amber — a
+      deliberate, negligible fidelity trade for a single-socket tray; the
+      safety-critical signal (a pending confirmation) surfaces as soon as it fires; a socket that connects mid-confirmation only catches up on the next event (/ws/activity does not replay state), and a reconnect re-syncs.
+    - **Autostart is two independent tasks in native mode.** `autostart.ps1` always
+      registers the always-on backend service ("Baby Assistant", `pythonw`); with
+      `-Shell native` it ALSO registers "Baby Shell" to open the window at logon
+      (which attaches). Keeping them separate is what makes "close the app ≠ stop the
+      service" true. `-Remove` drops both; stopping the service stays an explicit,
+      documented action, never an app menu item or an HTTP endpoint.

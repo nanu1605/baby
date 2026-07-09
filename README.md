@@ -190,16 +190,29 @@ window render the identical build (DECISIONS #119). Two code-defaulted rollback
 flags gate it, both non-bricking:
 
 - `ui.shell: browser | native` — `browser` (default) just means "don't launch the
-  exe"; the `127.0.0.1:8765` UI is untouched. Wired in V1.
+  exe"; the `127.0.0.1:8765` UI is untouched. Native shell shipped in V1.
 - `ui.brain: 2d | 3d` — `2d` is the v3 canvas graph (instant floor); `3d` is the
   WebGL sphere. Lands in V3.
 
-**"Quit Baby (app)"** (the shell's tray item) closes the window and stops only a
-backend the shell *itself* spawned; an always-on autostart **service** keeps running
-(Telegram, scheduler, background tasks). Stopping the service is a separate,
-documented action *outside* the app — `scripts\autostart.ps1 -Remove` — never an app
-menu item and never an HTTP endpoint (DECISIONS #120). Build it with
-`scripts\setup.ps1` (installs Rust) or run it in dev with `scripts\dev_app.ps1`.
+**Docker-Desktop model (V1).** The assistant runs as an always-on background
+service; the native window **attaches** to it — or **spawns** one (`pythonw run.py
+--all`) if none is running, polling `127.0.0.1:8765` until ready, then loading the
+UI. Closing the window (X) **hides to tray**; the tray shows Baby's status
+(green ready / amber working / red waiting on a confirmation, folded off
+`/ws/activity`) and its only exit is **"Quit Baby (app)"**, which closes the window
+and stops *only* a backend the shell itself spawned — an attached always-on service
+keeps running (Telegram, scheduler, background tasks). Stopping the **service** is a
+separate, documented action *outside* the app — `scripts\autostart.ps1 -Remove` —
+never an app menu item and never an HTTP endpoint (DECISIONS #120, #122).
+
+Build/run the native shell:
+
+```powershell
+scripts\setup.ps1                      # installs Rust + builds the shell (fail-soft)
+npm --prefix ui/shell run build        # -> NSIS installer + baby-shell.exe
+scripts\dev_app.ps1                    # dev: window against the ui/app Vite server
+scripts\autostart.ps1 -Shell native    # open the window (attaching) at logon too
+```
 
 ### Screenshots
 
