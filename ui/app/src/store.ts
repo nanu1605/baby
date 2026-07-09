@@ -23,6 +23,8 @@ import { setBoost } from "./api/client";
 export type { PipelineState, RouterHealth, LiveEvent } from "./types";
 
 const EVENT_RING_CAP = 500; // long-session hygiene (spec §11): never unbounded
+const MESSAGE_CAP = 300; // B7: cap the transcript so a multi-hour session stays bounded
+const TOAST_CAP = 5; // B7: bound the toast stack (auto-dismiss aside)
 
 let _toastSeq = 0;
 let _eventSeq = 0;
@@ -36,11 +38,34 @@ function loadPerfMode(): boolean {
   }
 }
 
+// Front-trim to the newest MESSAGE_CAP — slicing off the head always keeps the
+// tail, so a still-streaming bubble (always last) is never dropped mid-turn.
+function capMessages(msgs: ChatMessage[]): ChatMessage[] {
+  return msgs.length > MESSAGE_CAP ? msgs.slice(msgs.length - MESSAGE_CAP) : msgs;
+}
+
+// Default the right panel collapsed on a phone-width viewport so the graph stays
+// full-bleed; on desktop it opens inline as before (B7 responsive).
+function initCollapsed(): boolean {
+  try {
+    return window.innerWidth <= 720;
+  } catch {
+    return false;
+  }
+}
+
 export type RightTab = "chat" | "activity";
 
+/** Per-channel WebSocket liveness (B7): honest reconnect signal, was a dead flag. */
+export interface WsStatus {
+  chat: boolean;
+  activity: boolean;
+  state: boolean;
+}
+
 interface BrainState {
-  /** true once the v3 shell has talked to the backend at least once. */
-  connected: boolean;
+  /** Per-channel WS liveness — the honest reconnect signal for all three sockets. */
+  ws: WsStatus;
   pipeline: PipelineState;
   router: RouterHealth;
   gameMode: boolean;
@@ -70,7 +95,7 @@ interface BrainState {
   rightTab: RightTab;
   rightCollapsed: boolean;
 
-  setConnected: (v: boolean) => void;
+  setWsStatus: (chan: keyof WsStatus, up: boolean) => void;
   setPipeline: (s: PipelineState) => void;
   setRouter: (r: RouterHealth) => void;
   setGameMode: (on: boolean) => void;
@@ -95,6 +120,8 @@ interface BrainState {
   }) => void;
   addSystemNote: (text: string) => void;
   loadHistory: (rows: ChatMessage[]) => void;
+  /** Finalize a mid-stream bubble on a dropped chat socket (kills the stuck cursor). */
+  interruptTurn: () => void;
 
   // gating
   openConfirm: (req: ConfirmReq) => void;
@@ -115,7 +142,7 @@ interface BrainState {
 }
 
 export const useBrain = create<BrainState>((set) => ({
-  connected: false,
+  ws: { chat: false, activity: false, state: false },
   pipeline: "idle",
   router: "unknown",
   gameMode: false,
@@ -133,9 +160,10 @@ export const useBrain = create<BrainState>((set) => ({
   toasts: [],
   memoryOpen: false,
   rightTab: "chat",
-  rightCollapsed: false,
+  rightCollapsed: initCollapsed(),
 
-  setConnected: (v) => set({ connected: v }),
+  setWsStatus: (chan, up) =>
+    set((st) => (st.ws[chan] === up ? {} : { ws: { ...st.ws, [chan]: up } })),
   setPipeline: (s) => set({ pipeline: s }),
   setRouter: (r) => set({ router: r }),
   setGameMode: (on) => set({ gameMode: on }),
@@ -177,12 +205,15 @@ export const useBrain = create<BrainState>((set) => ({
   setFocusFact: (id) => set({ focusFact: id }),
 
   addUserMessage: (text) =>
-    set((st) => ({ messages: [...st.messages, { role: "user", text }] })),
+    set((st) => ({ messages: capMessages([...st.messages, { role: "user", text }]) })),
 
   // turn_start: open an empty streaming assistant bubble.
   startTurn: () =>
     set((st) => ({
-      messages: [...st.messages, { role: "assistant", text: "", streaming: true }],
+      messages: capMessages([
+        ...st.messages,
+        { role: "assistant", text: "", streaming: true },
+      ]),
     })),
 
   // token: append to the open streaming bubble (create one if a token races
@@ -196,7 +227,7 @@ export const useBrain = create<BrainState>((set) => ({
       } else {
         msgs.push({ role: "assistant", text, streaming: true });
       }
-      return { messages: msgs };
+      return { messages: capMessages(msgs) };
     }),
 
   // turn_end: the server reply is the scrubbed truth — swap the streamed text
@@ -217,10 +248,31 @@ export const useBrain = create<BrainState>((set) => ({
     }),
 
   addSystemNote: (text) =>
-    set((st) => ({ messages: [...st.messages, { role: "system", text }] })),
+    set((st) => ({ messages: capMessages([...st.messages, { role: "system", text }]) })),
 
   loadHistory: (rows) =>
-    set((st) => ({ messages: [...rows, ...st.messages] })),
+    set((st) => ({ messages: capMessages([...rows, ...st.messages]) })),
+
+  // Chat socket dropped mid-turn: close the open streaming bubble so the blinking
+  // cursor stops, and drop a one-line system note. No-op when nothing is streaming
+  // (an idle-time drop needs no chat note — the header pill carries that signal).
+  interruptTurn: () =>
+    set((st) => {
+      const msgs = st.messages.slice();
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m.role === "assistant" && m.streaming) {
+          msgs[i] = { ...m, text: m.text || "…", streaming: false };
+          return {
+            messages: capMessages([
+              ...msgs,
+              { role: "system", text: "Connection lost — reconnecting…" },
+            ]),
+          };
+        }
+      }
+      return {};
+    }),
 
   openConfirm: (req) => set({ activeConfirm: req }),
   clearConfirm: (id) =>
@@ -229,10 +281,16 @@ export const useBrain = create<BrainState>((set) => ({
       return { activeConfirm: null };
     }),
 
-  setStats: (s) => set({ stats: s, connected: true }),
+  setStats: (s) => set({ stats: s }),
 
   pushToast: (text, kind = "info") =>
-    set((st) => ({ toasts: [...st.toasts, { id: ++_toastSeq, text, kind }] })),
+    set((st) => {
+      const toasts = [...st.toasts, { id: ++_toastSeq, text, kind }];
+      return {
+        toasts:
+          toasts.length > TOAST_CAP ? toasts.slice(toasts.length - TOAST_CAP) : toasts,
+      };
+    }),
   dismissToast: (id) =>
     set((st) => ({ toasts: st.toasts.filter((t) => t.id !== id) })),
 

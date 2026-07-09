@@ -15,6 +15,11 @@ export default function Header() {
   const router = useBrain((s) => s.router);
   const gameMode = useBrain((s) => s.gameMode);
   const performanceMode = useBrain((s) => s.performanceMode);
+  const ws = useBrain((s) => s.ws);
+
+  // All three sockets up ⇒ healthy. Otherwise show an honest pill: "connecting…"
+  // before we've ever reached the backend (no stats yet), "reconnecting…" after.
+  const allUp = ws.chat && ws.activity && ws.state;
 
   const toggleGame = async () => {
     const next = !gameMode;
@@ -27,6 +32,12 @@ export default function Header() {
       <span className="brand">Baby</span>
       <span className="brand-sub">The Brain</span>
       {stats?.model && <span className="badge model">{stats.model}</span>}
+
+      {!allUp && (
+        <span className="conn-pill" title="backend connection">
+          {stats ? "reconnecting…" : "connecting…"}
+        </span>
+      )}
 
       <span className={`router-state ${router}`} title="cloud router state">
         <span className="dot" />

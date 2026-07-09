@@ -64,7 +64,7 @@ export function useActivitySocket(): void {
         const t = String(msg.text ?? "");
         if (TOAST_STATUS.test(t)) b.pushToast(t);
       }
-    });
+    }, (up) => useBrain.getState().setWsStatus("activity", up));
     return () => sock.close();
   }, []);
 }

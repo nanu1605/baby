@@ -45,7 +45,13 @@ export default function App() {
             ‹
           </button>
         ) : (
-          <aside className="side-panel">
+          <>
+            {/* Mobile only (CSS-gated): tap-away closes the slide-over panel. */}
+            <div
+              className="panel-backdrop"
+              onClick={() => useBrain.getState().toggleRightPanel()}
+            />
+            <aside className="side-panel">
             <div className="tabs">
               <button
                 className={tab === "chat" ? "active" : ""}
@@ -68,7 +74,8 @@ export default function App() {
               </button>
             </div>
             {tab === "chat" ? <ChatPanel /> : <ActivityPanel />}
-          </aside>
+            </aside>
+          </>
         )}
       </main>
 

@@ -99,6 +99,7 @@ function buildActivity(events: LiveEvent[]): Item[] {
 
 export default function ActivityPanel() {
   const events = useBrain((s) => s.events);
+  const activityUp = useBrain((s) => s.ws.activity);
   const items = useMemo(() => buildActivity(events), [events]);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -109,7 +110,11 @@ export default function ActivityPanel() {
   return (
     <div className="activity-panel">
       {items.length === 0 && (
-        <div className="empty-hint">No activity yet — tool calls appear here.</div>
+        <div className="empty-hint">
+          {activityUp
+            ? "No activity yet — tool calls appear here."
+            : "Backend unreachable — reconnecting…"}
+        </div>
       )}
       {items.map((it, i) =>
         it.kind === "tool" ? (

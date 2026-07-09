@@ -60,6 +60,67 @@ describe("chat stream reducers", () => {
   });
 });
 
+describe("long-session hygiene caps (B7)", () => {
+  beforeEach(() => useBrain.setState({ messages: [], toasts: [] }));
+
+  it("capMessages keeps the last 300, dropping the oldest and keeping the newest", () => {
+    const b = useBrain.getState();
+    for (let i = 0; i < 350; i++) b.addUserMessage(`m${i}`);
+    const msgs = useBrain.getState().messages;
+    expect(msgs).toHaveLength(300);
+    expect(msgs.at(-1)?.text).toBe("m349");
+    expect(msgs[0].text).toBe("m50");
+  });
+
+  it("front-trim never drops a still-streaming tail bubble", () => {
+    const b = useBrain.getState();
+    for (let i = 0; i < 320; i++) b.addUserMessage(`m${i}`);
+    b.startTurn(); // the streaming bubble is now the tail
+    b.appendToken("live");
+    const msgs = useBrain.getState().messages;
+    expect(msgs).toHaveLength(300);
+    expect(msgs.at(-1)).toMatchObject({ streaming: true, text: "live" });
+  });
+
+  it("pushToast caps the toast stack, keeping the newest", () => {
+    const b = useBrain.getState();
+    for (let i = 0; i < 8; i++) b.pushToast(`t${i}`);
+    const toasts = useBrain.getState().toasts;
+    expect(toasts).toHaveLength(5);
+    expect(toasts.at(-1)?.text).toBe("t7");
+    expect(toasts[0].text).toBe("t3");
+  });
+});
+
+describe("WS resilience reducers (B7)", () => {
+  beforeEach(() => useBrain.setState({ messages: [], ws: { chat: false, activity: false, state: false } }));
+
+  it("setWsStatus tracks per-channel liveness", () => {
+    const b = useBrain.getState();
+    b.setWsStatus("chat", true);
+    b.setWsStatus("state", true);
+    const ws = useBrain.getState().ws;
+    expect(ws).toEqual({ chat: true, activity: false, state: true });
+  });
+
+  it("interruptTurn finalizes a mid-stream bubble and notes the drop", () => {
+    const b = useBrain.getState();
+    b.startTurn();
+    b.appendToken("half a sen");
+    b.interruptTurn();
+    const msgs = useBrain.getState().messages;
+    const asst = msgs.find((m) => m.role === "assistant");
+    expect(asst).toMatchObject({ streaming: false, text: "half a sen" });
+    expect(msgs.at(-1)).toMatchObject({ role: "system" });
+  });
+
+  it("interruptTurn is a no-op when nothing is streaming", () => {
+    useBrain.setState({ messages: [{ role: "user", text: "hi" }] });
+    useBrain.getState().interruptTurn();
+    expect(useBrain.getState().messages).toHaveLength(1);
+  });
+});
+
 describe("plain-stream → sanitized-markdown swap (turn_end)", () => {
   beforeEach(reset);
 

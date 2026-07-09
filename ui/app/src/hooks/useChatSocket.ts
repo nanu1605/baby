@@ -71,6 +71,11 @@ export function useChatSocket(): void {
           brainTier: brain?.tier,
         }),
       );
+    }, (up) => {
+      // On a dropped chat socket, close any mid-stream bubble so the cursor stops.
+      const b = useBrain.getState();
+      b.setWsStatus("chat", up);
+      if (!up) b.interruptTurn();
     });
 
     _send = (text: string) => sock.send({ type: "user_message", text });

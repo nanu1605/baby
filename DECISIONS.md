@@ -823,3 +823,47 @@ Running log of non-obvious choices made during the build. Newest last.
     only if owner FRR ≤ 2% AND 0 non-owner accepted — shipping OFF with findings is an
     acceptable outcome. Wake-word (`models/jarvis.onnx`) remains an owner Colab item;
     `wakeword_models: []` + the list-loader already support it with no code change.
+
+114. **B7 WS resilience is a frontend-only job — the backend is leak-free**. Verified
+    every `/ws/*` handler cancels its pump in `finally` and each pump unsubscribes from
+    the bus in its own `finally` (`ui/server.py`), and every in-memory collection is
+    bounded (latency `del samples[:-500]`, bus queue `maxsize=512`, session-trust
+    `deque(maxlen)`). So B7 adds no backend leak-fix and no router/gate/provider change.
+    The gap was purely client-side: `socket.ts` surfaced no connection state, the
+    `connected` store flag was write-only/never read, and on a backend drop the header
+    froze while a mid-stream bubble stayed `streaming: true` forever. Fix: an additive
+    `onStatus(up)` callback on `openSocket` (open→true, close/error→false; backoff/retry
+    and 2-arg callers unchanged) drives per-channel `ws: {chat, activity, state}` in the
+    store (replacing the dead flag); the header shows a reconnect pill while any channel
+    is down ("connecting…" before first `/stats`, "reconnecting…" after); and a dropped
+    chat socket calls `interruptTurn()` to finalize the open bubble (kills the stuck
+    cursor) + drop a one-line note. Honest empty/down states on the chat + activity
+    panels.
+
+115. **Responsive = drawers over the graph, not stacked scroll (B7)**. At ≤720px the
+    graph stays full-bleed + pannable as the centerpiece; the side panel becomes a fixed
+    slide-over (with a tap-away backdrop, reusing the existing collapse toggle — default
+    collapsed on a phone-width viewport), the inspector goes full-width, the omnibox
+    full-width, and the header gauges hide. Stacked-scroll was rejected because it
+    demotes and scrolls away the graph, which is the whole point of the UI. Pure CSS
+    `@media` + one backdrop element (CSS-gated to mobile); no new layout state.
+
+116. **Long-session hygiene: cap the two remaining unbounded arrays; gate the cursor
+    keyframe (B7)**. The event ring was already capped (500); B7 caps the chat transcript
+    (`MESSAGE_CAP = 300`, front-trim so a still-streaming tail is never dropped) and the
+    toast stack (5). Backend collections are all bounded (see #114), so "heap stable over
+    hours" is a frontend concern only. Separately, `prefers-reduced-motion` zeroes CSS
+    `transition`s via the `--dur-*` tokens but **not** `@keyframes`, so the streaming
+    `blink` cursor kept animating — now gated under a reduced-motion media query.
+
+117. **Release sequencing: code-complete commit, PR stays Draft; the soak/flip is
+    owner-driven (B7)**. The PR §12 checklist depends on data that does not exist until
+    the owner runs the 3-day soak — the perf-gate numbers (which must clear with
+    `performance_mode` **OFF** — it is a user opt-in, never a default-on ship for the
+    centerpiece) and the speaker FAR/FRR report. So the executor ships the B7 polish
+    commit and stops with the PR in **Draft**; the owner runs the soak, decides
+    `voice.speaker_verify.enabled` from the real curves (ON only if owner FRR ≤ 2% AND 0
+    non-owner accepted, else OFF with findings), then flips Ready + merges + tags
+    `v3.0.0`. The disruptive `e2e_regression.py --with-project` + v2/v1.1 browser/TTS
+    demos are likewise owner-run (they open a real Chromium window and may speak); the
+    executor runs only the always-green gates (`pytest` + `ruff` + FE `build`/`test`).

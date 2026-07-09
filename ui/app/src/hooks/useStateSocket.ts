@@ -22,13 +22,12 @@ export function useStateSocket(): void {
     const sock = openSocket("/ws/state", (msg) => {
       if (msg.type !== "state") return;
       const b = useBrain.getState();
-      b.setConnected(true);
       if (typeof msg.state === "string" && PIPELINE.has(msg.state as PipelineState)) {
         b.setPipeline(msg.state as PipelineState);
       }
       if (typeof msg.router === "string") b.setRouter(normRouter(msg.router));
       if (typeof msg.game_mode === "boolean") b.setGameMode(msg.game_mode);
-    });
+    }, (up) => useBrain.getState().setWsStatus("state", up));
     return () => sock.close();
   }, []);
 }
