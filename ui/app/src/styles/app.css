@@ -155,7 +155,8 @@ body {
 }
 
 .game-btn,
-.mem-btn {
+.mem-btn,
+.perf-btn {
   background: transparent;
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
@@ -164,7 +165,8 @@ body {
   cursor: pointer;
   font-size: var(--fs-sm);
 }
-.game-btn.on {
+.game-btn.on,
+.perf-btn.on {
   color: var(--accent);
   border-color: var(--accent);
 }

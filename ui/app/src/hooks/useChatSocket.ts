@@ -10,6 +10,8 @@ import { useEffect } from "react";
 import { openSocket } from "../api/socket";
 import { getHistory } from "../api/client";
 import { useBrain } from "../store";
+import { emitActions } from "../graph/pulseBus";
+import { eventToActions, remapBrainId } from "../graph/edgeMap";
 import type { Brain, Tokens } from "../types";
 
 let _send: ((text: string) => void) | null = null;
@@ -26,6 +28,7 @@ export function useChatSocket(): void {
 
     const sock = openSocket("/ws/chat", (msg) => {
       const b = useBrain.getState();
+      const brain = (msg.brain as Brain) ?? undefined;
       switch (msg.type) {
         case "turn_start":
           b.startTurn();
@@ -37,9 +40,11 @@ export function useChatSocket(): void {
           b.finishTurn({
             reply: typeof msg.reply === "string" ? msg.reply : undefined,
             status: typeof msg.status === "string" ? msg.status : undefined,
-            brain: (msg.brain as Brain) ?? undefined,
+            brain,
             tokens: (msg.tokens as Tokens) ?? undefined,
           });
+          // The authoritative authoring brain → live recolor (backstop→cloud).
+          b.setActiveBrain(remapBrainId(brain?.tier) ?? null);
           break;
         case "busy":
           b.addSystemNote(
@@ -53,6 +58,17 @@ export function useChatSocket(): void {
           break;
         }
       }
+      // Honest edge pulses derived from this frame's own signals.
+      emitActions(
+        eventToActions({
+          kind: String(msg.type),
+          channel: typeof msg.channel === "string" ? msg.channel : "ui",
+          source: typeof msg.source === "string" ? msg.source : undefined,
+          target: typeof msg.target === "string" ? msg.target : undefined,
+          status: typeof msg.status === "string" ? msg.status : undefined,
+          brainTier: brain?.tier,
+        }),
+      );
     });
 
     _send = (text: string) => sock.send({ type: "user_message", text });

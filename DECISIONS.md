@@ -668,3 +668,50 @@ Running log of non-obvious choices made during the build. Newest last.
     built by quoting `\W`-split tokens (last one prefixed `*`), so arbitrary user
     text and FTS operators can never raise a syntax error. `scripts/backfill_fts.py`
     rebuilds the indexes for pre-B1 rows.
+
+101. **v3 chat = sanitized-markdown, final reply only (B2)**. The React chat
+    renders the authoritative `turn_end.reply` as markdown; streaming tokens stay
+    plain text (React `textContent`), so a partial stream can never inject markup and
+    there is no partial-markdown flicker. Defense in depth: `marked` with raw HTML
+    disabled (layer 1) → `DOMPurify` allowlist sanitize (layer 2) → a DOMPurify hook
+    stamps `rel="noopener noreferrer" target="_blank"` on every link. Frontend tests
+    are light `vitest` (jsdom) on pure logic only (store reducers, layout math,
+    markdown, and in B3 the edge-derivation map) — no DOM/component tests.
+
+102. **Honest signal→edge derivation for pulses (B3)**. Graph particles animate only
+    real edges, derived from the current turn's own signals — never faked, never
+    cross-turn. Attributed directly: `tool_start`/`tool_end` (`brain:{tier}` →
+    `safety_gate` → `tool:{name}`, colored by `safety_class`; error status flashes the
+    tool node) and `CloudRouter` router `status` (`router → brain:{tier}`). Derived:
+    `turn_start` → `baby_core → router`; `turn_end.brain` (the authoritative authoring
+    brain) → `router → brain:{tier}` (covers the silent default `nim_primary` route,
+    which emits no decision event); voice `status "heard …"` → `voice_stt → router`;
+    voice `token` → `baby_core → voice_tts`. **`backstop → cloud` remap** (router tier
+    token `backstop` vs graph node `brain:cloud`, the config key). Left DARK — no
+    honest signal, so never pulsed: `brain → mem_*` (memory access never hits the bus)
+    and per-stage voice `voice_wake`/`voice_vad` (only aggregate `voice:` text). The
+    full map lives in `ui/app/src/graph/edgeMap.ts` and is unit-tested. Text-turn
+    replies have no return edge in the topology, so they are shown by the core gauge's
+    "speaking" state rather than a faked `brain → baby_core` edge.
+
+103. **Idle-throttled render clock; gauge breathes on the canvas (B3)**. The central
+    Baby-core node is the status gauge and breathes on the canvas, but a naive
+    `autoPauseRedraw=false` would repaint at 60fps forever (the GPU belongs to the
+    LLM). Instead we own the only draw loop: the force-graph engine loop stays paused
+    and one self-managed rAF forces a single repaint per tick via a
+    `resumeAnimation()→pauseAnimation()` one-shot (`autoPauseRedraw=false` so the frame
+    always paints). Cadence: 60fps while active (a turn running or a pulse in flight),
+    ~20–24fps when idle, no draws at all in low-power-idle, hard-pause when the tab is
+    hidden. Breath phase comes from `performance.now()` so it looks right at any fps.
+    `performance_mode` (header ⚡, persisted to localStorage) and
+    `prefers-reduced-motion` drop to static state-color + no particles — but
+    `performance_mode` is a **user opt-in, NOT default-on**: the perf gate must clear
+    with it off (owner rider).
+
+104. **Pulse bus outside zustand + per-edge coalescing (B3)**. Pulses fire at token
+    rate; routing them through the React store would re-render per token and blow the
+    perf budget. `ui/app/src/graph/pulseBus.ts` is a module-level pub/sub — hooks emit,
+    `BrainGraph` subscribes and paints. `emitParticle` needs the exact link object from
+    `graphData.links` (identity match, no id lookup), so BrainGraph builds a
+    `from>to → link` map once per topology. Particles are coalesced per edge (≥150ms
+    apart → ≤~6/s/edge), so a burst of 50 tool events shows as one visible stream.

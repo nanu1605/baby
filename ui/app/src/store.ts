@@ -25,6 +25,15 @@ const EVENT_RING_CAP = 500; // long-session hygiene (spec §11): never unbounded
 let _toastSeq = 0;
 let _eventSeq = 0;
 
+const PERF_KEY = "baby.performanceMode";
+function loadPerfMode(): boolean {
+  try {
+    return localStorage.getItem(PERF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export type RightTab = "chat" | "activity";
 
 interface BrainState {
@@ -33,6 +42,10 @@ interface BrainState {
   pipeline: PipelineState;
   router: RouterHealth;
   gameMode: boolean;
+  /** Tier of the brain that authored the last turn (remapped graph id, e.g. brain:cloud). */
+  activeBrain: string | null;
+  /** B3 perf opt-in: stop the render clock when quiet, no particles, static core. */
+  performanceMode: boolean;
   events: LiveEvent[];
   selectedNode: string | null;
 
@@ -53,6 +66,8 @@ interface BrainState {
   setPipeline: (s: PipelineState) => void;
   setRouter: (r: RouterHealth) => void;
   setGameMode: (on: boolean) => void;
+  setActiveBrain: (id: string | null) => void;
+  togglePerformanceMode: () => void;
   pushEvent: (e: LiveEvent) => void;
   selectNode: (id: string | null) => void;
 
@@ -92,6 +107,8 @@ export const useBrain = create<BrainState>((set) => ({
   pipeline: "idle",
   router: "unknown",
   gameMode: false,
+  activeBrain: null,
+  performanceMode: loadPerfMode(),
   events: [],
   selectedNode: null,
 
@@ -107,6 +124,17 @@ export const useBrain = create<BrainState>((set) => ({
   setPipeline: (s) => set({ pipeline: s }),
   setRouter: (r) => set({ router: r }),
   setGameMode: (on) => set({ gameMode: on }),
+  setActiveBrain: (id) => set({ activeBrain: id }),
+  togglePerformanceMode: () =>
+    set((st) => {
+      const next = !st.performanceMode;
+      try {
+        localStorage.setItem(PERF_KEY, next ? "1" : "0");
+      } catch {
+        /* private mode / no storage — fine */
+      }
+      return { performanceMode: next };
+    }),
   pushEvent: (e) =>
     set((st) => {
       const events =

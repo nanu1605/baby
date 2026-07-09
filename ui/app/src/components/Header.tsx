@@ -14,6 +14,7 @@ export default function Header() {
   const pipeline = useBrain((s) => s.pipeline);
   const router = useBrain((s) => s.router);
   const gameMode = useBrain((s) => s.gameMode);
+  const performanceMode = useBrain((s) => s.performanceMode);
 
   const toggleGame = async () => {
     const next = !gameMode;
@@ -63,6 +64,17 @@ export default function Header() {
       </button>
       <button className="mem-btn" onClick={() => useBrain.getState().openMemory()}>
         🧠
+      </button>
+      <button
+        className={"perf-btn" + (performanceMode ? " on" : "")}
+        onClick={() => useBrain.getState().togglePerformanceMode()}
+        title={
+          performanceMode
+            ? "performance mode on — graph idles when quiet, no particles"
+            : "performance mode: reduce graph animation"
+        }
+      >
+        ⚡
       </button>
       <button className="kill-btn" onClick={() => postKill().catch(() => {})}>
         ■ Stop

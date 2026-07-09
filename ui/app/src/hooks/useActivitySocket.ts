@@ -7,6 +7,8 @@
 import { useEffect } from "react";
 import { openSocket } from "../api/socket";
 import { nextEventSeq, useBrain } from "../store";
+import { emitActions } from "../graph/pulseBus";
+import { eventToActions } from "../graph/edgeMap";
 import type { LiveEvent, WSFrame } from "../types";
 
 // Status lines worth a transient toast (avoid noisy voice "listening" spam).
@@ -31,6 +33,20 @@ export function useActivitySocket(): void {
     const sock = openSocket("/ws/activity", (msg) => {
       const b = useBrain.getState();
       b.pushEvent(toLiveEvent(msg));
+
+      // Honest edge pulses / node flashes derived from this frame.
+      emitActions(
+        eventToActions({
+          kind: String(msg.type),
+          channel: typeof msg.channel === "string" ? msg.channel : undefined,
+          source: typeof msg.source === "string" ? msg.source : undefined,
+          target: typeof msg.target === "string" ? msg.target : undefined,
+          safety_class:
+            typeof msg.safety_class === "string" ? msg.safety_class : undefined,
+          status: typeof msg.status === "string" ? msg.status : undefined,
+          text: typeof msg.text === "string" ? msg.text : undefined,
+        }),
+      );
 
       if (msg.type === "confirm_request") {
         b.openConfirm({
