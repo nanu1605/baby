@@ -5,7 +5,8 @@ A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
 default, but privacy-pinned turns never leave the PC, and the warm local 9B
 keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **v1.1.0 — cloud-primary brain migration shipped** ✅
+> Status: **v3.0.0 — "The Brain"** ✅ — a living-graph UI over the real
+> router/voice/memory/tool paths, plus speaker verification v2.
 > Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
 > change spec: [NIM_MIGRATION_PLAN.md](NIM_MIGRATION_PLAN.md)
 
@@ -21,12 +22,18 @@ keeps everything working with the Wi-Fi cable pulled.
   Gemini vision steps in only if the local path fails, and the feed says
   so out loud. `screen.allow_cloud_fallback: false` keeps screenshots
   on-machine, always.
-- **Speaker verification** (off by default): enroll once
-  (`scripts\enroll_voice.py`, ~2 min) and only YOUR voice can trigger
-  actions — anyone else gets polite chat with every tool denied at the
-  safety gate. Disabled in the stock config after real-world testing
-  (CAM++ false-rejected natural speech); the code and enrollment stay for
-  a future retry. "baby stop" works for any voice; PTT bypasses the check.
+- **Speaker verification v2** (ships off by default): enroll natural speech
+  across a few mic positions (`scripts\enroll_voice_v2.py`) — a profile is a
+  *set* of centroids scored by max-cosine, not v1's single mean that
+  false-rejected natural speech. Per-utterance scores feed a **session-trust
+  smoother** (optimistic-demote): a fresh session starts trusted and drops to
+  chat-only only on a *sustained* confident non-owner score, so one borderline
+  utterance never locks you out. Feeds the existing binary safety-gate hook — no
+  gate logic changed. `mode: observe` scores + logs every utterance without
+  enforcing (the soak data-collection mode); `scripts\speaker_report.py` turns
+  those logs into a per-model FAR/FRR report. Flip on only if the numbers clear
+  (owner FRR ≤2% AND 0 non-owner accepted). "baby stop" works for any voice;
+  PTT is always trusted.
 - **Game mode**: fullscreen app detected (or "game mode on") → the local 9B
   unloads, VRAM goes to your game, and cloud brains carry every turn. Even
   privacy-pinned turns stay honest: they load the local model just for that
@@ -82,9 +89,12 @@ keeps everything working with the Wi-Fi cable pulled.
   chats (zero tools), "close Spotify" acts.
 - **Next-step suggestions**: after finishing a real task, Baby proposes the
   single most useful next action.
-- **Web UI** at `http://127.0.0.1:8765` (`run.py --ui`): streaming chat +
-  a live activity feed showing every tool call, its safety class, and result.
-  `GET /memory` lists stored facts.
+- **The Brain — a living-graph UI** at `http://127.0.0.1:8765` (`run.py --ui`):
+  Baby's mind rendered as a graph (subsystems, brains and tools as nodes), with
+  honest activity pulsing along the *real* turn path, a central status gauge, a
+  click-a-node inspector for every subsystem, and a "Search the brain…" omnibox
+  over facts / conversations / activity / tasks. Canvas-2D only — zero VRAM, the
+  GPU stays reserved for the LLM. See [The Brain (v3 UI)](#the-brain-v3-ui).
 - **Real tools**: system stats (CPU/RAM/GPU), open/close/focus apps, instant
   file search (Everything), read/write files, gated PowerShell, web search,
   page fetch, remember/recall/forget.
@@ -136,7 +146,72 @@ id from **@userinfobot**, put both in `.env`
 Cloud brains: `OPENROUTER_API_KEY` (primary), `NVIDIA_API_KEY` (NIM heavy)
 and `GEMINI_API_KEY` (backstop) in `.env`.
 
-## Brain architecture (cloud-primary)
+## The Brain (v3 UI)
+
+The default UI (`ui.frontend: v3`) is a React app that renders Baby's mind as a
+**living graph** — an honest, event-driven visualization over the router, voice,
+memory and tool paths that already exist. Nothing is faked: every pulse is driven
+by a real bus event or pipeline state; idle nodes breathe rather than invent
+motion.
+
+- **Living graph** — subsystems, brains and tools are nodes on a pinned layout
+  (voice west, brains center, tools east, memory south). Edge pulses trace the
+  real turn path (wake → STT → router → brain → gate → tool → TTS), colored by
+  safety class; the central **core node is a status gauge** (idle / listening /
+  thinking / speaking / executing) driven by the synthesized `/ws/state`.
+- **Node inspectors** — click any node for a blurb, live `/api/nodes/{id}/stats`,
+  and per-type controls: enable/disable a tool (the model stops seeing its schema
+  next turn — the safety gate has **no** disable control), cancel a queued task,
+  run a schedule now, one-turn "prefer the strongest brain" boost, browse/wipe
+  memory. The safety gate can never be bypassed from the UI.
+- **"Search the brain…"** — a top-center omnibox with grouped results (Facts ·
+  Conversations · Activity · Tasks); pick one and the camera flies to the anchor
+  node and opens its inspector. Full keyboard nav (Ctrl/⌘-K or `/`, ↑↓, Enter,
+  Esc).
+- **Honest connection + perf** — a reconnect pill when a socket drops (a
+  mid-stream reply is finalized cleanly, never a frozen cursor); a `performance
+  mode` toggle and `prefers-reduced-motion` throttle the animation; the graph is
+  canvas-2D and stays inside a strict GPU/CPU budget.
+- **Responsive** — usable on a phone over Tailscale: the graph stays full-bleed
+  and pannable while the chat panel and inspector become slide-over drawers.
+
+**Rollback is one line.** `ui.frontend: classic` serves the original vanilla UI,
+and `/classic` is always available regardless of the flag — the daily-driver
+parity target lives on. The React app is built on setup (`ui/app/dist`, not
+committed).
+
+### Screenshots
+
+<!-- Owner: capture during the soak and drop into docs/img/ -->
+- `docs/img/brain-graph.png` — the living graph mid-turn (pulses + core gauge)
+- `docs/img/brain-inspector.png` — a node inspector drawer
+- `docs/img/brain-search.png` — the "Search the brain…" omnibox
+- `docs/img/brain-turn.gif` — the graph pulsing during a voice turn
+
+## Config
+
+`config.yaml` is the reference (richly commented). The v3 knobs:
+
+```yaml
+ui:
+  frontend: v3          # v3 = "The Brain" React app; classic = vanilla rollback
+                        # /classic is always served regardless of this flag
+
+voice:
+  speaker_verify:
+    enabled: false      # v2 ships OFF; flip on only if the FAR/FRR report clears
+    model: models/wespeaker_en_voxceleb_CAM++.onnx   # bench winner from the report
+    mode: chat_only     # chat_only (enforce) | ignore (drop) | observe (score+log)
+    accept_threshold: 0.62   # tuned from the soak report
+    reject_threshold: 0.45
+    smoothing_window: 5      # utterances averaged for the session trust score
+    demote_after: 2          # sustained low scores before demoting to chat-only
+```
+
+Cloud keys go in `.env` (`OPENROUTER_API_KEY`, `NVIDIA_API_KEY`,
+`GEMINI_API_KEY`); the UI binds to `127.0.0.1` only.
+
+## Brain routing (cloud-primary)
 
 ```
 turn arrives
@@ -189,3 +264,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | v1.1.0 ✅ | Cloud-primary brains (OpenRouter primary + NIM heavy + Gemini backstop), health-aware router, privacy/language pins, game mode, live E2E battery, soak-report tooling |
 | v1.1.1 ✅ | Hotfix: sensor tool contract (#6) + DB poison hygiene (#7) |
 | v2.0.0 ✅ | Conversation mode + proceed/cancel (#2, #4), memory v2 — budgeted context + cross-session RAG + clear/wipe (#3, #5), token telemetry (#8) |
+| v3.0.0 ✅ | **The Brain** — living-graph UI (honest pulses, status gauge, node inspectors, "Search the brain…" omnibox) over a read-only graph data spine; speaker verification v2 (multi-centroid, session-trust, ships OFF); responsive + reconnect-resilient |

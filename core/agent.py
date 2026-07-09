@@ -165,6 +165,14 @@ class AgentCore:
         # P5 telemetry: token usage summed across every model call of one turn
         # (main loop rounds + final-answer + next-step). Reset per run_turn.
         self._turn_tokens: dict = {"prompt": 0, "completion": 0, "total": 0}
+        # B4: one-shot "prefer the strongest brain next turn" boost. The UI arms
+        # it (tier_hint="best") between turns; run_turn consumes it for exactly one
+        # turn. The router keeps it subordinate to every privacy/health pin.
+        self._tier_hint_once: str | None = None
+        self._active_hint: str | None = None  # the hint in force for the current turn
+        # B4: tools disabled via tool_flags (read once per turn) — their schemas
+        # are hidden from the model. The safety gate is unaffected.
+        self._disabled_tools: set[str] = set()
 
     def _accrue_tokens(self, usage: dict | None) -> None:
         """Add one generation's reported usage to this turn's running total (P5)."""
@@ -193,7 +201,13 @@ class AgentCore:
         # the whole turn atomically and keep its debris out of future context.
         turn_id = await self.db.next_turn_id(self.conversation_id)
         await self.db.add_message(self.conversation_id, "user", user_text, turn_id=turn_id)
-        self.bus.publish("turn_start", self.channel, conversation_id=self.conversation_id)
+        self.bus.publish(
+            "turn_start", self.channel,
+            conversation_id=self.conversation_id, turn_id=turn_id, source="baby_core",
+        )
+        # B4: read tool flags + consume the one-shot brain boost for THIS turn.
+        self._disabled_tools = await self.db.disabled_tools()
+        self._active_hint, self._tier_hint_once = self._tier_hint_once, None
         status = "error"
         reply = ""
         try:
@@ -206,7 +220,9 @@ class AgentCore:
                     if detect_language(user_text) == "Hindi"
                     else "Okay, I'll skip that."
                 )
-                self.bus.publish("token", self.channel, text=reply)
+                self.bus.publish(
+                    "token", self.channel, text=reply, turn_id=turn_id, source="baby_core"
+                )
                 await self.db.add_message(
                     self.conversation_id, "assistant", reply, turn_id=turn_id
                 )
@@ -259,7 +275,8 @@ class AgentCore:
                     pass
             self.bus.publish(
                 "turn_end", self.channel, reply=reply, status=status,
-                brain=brain, tokens=tokens,
+                brain=brain, tokens=tokens, turn_id=turn_id,
+                source=(f"brain:{brain.get('tier')}" if brain.get("tier") else "baby_core"),
             )
             # Router hook (Phase 4): lets the provider arm retry_after_failure
             # escalation for this channel's next turn. No-op for plain providers.
@@ -290,7 +307,10 @@ class AgentCore:
 
     async def _run_memory_command(self, action: str, user_text: str) -> str:
         """Execute a memory command as a model-free, still-rendered turn."""
-        self.bus.publish("turn_start", self.channel, conversation_id=self.conversation_id)
+        self.bus.publish(
+            "turn_start", self.channel,
+            conversation_id=self.conversation_id, source="baby_core",
+        )
         self.pending_suggestion = None  # a memory command changes direction
         reply = ""
         try:
@@ -353,10 +373,13 @@ class AgentCore:
                         if hindi
                         else "Memory wiped — I don't remember anything now."
                     )
-            self.bus.publish("token", self.channel, text=reply)
+            self.bus.publish("token", self.channel, text=reply, source="baby_core")
         finally:
             brain = dict(getattr(self.provider, "active", None) or {})
-            self.bus.publish("turn_end", self.channel, reply=reply, status="ok", brain=brain)
+            self.bus.publish(
+                "turn_end", self.channel, reply=reply, status="ok",
+                brain=brain, source="baby_core",
+            )
         return reply
 
     async def _loop(
@@ -560,7 +583,7 @@ class AgentCore:
             )
             for tc in tool_calls:
                 tools_attempted += 1
-                result = await self._execute_tool(tc, user_text)
+                result = await self._execute_tool(tc, user_text, turn_id)
                 if not result.lstrip().startswith('{"error"'):
                     tools_succeeded += 1
                 await self.db.add_message(
@@ -578,18 +601,31 @@ class AgentCore:
         await self.db.add_message(self.conversation_id, "assistant", capped, turn_id=turn_id)
         return capped, "capped"
 
+    def _brain_node(self) -> str:
+        """Graph node id of the brain currently authoring output (B1 attribution).
+
+        Reads the router's last routing decision; falls back to the local brain
+        when no decision is recorded (e.g. a plain provider in tests)."""
+        active = getattr(self.provider, "active", None) or {}
+        tier = active.get("tier") if isinstance(active, dict) else None
+        return f"brain:{tier}" if tier else "brain:daily"
+
     async def _stream(self, messages: list[dict]) -> tuple[str, list[ToolCall]]:
         """One provider generation → (scrubbed text, tool calls), tokens on the bus."""
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         # channel rides along for the router's per-channel first-token timeout
         # (voice falls to local faster than text); plain providers ignore it.
+        opts = {"tier_hint": self._active_hint} if self._active_hint else {}
         async for chunk in self.provider.chat(
-            messages, tools=registry.schemas(), channel=self.channel
+            messages,
+            tools=registry.schemas(self._disabled_tools),
+            channel=self.channel,
+            **opts,
         ):
             if chunk.delta:
                 text_parts.append(chunk.delta)
-                self.bus.publish("token", self.channel, text=chunk.delta)
+                self.bus.publish("token", self.channel, text=chunk.delta, source=self._brain_node())
             if chunk.tool_calls:
                 tool_calls = chunk.tool_calls
             if chunk.usage:
@@ -623,7 +659,9 @@ class AgentCore:
             ):
                 if chunk.delta:
                     parts.append(chunk.delta)
-                    self.bus.publish("token", self.channel, text=chunk.delta)
+                    self.bus.publish(
+                        "token", self.channel, text=chunk.delta, source=self._brain_node()
+                    )
                 if chunk.usage:
                     self._accrue_tokens(chunk.usage)
         except Exception:  # noqa: BLE001 — fall back to the "(no response)" placeholder
@@ -655,9 +693,13 @@ class AgentCore:
             ):
                 if chunk.delta:
                     if not parts:
-                        self.bus.publish("token", self.channel, text="\n\nNext: ")
+                        self.bus.publish(
+                            "token", self.channel, text="\n\nNext: ", source=self._brain_node()
+                        )
                     parts.append(chunk.delta)
-                    self.bus.publish("token", self.channel, text=chunk.delta)
+                    self.bus.publish(
+                        "token", self.channel, text=chunk.delta, source=self._brain_node()
+                    )
                 if chunk.usage:
                     self._accrue_tokens(chunk.usage)
             return "".join(parts).strip()
@@ -689,7 +731,7 @@ class AgentCore:
             except Exception:  # noqa: BLE001
                 pass
 
-    async def _execute_tool(self, tc: ToolCall, user_text: str) -> str:
+    async def _execute_tool(self, tc: ToolCall, user_text: str, turn_id: int) -> str:
         """Gate → execute → audit → events. Owns the whole tool lifecycle."""
         try:
             kwargs = json.loads(tc.arguments) if tc.arguments.strip() else {}
@@ -708,10 +750,14 @@ class AgentCore:
             tool=tc.name,
             args=event_args,
             safety_class=str(verdict.klass),
+            turn_id=turn_id,
+            source=self._brain_node(),
+            target=f"tool:{tc.name}",
         )
 
         approved, exec_status = 1, "ok"
         result = ""
+        duration_ms: float | None = None  # only the actual dispatch is timed
         if verdict.klass is SafetyClass.DENY:
             result = json.dumps({"error": f"denied by safety gate: {verdict.reason}"})
             approved, exec_status = 0, "denied"
@@ -737,7 +783,11 @@ class AgentCore:
                 )
                 exec_status = "dry_run"
             else:
+                import time
+
+                _t0 = time.monotonic()
                 result = await registry.dispatch(tc.name, tc.arguments)
+                duration_ms = (time.monotonic() - _t0) * 1000.0
                 exec_status = "error" if result.lstrip().startswith('{"error"') else "ok"
 
         await self.db.add_audit(
@@ -747,6 +797,7 @@ class AgentCore:
             str(verdict.klass),
             approved,
             _summarize(result),
+            duration_ms,
         )
         self.bus.publish(
             "tool_end",
@@ -756,5 +807,8 @@ class AgentCore:
             safety_class=str(verdict.klass),
             status=exec_status,
             result_summary=_summarize(result),
+            turn_id=turn_id,
+            source=self._brain_node(),
+            target=f"tool:{tc.name}",
         )
         return result

@@ -86,11 +86,15 @@ voice:
   vad_silence_ms: 400
   vad_speech_wait_ms: 5000              # grace to start talking after the beep
   speaker_verify:
-    enabled: false                      # owner disabled 2026-07-06: natural speech scored below even a re-enrolled profile (false rejections)
-    model: models/wespeaker_en_voxceleb_CAM++.onnx
-    profile: models/owner_voice.json
-    threshold: 0.68                     # from 2026-07-06 re-enrollment (min intra-speaker 0.78)
-    mode: chat_only                     # chat_only | ignore (unknown voices)
+    enabled: false                      # v2 (B6) ships OFF; flip on in B7 only if FAR/FRR clears (owner FRR <=2% AND 0 non-owner accepted)
+    model: models/wespeaker_en_voxceleb_CAM++.onnx   # B7 report picks the bench winner (CAM++ / ERes2Net / TitaNet / SpeakerNet)
+    profile: models/owner_voice.json    # v1 JSON fallback; DB speaker_profiles centroids are preferred when present
+    threshold: 0.68                     # legacy per-utterance bool; the session-trust band below is the live gate
+    mode: chat_only                     # chat_only (enforce) | ignore (drop) | observe (score+log only — the B7 soak mode)
+    accept_threshold: 0.62              # smoothed score >= -> trusted (placeholder; tune from the B7 report)
+    reject_threshold: 0.45              # smoothed <= for demote_after utterances -> chat-only (optimistic-demote)
+    smoothing_window: 5                 # utterances in the rolling score
+    demote_after: 2                     # sustained-low utterances before dropping to chat-only
   barge_in: true
   barge_in_threshold: 0.6               # raise if speaker echo self-triggers
   ready_announce:
@@ -102,6 +106,7 @@ voice:
 ui:
   host: 127.0.0.1
   port: 8765
+  frontend: v3                     # v3 = "The Brain" React app (ui/app/dist); classic = vanilla ui/web (rollback). /classic always served regardless.
 
 startup:
   wait_for_model_s: 120                 # logon race: wait for Ollama before giving up

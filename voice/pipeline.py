@@ -19,10 +19,12 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import queue
 import re
 import threading
 import time
+from pathlib import Path
 
 from core.intents import is_end_phrase
 from voice.tts import split_sentences
@@ -84,7 +86,16 @@ class VoicePipeline:
         self.tts = tts
         self.verifier = verifier  # voice.speaker.SpeakerVerifier (Phase 5)
         sv_cfg = cfg.get("speaker_verify", {})
-        self.sv_mode = str(sv_cfg.get("mode", "chat_only"))
+        self.sv_mode = str(sv_cfg.get("mode", "chat_only"))  # chat_only | ignore | observe
+        # B6: per-session trust smoother over utterance scores (optimistic-demote).
+        from voice.speaker import SessionTrust
+
+        self.session_trust = SessionTrust(
+            accept=float(sv_cfg.get("accept_threshold", 0.62)),
+            reject=float(sv_cfg.get("reject_threshold", 0.45)),
+            window=int(sv_cfg.get("smoothing_window", 5)),
+            demote_after=int(sv_cfg.get("demote_after", 2)),
+        )
         self._listen_source = "wake"  # wake | ptt — PTT bypasses verification
 
         self.state = IDLE
@@ -216,17 +227,37 @@ class VoicePipeline:
         sv_cfg = self.cfg.get("speaker_verify", {})
         if not sv_cfg.get("enabled", True):
             return "disabled in config"
+        model = sv_cfg.get("model", "models/wespeaker_en_voxceleb_CAM++.onnx")
         if self.verifier is None:
             from voice.speaker import SpeakerVerifier
 
             self.verifier = SpeakerVerifier(
-                model_path=sv_cfg.get("model", "models/wespeaker_en_voxceleb_CAM++.onnx"),
+                model_path=model,
                 profile_path=sv_cfg.get("profile", "models/owner_voice.json"),
                 threshold=float(sv_cfg.get("threshold", 0.5)),
+                centroids=self._load_db_centroids(model),
             )
         if not self.verifier.enabled:
             return self.verifier.load()
         return self.verifier.note
+
+    def _load_db_centroids(self, model: str) -> list | None:
+        """Fetch the owner's DB centroids for `model` (B6). Runs on the voice/worker
+        thread (load() is dispatched via asyncio.to_thread), so bouncing the async DB
+        read onto the loop is deadlock-safe. Returns None on any miss/failure so the
+        verifier falls back to the v1 JSON profile."""
+        db = getattr(self.agent, "db", None)
+        if db is None:
+            return None
+        try:
+            from voice.speaker import unpack_vector
+
+            rows = asyncio.run_coroutine_threadsafe(
+                db.speaker_centroids("owner", Path(model).name), self.loop
+            ).result(timeout=5)
+            return [unpack_vector(r["centroid"]) for r in rows] or None
+        except Exception:  # noqa: BLE001 — DB miss/timeout falls back to JSON, never crashes
+            return None
 
     def start(self) -> None:
         """Bridge coroutine on the loop + state-machine thread + hotkey."""
@@ -393,6 +424,10 @@ class VoicePipeline:
         # PTT bypasses speaker verification: whoever pressed the hotkey is at
         # the keyboard and already owns the PC.
         self._listen_source = source
+        # B6: a fresh wake/PTT starts a new conversation session — reset the trust
+        # smoother to optimistic. Follow-ups keep accumulating within the session.
+        if source != "followup":
+            self.session_trust.reset()
         # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
         if source != "followup" or self.conversation_cue:
             self.audio.beep()
@@ -481,17 +516,21 @@ class VoicePipeline:
         if game is not None:
             self._toggle_game_mode(game)
             return
-        # Speaker verification (Phase 5) — AFTER the kill phrase (anyone may
-        # stop Baby) and never for PTT. chat_only turns get their tools denied
-        # at the gate; ignore mode drops the utterance entirely.
+        # Speaker verification (Phase 5 / v2 B6) — AFTER the kill phrase (anyone
+        # may stop Baby) and never for PTT. Per-utterance scores feed a session
+        # trust smoother (optimistic-demote): only a confident non-owner (tier
+        # UNKNOWN) loses tools. chat_only enforces (tools denied at the gate),
+        # ignore drops the utterance, observe scores+logs but never enforces.
         verified = True
         if (
             self.verifier is not None
             and getattr(self.verifier, "enabled", False)
             and self._listen_source != "ptt"
         ):
+            from voice.speaker import SessionTrust
+
             try:
-                verified, similarity = self.verifier.verify(pcm)
+                _, similarity = self.verifier.verify(pcm)
             except Exception as exc:  # noqa: BLE001 — a broken check must not lock the owner out
                 self._publish(
                     "error",
@@ -499,6 +538,10 @@ class VoicePipeline:
                 )
                 verified = True
             else:
+                tier = self.session_trust.update(similarity)
+                enforce = self.sv_mode != "observe"
+                verified = tier != SessionTrust.UNKNOWN or not enforce
+                self._log_speaker(similarity, tier, verified)
                 if not verified:
                     if self.sv_mode == "ignore":
                         self._publish(
@@ -510,7 +553,7 @@ class VoicePipeline:
                     self._publish(
                         "status",
                         text=f"voice: speaker not recognized "
-                        f"(similarity {similarity:.2f}) — chat only",
+                        f"(trust {tier}, similarity {similarity:.2f}) — chat only",
                     )
         self._set_verified(verified)
         self._publish("status", text=f"voice: heard {text!r}")
@@ -529,6 +572,40 @@ class VoicePipeline:
             return
         channel = getattr(self.agent, "channel", "voice")
         self.loop.call_soon_threadsafe(gate.set_voice_verified, channel, verified)
+
+    def _log_speaker(self, similarity: float, tier: str, verified: bool) -> None:
+        """Fire-and-forget audit row per scored utterance (B6) — the sole FAR/FRR
+        data source for scripts/speaker_report.py. Mirrors the router's overloaded
+        add_audit('router', ...) pattern; logging must never break the turn."""
+        db = getattr(self.agent, "db", None)
+        if db is None:
+            return
+        channel = getattr(self.agent, "channel", "voice")
+        model = Path(self.cfg.get("speaker_verify", {}).get("model", "")).name
+        payload = json.dumps(
+            {
+                "score": round(float(similarity), 4),
+                "tier": tier,
+                "decision": bool(verified),
+                "model": model,
+                "source": self._listen_source,
+                "mode": self.sv_mode,
+            }
+        )
+        try:
+            asyncio.run_coroutine_threadsafe(
+                db.add_audit(
+                    channel,
+                    "speaker_verify",
+                    payload,
+                    "allow",
+                    1 if verified else 0,
+                    f"trust={tier}",
+                ),
+                self.loop,
+            )
+        except Exception:  # noqa: BLE001 — audit logging is best-effort
+            pass
 
     def _respond(self, frames) -> None:
         stop_playback = threading.Event()

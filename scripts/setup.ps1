@@ -179,7 +179,27 @@ if (-not (Test-Path $spkModel)) {
 } else {
     Write-Host "Speaker verification model: OK"
 }
-Write-Host "Enroll your voice (one-time, ~2 min):  uv run python scripts\enroll_voice.py"
+# B6 speaker-verify v2 bench candidates (~143 MB, one-time). All fail-soft — a
+# missing model just drops out of the bench; the B7 FAR/FRR report picks the
+# winner. sherpa-onnx / ONNX runtime only (no torch).
+$spkBase = "https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models"
+$spkBench = @(
+    "3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx",   # ERes2Net (en), 25 MB
+    "nemo_en_titanet_large.onnx",                          # TitaNet-large (ECAPA-family), 96 MB
+    "nemo_en_speakerverification_speakernet.onnx"          # SpeakerNet (ECAPA-family, light), 22 MB
+)
+foreach ($m in $spkBench) {
+    $dest = "models\$m"
+    if (-not (Test-Path $dest)) {
+        Write-Host "Downloading speaker bench model $m..." -ForegroundColor Yellow
+        try {
+            Invoke-WebRequest "$spkBase/$m" -OutFile $dest -TimeoutSec 600
+        } catch {
+            Write-Host "  $m download failed - it drops out of the speaker bench." -ForegroundColor Yellow
+        }
+    }
+}
+Write-Host "Enroll your voice v2 (guided, ~90s):  uv run python scripts\enroll_voice_v2.py"
 
 # --- 3f. Hardware sensors: LibreHardwareMonitor (P1) ---------------------------
 # Windows exposes no CPU temperature to psutil (that API is Linux-only), so Baby
@@ -210,6 +230,39 @@ if ($lhmExe) {
         -Value "`"$lhmExe`""
     Write-Host "One-time in LibreHardwareMonitor -> Options: enable 'Run on Windows startup'," -ForegroundColor Cyan
     Write-Host "'Minimize to tray', and 'Remote Web Server' (Run, port 8085); run LHM as admin so temps populate." -ForegroundColor Cyan
+}
+
+# --- 3g. v3 "Brain" UI build: Node LTS + Vite build (v3.0.0) ------------------
+# ui/app (React + Vite) builds to static files that FastAPI serves at / when
+# ui.frontend: v3. Node is a BUILD-time dependency only - production serving is
+# static files (no Node at runtime). The classic UI stays at /classic regardless.
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing Node LTS via winget (build-time only)..." -ForegroundColor Yellow
+    try {
+        winget install --id OpenJS.NodeJS.LTS -e `
+            --accept-package-agreements --accept-source-agreements
+        # winget's PATH edit needs a fresh shell; refresh this session's PATH.
+        $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                    [Environment]::GetEnvironmentVariable("Path", "User")
+    } catch {
+        Write-Host "Node install skipped - the v3 UI won't build; classic UI stays at /." -ForegroundColor Yellow
+    }
+}
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    Write-Host "Building the v3 Brain UI (npm ci && npm run build)..." -ForegroundColor Yellow
+    Push-Location ui\app
+    try {
+        npm ci
+        if ($LASTEXITCODE -eq 0) {
+            npm run build
+            Write-Host "v3 UI built. Enable with  ui.frontend: v3  in config.yaml" -ForegroundColor Cyan
+            Write-Host "(rollback: ui.frontend: classic; /classic is always served)." -ForegroundColor Cyan
+        } else {
+            Write-Host "npm ci failed - v3 UI not built; classic UI stays available." -ForegroundColor Yellow
+        }
+    } finally { Pop-Location }
+} else {
+    Write-Host "Node unavailable - skipping v3 UI build. The classic UI works as before." -ForegroundColor Yellow
 }
 
 # --- 4. Secrets template -----------------------------------------------------

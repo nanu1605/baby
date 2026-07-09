@@ -1,5 +1,69 @@
 # Changelog
 
+## v3.0.0 — The Brain (2026-07-09)
+
+The vanilla web panel becomes **The Brain**: a React living-graph UI over the
+real router / voice / memory / tool paths, plus speaker verification v2. The
+router, provider and safety internals are frozen ground — v3 adds only read-only
+endpoints, additive event fields, and tool enable/disable flags. Owner finalizes
+the date on tag. (Date on release; owner merges + tags.)
+
+- B0: branch `feature/v3-brain-ui`, Vite + React + TS scaffold at `ui/app/`,
+  design tokens + dark shell. **Dual-UI flag** `ui.frontend: v3 | classic` — v3
+  serves `ui/app/dist`, and `/classic` mounts the vanilla `ui/web/` regardless of
+  the flag (one-line rollback). `setup.ps1` installs Node LTS + builds the app;
+  `dist/` is built-on-setup, not committed. Draft PR opened.
+- B1: **graph data spine** (backend, all additive). `core/nodes.py::build_graph`
+  derives topology from config + the tool registry; new read-only `GET /api/graph`,
+  `/api/nodes/{id}/stats`, `/api/search` (greenfield external-content **FTS5**
+  mirrors of messages/tasks/audit with status-join quarantine exclusion), and a
+  synthesized **`/ws/state`** pipeline gauge. Events carry additive
+  `source`/`target`/`turn_id`; `audit_log` gains a nullable `duration_ms`. Router
+  / gate / provider logic untouched.
+- B2: **app shell + static graph** — daily-driver parity with `/classic`
+  (streaming chat with sanitized markdown, confirmation modal, header with router
+  dot + token totals + game toggle + kill, memory browser, toasts) over the graph
+  centerpiece with pinned group anchors (voice west, brains center, tools east,
+  memory south). Canvas-2D only.
+- B3: **the graph comes alive** — honest edge pulses along the real turn path
+  (derived from each turn's own signals; zero-signal edges stay dark), the central
+  **core node as a status gauge**, live node states (brain health recolor, game
+  mode ghosts the local 9B). An idle-throttled render clock (60fps active /
+  ~20–24fps idle / paused when hidden), per-second coalescing, and a user
+  `performance mode` opt-in keep it inside the GPU/CPU budget.
+- B4: **node inspectors + controls** — click any node for a blurb, live stats and
+  node-filtered events, plus per-type controls: a **`tool_flags`** enable/disable
+  (a disabled tool's schema is hidden from the model next turn; the gate path is
+  disjoint and a test proves it still classifies), one-turn best-brain **boost**
+  (`tier_hint="best"`, router untouched), task cancel + scheduler run-now,
+  memory browse/wipe. **The safety gate has no disable control — enforced in code
+  and a dedicated test.** Camera fly-to + `#node/<id>` deep-links.
+- B5: **"Search the brain…"** omnibox — grouped Facts / Conversations / Activity /
+  Tasks from `GET /api/search`, full keyboard nav (Ctrl/⌘-K or `/`, ↑↓, Enter,
+  Esc), debounced with a stale-response guard. Selecting a result reuses the B4
+  focus cascade (fly-to + hash + inspector); honest fly-to only — never a
+  fabricated anchor or faked conversation reload. Recents persist locally.
+- B6: **speaker verification v2** (ships OFF). Multi-centroid profiles in a new
+  additive `speaker_profiles` table, scored by **max cosine** (DB-first, v1
+  `owner_voice.json` mean as fallback). Per-utterance scores feed a session-trust
+  smoother (**optimistic-demote** — no single-utterance lockout) that writes the
+  existing binary gate flag; the 3-tier ladder collapses to that flag with **zero
+  `core/safety.py` logic change**. New `mode: observe` scores + logs without
+  enforcing (the soak data-collection mode); each scored utterance is audit-logged
+  as the FAR/FRR source. `enroll_voice_v2.py` (guided multi-position) +
+  `speaker_report.py` (per-model FAR/FRR). `setup.ps1` fetches the bench models
+  (CAM++, ERes2Net, TitaNet-large, SpeakerNet).
+- B7: **polish, resilience, release**. WS resilience — the socket layer surfaces
+  connection state; a **reconnect pill** shows when any of the three channels is
+  down and a dropped mid-stream reply is finalized cleanly (no frozen cursor).
+  **Responsive** — the graph stays full-bleed + pannable on a phone while chat and
+  the inspector become slide-over drawers. Long-session hygiene — the transcript
+  and toast stacks are capped (the event ring already was); the streaming cursor
+  honors reduced-motion. README rewritten around the Brain; this changelog. Ships
+  with `voice.speaker_verify.enabled: false` — the gate flips on only if the soak
+  FAR/FRR clears (owner FRR ≤2% AND 0 non-owner accepted), else stays OFF with the
+  findings recorded.
+
 ## Unreleased — v2 conversational & reliable (feature/v2-conversational-reliability)
 
 - P0 (2026-07-06): failing repros committed first — `tests/test_sensors.py`,

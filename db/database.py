@@ -13,11 +13,38 @@ lock for its direct connection access.
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 
 import aiosqlite
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
+
+
+def _fts_match(query: str) -> str:
+    """Turn arbitrary user text into a safe FTS5 MATCH string.
+
+    Tokens are split on non-word chars and each quoted, so punctuation and FTS
+    operators in the query can never raise a syntax error; a trailing ``*`` on
+    the last token gives as-you-type prefix matching. Empty when nothing usable.
+    """
+    tokens = [t for t in re.split(r"\W+", query) if t]
+    if not tokens:
+        return ""
+    quoted = [f'"{t}"' for t in tokens[:-1]]
+    quoted.append(f'"{tokens[-1]}"*')  # prefix-match the last token
+    return " ".join(quoted)
+
+
+def _percentile(samples: list[float], p: float) -> float | None:
+    """Linear-interpolated percentile (B1 node latency); None on empty input."""
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    k = (len(ordered) - 1) * (p / 100.0)
+    lo = int(k)
+    hi = min(lo + 1, len(ordered) - 1)
+    return round(ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo), 1)
 
 
 class Database:
@@ -75,6 +102,11 @@ class Database:
             await self.conn.execute(
                 "ALTER TABLE messages ADD COLUMN status TEXT DEFAULT 'ok'"
             )
+        # B1 node stats: per-tool-call execution time (NULL on older rows).
+        cur = await self.conn.execute("PRAGMA table_info(audit_log)")
+        have = {row["name"] for row in await cur.fetchall()}
+        if "duration_ms" not in have:
+            await self.conn.execute("ALTER TABLE audit_log ADD COLUMN duration_ms REAL")
 
     async def _reconcile_incomplete_turns(self) -> None:
         """Fail turns a hard crash left without a final assistant row (P2).
@@ -166,11 +198,12 @@ class Database:
         safety_class: str,
         approved: int,
         result_summary: str,
+        duration_ms: float | None = None,
     ) -> int:
         return await self._write(
             "INSERT INTO audit_log (channel, tool, args, safety_class, approved,"
-            " result_summary) VALUES (?, ?, ?, ?, ?, ?)",
-            (channel, tool, args, safety_class, approved, result_summary),
+            " result_summary, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (channel, tool, args, safety_class, approved, result_summary, duration_ms),
         )
 
     # -- token usage (P5 telemetry) -----------------------------------------
@@ -226,6 +259,93 @@ class Database:
             out["total"] += row["total"] or 0
             out["by_brain"][row["brain_tier"] or "unknown"] = row["total"] or 0
         return out
+
+    # -- B1 node stats -------------------------------------------------------
+
+    async def audit_stats(self, tool: str, days: int = 7) -> dict:
+        """Per-tool activity for the graph inspector: calls today/window, error
+        rate, p50/p95 exec latency (from duration_ms), last event."""
+        today = await self._fetchone(
+            "SELECT COUNT(*) AS n FROM audit_log WHERE tool = ?"
+            " AND date(ts, 'localtime') = date('now', 'localtime')",
+            (tool,),
+        )
+        rows = await self._fetchall(
+            "SELECT approved, ts, duration_ms FROM audit_log"
+            " WHERE tool = ? AND ts >= datetime('now', ?) ORDER BY ts",
+            (tool, f"-{int(days)} days"),
+        )
+        calls = len(rows)
+        errors = sum(1 for r in rows if not r["approved"])
+        durations = [r["duration_ms"] for r in rows if r["duration_ms"] is not None]
+        return {
+            "calls_today": today["n"] if today else 0,
+            "calls_window": calls,
+            "window_days": int(days),
+            "errors": errors,
+            "error_rate": round(errors / calls, 3) if calls else 0.0,
+            "p50_ms": _percentile(durations, 50),
+            "p95_ms": _percentile(durations, 95),
+            "last_ts": rows[-1]["ts"] if rows else None,
+        }
+
+    async def usage_by_brain(self, tier: str, days: int = 7) -> dict:
+        """Per-brain token totals over the window (graph inspector)."""
+        row = await self._fetchone(
+            "SELECT SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion,"
+            " SUM(total_tokens) AS total, COUNT(*) AS turns FROM usage_log"
+            " WHERE brain_tier = ? AND ts >= datetime('now', ?)",
+            (tier, f"-{int(days)} days"),
+        )
+        return {
+            "prompt": (row["prompt"] or 0) if row else 0,
+            "completion": (row["completion"] or 0) if row else 0,
+            "total": (row["total"] or 0) if row else 0,
+            "turns": (row["turns"] or 0) if row else 0,
+            "window_days": int(days),
+        }
+
+    # -- B1 search (FTS5) ----------------------------------------------------
+
+    async def search_messages_fts(self, query: str, limit: int = 6) -> list[dict]:
+        """Keyword search over messages; joins back to status='ok' so quarantined
+        turns never surface (P2 invariant enforced at query time)."""
+        match = _fts_match(query)
+        if not match:
+            return []
+        rows = await self._fetchall(
+            "SELECT m.id, m.content, m.created_at, m.conversation_id, m.role"
+            " FROM messages_fts JOIN messages m ON m.id = messages_fts.rowid"
+            " WHERE messages_fts MATCH ? AND m.status = 'ok'"
+            " AND m.role IN ('user', 'assistant')"
+            " ORDER BY rank LIMIT ?",
+            (match, limit),
+        )
+        return [dict(r) for r in rows]
+
+    async def search_tasks_fts(self, query: str, limit: int = 8) -> list[dict]:
+        match = _fts_match(query)
+        if not match:
+            return []
+        rows = await self._fetchall(
+            "SELECT t.id, t.title, t.spec, t.status, t.created_at"
+            " FROM tasks_fts JOIN tasks t ON t.id = tasks_fts.rowid"
+            " WHERE tasks_fts MATCH ? ORDER BY rank LIMIT ?",
+            (match, limit),
+        )
+        return [dict(r) for r in rows]
+
+    async def search_audit_fts(self, query: str, limit: int = 8) -> list[dict]:
+        match = _fts_match(query)
+        if not match:
+            return []
+        rows = await self._fetchall(
+            "SELECT a.id, a.tool, a.args, a.result_summary, a.ts, a.channel"
+            " FROM audit_fts JOIN audit_log a ON a.id = audit_fts.rowid"
+            " WHERE audit_fts MATCH ? ORDER BY rank LIMIT ?",
+            (match, limit),
+        )
+        return [dict(r) for r in rows]
 
     # -- messages -----------------------------------------------------------
 
@@ -509,6 +629,58 @@ class Database:
     async def set_schedule_last_run(self, schedule_id: int, ts: str) -> None:
         await self._write(
             "UPDATE schedules SET last_run = ? WHERE id = ?", (ts, schedule_id)
+        )
+
+    # -- tool flags (B4: hide a disabled tool's schema from the model) -----------
+
+    async def set_tool_flag(self, name: str, enabled: bool) -> None:
+        """Enable/disable a tool by name (upsert). Caller validates the name is a
+        real registered tool — the gate is never a tool, so it can't be disabled."""
+        await self._write(
+            "INSERT INTO tool_flags (name, enabled, updated_at)"
+            " VALUES (?, ?, datetime('now'))"
+            " ON CONFLICT(name) DO UPDATE SET enabled = excluded.enabled,"
+            " updated_at = excluded.updated_at",
+            (name, 1 if enabled else 0),
+        )
+
+    async def disabled_tools(self) -> set[str]:
+        rows = await self._fetchall("SELECT name FROM tool_flags WHERE enabled = 0")
+        return {r["name"] for r in rows}
+
+    # -- speaker profiles (B6: multi-centroid voice verification v2) --------------
+
+    async def add_speaker_centroid(
+        self, label: str, model: str, dim: int, centroid: bytes, kind: str | None = None
+    ) -> int:
+        """Store one enrolment centroid (struct.pack float32 blob). A profile is the
+        SET of rows sharing (label, model); verify scores an utterance by max-cosine
+        over them. Additive-only — never mutates an existing row."""
+        return await self._write(
+            "INSERT INTO speaker_profiles (label, model, dim, centroid, kind)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (label, model, int(dim), centroid, kind),
+        )
+
+    async def speaker_centroids(self, label: str, model: str) -> list[dict]:
+        """Every centroid for one (label, model), newest first. Model-scoped so a
+        CAM++ profile is never handed to a TitaNet extractor."""
+        rows = await self._fetchall(
+            "SELECT id, dim, centroid, kind, created_at FROM speaker_profiles"
+            " WHERE label = ? AND model = ? ORDER BY id DESC",
+            (label, model),
+        )
+        return [dict(r) for r in rows]
+
+    async def clear_speaker_profile(self, label: str, model: str | None = None) -> None:
+        """Drop a profile before a fresh (non-append) enrolment. model=None wipes
+        every model's centroids for the label."""
+        if model is None:
+            await self._write("DELETE FROM speaker_profiles WHERE label = ?", (label,))
+            return
+        await self._write(
+            "DELETE FROM speaker_profiles WHERE label = ? AND model = ?",
+            (label, model),
         )
 
     async def get_history(self, conversation_id: int, limit: int = 50) -> list[dict]:

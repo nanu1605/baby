@@ -581,3 +581,289 @@ Running log of non-obvious choices made during the build. Newest last.
     in the UI since they cost nothing. This stays within the frozen-router rule:
     the only provider-layer change is asking for a field the API already sends
     plus reading it — no router state/ladder/bucket touched.
+
+## v3 — The Brain (2026-07-08)
+
+92. **Ground-truth check vs the v3 spec's §0 (B0)**. The spec's stated "ground
+    truth" was verified against the repo; brain lineup matched (OpenRouter
+    `openai/gpt-4o-mini` primary, NIM `z-ai/glm-5.2` heavy, Gemini
+    `gemini-flash-latest` backstop, local `qwen3.5:9b`), but three claims were
+    stale and shape later phases: (a) the voice pipeline has only
+    `IDLE/LISTENING/RESPONDING` (`voice/pipeline.py:38`) — the spec's
+    `thinking/speaking/executing` do NOT exist, so B1's `/ws/state` must
+    SYNTHESIZE them from bus events, not read them off the pipeline; (b) there is
+    no FTS anywhere and `audit_log` is write-only, so the B5 omnibox is greenfield
+    FTS5 + new read methods; (c) `models/jarvis.onnx` is not on disk — the custom
+    wake word is still deferred (owner Colab step), the loader already handles a
+    model list via `max()`. Also: tool `schemas()` returns all tools unfiltered
+    (`tool_flags` is greenfield for B4), and task-cancel exists in code but is
+    unexposed while scheduler run-now does not exist (both new routes in B4).
+93. **Dual-UI serving, build-on-setup, dist NOT committed (B0)**. `create_app`
+    reads `ui.frontend` (`v3|classic`, default `classic`): `v3` serves the built
+    `ui/app/dist/index.html` at `/` with Vite's `/assets/*` mounted; the vanilla
+    `ui/web` shell is always mounted at `/classic` so the config-first rollback
+    holds for the whole branch. If `ui.frontend: v3` but `dist/` isn't built, `/`
+    falls back to classic with a logged warning (graceful, never a crash). The
+    built `dist/` is gitignored and produced by `scripts/setup.ps1`
+    (`npm ci && npm run build`) rather than committed — build artifacts don't
+    belong in git, and production serving needs no Node (static files only).
+94. **.gitignore anchoring for the Node subproject (B0)**. The existing
+    "graphify wrapper junk" rules (`node_modules/`, `package.json`,
+    `package-lock.json`) were unanchored and would have swallowed
+    `ui/app/package.json` + its lockfile (which MUST be committed for a
+    reproducible pinned build). Root-anchored them (`/node_modules/`,
+    `/package.json`, `/package-lock.json`) and added explicit
+    `ui/app/node_modules/` + `ui/app/dist/` ignores.
+95. **Frontend stack pins (B0)**. React 18.3.1, react-dom 18.3.1, zustand 5.0.2,
+    react-force-graph-2d 1.27.1 (canvas-2D — the GPU belongs to the LLM);
+    build tooling Vite 6.4.3, @vitejs/plugin-react 4.3.4, TypeScript 5.6.3. Vite
+    was bumped from 6.0.7 → 6.4.3 to clear the esbuild dev-server advisory
+    (GHSA-67mh-4wv8-2f99); it is dev-server-only and does not touch the static
+    production build, but the tree is kept at 0 audit vulnerabilities.
+    `package-lock.json` is committed as the true pin.
+96. **Auto-derived graph topology (B1a)**. `core/nodes.py::build_graph(config)`
+    returns `{nodes, edges}` for the v3 graph. Tool nodes are derived live from
+    `registry.schemas()` (add a `@tool` → a node appears, no edit) and brain nodes
+    from the config `models` block + router role map, so both track reality without
+    hand-maintenance. Only the fixed subsystems and the static call-path edges
+    (every brain routes through `safety_gate` before any `tool:*`) are declared by
+    hand — they are stable architecture. A tool's "safety class" on its node is a
+    heuristic (from the `classify_tool` branches) since the real class is decided
+    at call time from the args, not stored.
+97. **Additive event attribution (B1b)**. `source`/`target` (node ids) and
+    `turn_id` were added to bus events by passing extra kwargs to the existing
+    `publish(kind, channel, **payload)` — zero dataclass/signature change, and the
+    fields auto-appear in the ws JSON. `turn_id` was threaded into `_execute_tool`
+    (it wasn't in scope there). `/classic` ignores the unknown keys, so it is
+    unaffected. Token `source` falls back to `brain:daily` when the provider
+    reports no routing decision (a plain provider in tests). The router's decision
+    status stays quiet on the happy path (primary route) as before — only its
+    payload gained source/target, no new emissions.
+98. **Synthesized `/ws/state` (B1c)**. The gauge states `thinking / speaking /
+    executing` do NOT exist in the voice pipeline (only IDLE/LISTENING/RESPONDING).
+    A `_StateDeriver` folds the bus stream into them: turn_start→thinking, first
+    token→speaking, tool_start→executing (until all open tools close, tracked by
+    call_id), turn_end→idle; the voice "listening" status maps to listening.
+    `/ws/state` sends `{state, router, game_mode}` on change (router health +
+    game mode read live off the provider, since they change without a state
+    transition — e.g. Wi-Fi drop → cloud→degraded). This is the spec's biggest
+    factual gap vs the repo.
+99. **Per-node stats + additive `audit_log.duration_ms` (B1d)**. Tool latency
+    percentiles need a duration, which `audit_log` never stored — added a nullable
+    `duration_ms` column (idempotent ALTER) and time ONLY the `registry.dispatch`
+    call in `_execute_tool` (never the confirm wait, which is user think-time and
+    would poison latency). Old rows are NULL → excluded from percentiles. Brain
+    latency reuses the router's in-memory first-token samples (no new storage).
+    `ctx.scheduler` was also attached to `UIContext` (it was created but never
+    exposed) so scheduler/task-queue nodes can report jobs + depth.
+100. **External-content FTS5 + status join for search (B1e)**. Search is greenfield
+    FTS5 (compiled into sqlite here, not a loadable extension). The mirrors
+    (`messages_fts`/`tasks_fts`/`audit_fts`) use `content=` external-content tables
+    kept in sync by INSERT/UPDATE/DELETE triggers — no duplicated text. The
+    messages query joins back to `messages WHERE status='ok'`, so quarantining a
+    turn (a status UPDATE, content unchanged) drops it from search with no FTS
+    re-sync. `GET /api/search` fans out grouped by type (facts + conversations via
+    the vector store, activity + tasks via FTS) — cosine and bm25 ranks aren't
+    comparable, so there is no cross-type global ordering. The MATCH string is
+    built by quoting `\W`-split tokens (last one prefixed `*`), so arbitrary user
+    text and FTS operators can never raise a syntax error. `scripts/backfill_fts.py`
+    rebuilds the indexes for pre-B1 rows.
+
+101. **v3 chat = sanitized-markdown, final reply only (B2)**. The React chat
+    renders the authoritative `turn_end.reply` as markdown; streaming tokens stay
+    plain text (React `textContent`), so a partial stream can never inject markup and
+    there is no partial-markdown flicker. Defense in depth: `marked` with raw HTML
+    disabled (layer 1) → `DOMPurify` allowlist sanitize (layer 2) → a DOMPurify hook
+    stamps `rel="noopener noreferrer" target="_blank"` on every link. Frontend tests
+    are light `vitest` (jsdom) on pure logic only (store reducers, layout math,
+    markdown, and in B3 the edge-derivation map) — no DOM/component tests.
+
+102. **Honest signal→edge derivation for pulses (B3)**. Graph particles animate only
+    real edges, derived from the current turn's own signals — never faked, never
+    cross-turn. Attributed directly: `tool_start`/`tool_end` (`brain:{tier}` →
+    `safety_gate` → `tool:{name}`, colored by `safety_class`; error status flashes the
+    tool node) and `CloudRouter` router `status` (`router → brain:{tier}`). Derived:
+    `turn_start` → `baby_core → router`; `turn_end.brain` (the authoritative authoring
+    brain) → `router → brain:{tier}` (covers the silent default `nim_primary` route,
+    which emits no decision event); voice `status "heard …"` → `voice_stt → router`;
+    voice `token` → `baby_core → voice_tts`. **`backstop → cloud` remap** (router tier
+    token `backstop` vs graph node `brain:cloud`, the config key). Left DARK — no
+    honest signal, so never pulsed: `brain → mem_*` (memory access never hits the bus)
+    and per-stage voice `voice_wake`/`voice_vad` (only aggregate `voice:` text). The
+    full map lives in `ui/app/src/graph/edgeMap.ts` and is unit-tested. Text-turn
+    replies have no return edge in the topology, so they are shown by the core gauge's
+    "speaking" state rather than a faked `brain → baby_core` edge.
+
+103. **Idle-throttled render clock; gauge breathes on the canvas (B3)**. The central
+    Baby-core node is the status gauge and breathes on the canvas, but a naive
+    `autoPauseRedraw=false` would repaint at 60fps forever (the GPU belongs to the
+    LLM). Instead we own the only draw loop: the force-graph engine loop stays paused
+    and one self-managed rAF forces a single repaint per tick via a
+    `resumeAnimation()→pauseAnimation()` one-shot (`autoPauseRedraw=false` so the frame
+    always paints). Cadence: 60fps while active (a turn running or a pulse in flight),
+    ~20–24fps when idle, no draws at all in low-power-idle, hard-pause when the tab is
+    hidden. Breath phase comes from `performance.now()` so it looks right at any fps.
+    `performance_mode` (header ⚡, persisted to localStorage) and
+    `prefers-reduced-motion` drop to static state-color + no particles — but
+    `performance_mode` is a **user opt-in, NOT default-on**: the perf gate must clear
+    with it off (owner rider).
+
+104. **Pulse bus outside zustand + per-edge coalescing (B3)**. Pulses fire at token
+    rate; routing them through the React store would re-render per token and blow the
+    perf budget. `ui/app/src/graph/pulseBus.ts` is a module-level pub/sub — hooks emit,
+    `BrainGraph` subscribes and paints. `emitParticle` needs the exact link object from
+    `graphData.links` (identity match, no id lookup), so BrainGraph builds a
+    `from>to → link` map once per topology. Particles are coalesced per edge (≥150ms
+    apart → ≤~6/s/edge), so a burst of 50 tool events shows as one visible stream.
+
+105. **tool_flags: additive table, schema-hiding, gate untouched (B4)**. An additive
+    `CREATE TABLE IF NOT EXISTS tool_flags(name, enabled, updated_at)` (auto-creates on
+    connect; no `_migrate`, no backup). `registry.schemas(disabled)` hides a disabled
+    tool from the model; `AgentCore` reads `db.disabled_tools()` once per turn and passes
+    the set at the single `provider.chat` call. This is **structurally disjoint** from
+    the safety gate (`agent.py` `gate.classify` at a separate seam) — a disabled tool is
+    still classified normally, so no flag can ever weaken the gate. The flag **setter
+    rejects any name not in the live registry** (`registry.is_registered`), so the gate
+    (a subsystem node, not a tool) is unrepresentable as a flag. Enforced by
+    `tests/test_safety.py` (the forever-green file) + `tests/test_tool_flags.py`.
+
+106. **Best-brain boost, not a per-tier pin (B4)**. The brain "prefer this brain"
+    control reuses the existing `tier_hint="best"` as a **one-shot** `AgentCore`
+    field, consumed for exactly the next turn — zero router change. Verified precedence:
+    `tier_hint` is #7 in `CloudRouter._ladder`, strictly below every privacy/language
+    force-local pin (677/679/692) and offline/degraded (697/699), with `_redact_pinned`
+    (777) as a second layer — so a boost can never send local-pinned content to the
+    cloud, and a down-cloud boost still degrades to local. Honest placement: the control
+    lives ONLY on the `brain:nim_heavy` drawer + a chat-input ⚡ (a "boost armed" chip
+    with cancel; auto-clears on `turn_end`); other brain drawers are read-only (a
+    per-tier pin doesn't exist). Arming is audited as `explicit_request`. A true
+    per-tier pin is parked for a possible post-v3 PR.
+
+107. **Additive control endpoints + inspector plumbing (B4)**. `POST /api/tools/{name}/
+    flag`, `/api/brain/boost`, `/api/tasks/{id}/cancel` (`WorkerPool.cancel`),
+    `/api/scheduler/{id}/run` (new `Scheduler.run_now` invoking the job's own registered
+    coroutine — the exact cron path) — all non-destructive, plain POST, None-guarded.
+    `/api/nodes/{id}/stats` gained read-only `enabled` (tool) / `pinned_next_turn`
+    (brain). Frontend: the topology is lifted into the zustand store (`graph`) so the
+    inspector drawer — mounted as an overlay sibling — can resolve `selectedNode` → node;
+    `MemoryPanel` is shared by the dialog and the memory-node drawer; a `#node/<id>`
+    deep-link (two-way hash sync) drives selection + camera fly-to, reused by B5 search.
+
+108. **Omnibox reuses the `selectNode` cascade; zero backend change (B5)**. The
+    "Search the brain…" omnibox is pure frontend — the search backend (grouped FTS5 +
+    vector fan-out) shipped whole in B1. Selecting a result is a single
+    `useBrain.selectNode(item.node_id)`, which already drives camera fly-to (`BrainGraph`),
+    the `#node/<id>` hash (`useDeepLink`), and the inspector drawer — so no new focus
+    plumbing. The server stamps every result's anchor `node_id` (fact→`mem_facts`,
+    conversation→`mem_rag`, activity→`tool:<name>`, task→`task_queue`) and exposes no
+    comparable cross-type score (cosine vs bm25), so results are grouped, never globally
+    ranked: fixed group order (Facts → Conversations → Activity → Tasks), server
+    intra-group order preserved. Ordering/flatten/select-map + recents live in the pure,
+    unit-tested `ui/app/src/lib/searchResults.ts`.
+
+109. **Honest select + best-effort highlight; never fabricate a target (B5, owner
+    riders)**. `resultAction` reads only the server-stamped `node_id` — it never invents
+    an anchor — and the omnibox verifies that node exists in the loaded graph before
+    selecting, so a de-registered tool's audit row (missing `tool:<name>`) shows a toast
+    instead of opening a dangling empty drawer. A **fact** result requests a best-effort
+    highlight (`store.focusFact`): `MemoryPanel` rings + scrolls to that fact **only when
+    it's already in the loaded browse list** — un-present facts are not faked. Old **audit**
+    events get no scroll-to: the live-event ring is session-only, so there is no per-node
+    history to scroll to, and B5 adds no new fetch for one (revisit only on real need).
+    `focusFact` auto-clears whenever `selectedNode` moves off `mem_facts`.
+
+110. **Conversation results fly to `mem_rag` + Chat tab, not a fake reload (B5)**. Chat
+    is a single live stream — `/history` returns only the active `conversation_id` and
+    the only conversation control (`POST /conversation/new`) *replaces* it; there is no
+    load-arbitrary-conversation-by-id backend. So a conversation result flies the camera
+    to `mem_rag` and switches the right panel to the Chat tab (showing the real snippet
+    in the result), rather than pretending to reopen that past thread in the live stream.
+    A true read-only conversation viewer (new additive read endpoint + overlay) is parked
+    for a possible post-v3 PR. Recent searches persist in `localStorage`
+    (`baby.recentSearches`); the omnibox is focus-summoned via Ctrl/⌘-K or `/`.
+
+111. **Speaker-verify v2 stays on sherpa-onnx (no torch); TitaNet-large is the
+    ECAPA-lineage bench candidate (B6)**. v1's CAM++ false-rejected natural speech —
+    the hypothesis is method, not model. The bench re-tests the incumbent CAM++
+    (`wespeaker_en_voxceleb_CAM++.onnx`) against ERes2Net-en
+    (`3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx`) and TitaNet-large
+    (`nemo_en_titanet_large.onnx`), plus SpeakerNet
+    (`nemo_en_speakerverification_speakernet.onnx`) as a near-zero-cost 4th. There is
+    no ready SpeechBrain-ECAPA ONNX in the sherpa-onnx release and a real export needs
+    torch/Colab (rejected), so TitaNet (NeMo, ECAPA-lineage) stands in for "an ECAPA
+    export". `setup.ps1` downloads all candidates fail-soft (~143 MB, bench-only). The
+    B7 FAR/FRR report (`scripts/speaker_report.py`) picks the winner → set in config.
+
+112. **The 3-tier trust ladder collapses to the existing binary gate flag — zero
+    safety-gate logic change (B6)**. The gate exposes one binary signal
+    (`SafetySession.unverified_channels`: in-set → blanket DENY = chat-only; absent →
+    normal). Frozen-ground forbids adding gate logic and the spec says "feed-only", so
+    the voice layer computes the tier and writes the same
+    `SafetyGate.set_voice_verified(channel, bool)`: **trusted** and **uncertain** →
+    `True` (allow-through; CONFIRM/DENY still hit the on-screen modal, voice-yes already
+    rejected — Decision #46), **unknown** → `False` (chat-only). Tier is display-only
+    (surfaced on the `speaker_verify` node). Trust is a `SessionTrust` smoother
+    (optimistic-demote): a fresh non-PTT session starts TRUSTED and drops to UNKNOWN
+    only when the smoothed score stays ≤ reject for `demote_after` utterances — no
+    single shaky utterance locks the owner out (v1's failure). PTT still auto-trusts;
+    "baby stop" is checked before verification so it never depends on trust. A profile
+    is now a SET of centroids (`speaker_profiles` table, one row per mic-position/
+    session, `struct.pack` float32 BLOB) scored by MAX cosine — robust to distance/
+    energy variance; single-mean is the 1-centroid case. Load is DB-centroids-first with
+    the v1 `owner_voice.json` mean as fallback, so every existing test + v1 enrolment
+    still works.
+
+113. **`mode: observe` + additive per-utterance audit logging feed the B7 soak (B6)**.
+    A third mode `observe` (alongside `chat_only`/`ignore`) scores + logs every utterance
+    but never enforces — the B7 3-day soak runs mechanism-on / gate-off to collect
+    `(score, tier, decision, model)` as `add_audit("speaker_verify", …)` rows (mirroring
+    the router's overloaded audit pattern; v1 logged nothing). `speaker_report.py` reads
+    them back per model and computes FAR/FRR from time-windowed ground truth (owner
+    window vs an optional non-owner window). B6 ships `enabled: false`; B7 flips it on
+    only if owner FRR ≤ 2% AND 0 non-owner accepted — shipping OFF with findings is an
+    acceptable outcome. Wake-word (`models/jarvis.onnx`) remains an owner Colab item;
+    `wakeword_models: []` + the list-loader already support it with no code change.
+
+114. **B7 WS resilience is a frontend-only job — the backend is leak-free**. Verified
+    every `/ws/*` handler cancels its pump in `finally` and each pump unsubscribes from
+    the bus in its own `finally` (`ui/server.py`), and every in-memory collection is
+    bounded (latency `del samples[:-500]`, bus queue `maxsize=512`, session-trust
+    `deque(maxlen)`). So B7 adds no backend leak-fix and no router/gate/provider change.
+    The gap was purely client-side: `socket.ts` surfaced no connection state, the
+    `connected` store flag was write-only/never read, and on a backend drop the header
+    froze while a mid-stream bubble stayed `streaming: true` forever. Fix: an additive
+    `onStatus(up)` callback on `openSocket` (open→true, close/error→false; backoff/retry
+    and 2-arg callers unchanged) drives per-channel `ws: {chat, activity, state}` in the
+    store (replacing the dead flag); the header shows a reconnect pill while any channel
+    is down ("connecting…" before first `/stats`, "reconnecting…" after); and a dropped
+    chat socket calls `interruptTurn()` to finalize the open bubble (kills the stuck
+    cursor) + drop a one-line note. Honest empty/down states on the chat + activity
+    panels.
+
+115. **Responsive = drawers over the graph, not stacked scroll (B7)**. At ≤720px the
+    graph stays full-bleed + pannable as the centerpiece; the side panel becomes a fixed
+    slide-over (with a tap-away backdrop, reusing the existing collapse toggle — default
+    collapsed on a phone-width viewport), the inspector goes full-width, the omnibox
+    full-width, and the header gauges hide. Stacked-scroll was rejected because it
+    demotes and scrolls away the graph, which is the whole point of the UI. Pure CSS
+    `@media` + one backdrop element (CSS-gated to mobile); no new layout state.
+
+116. **Long-session hygiene: cap the two remaining unbounded arrays; gate the cursor
+    keyframe (B7)**. The event ring was already capped (500); B7 caps the chat transcript
+    (`MESSAGE_CAP = 300`, front-trim so a still-streaming tail is never dropped) and the
+    toast stack (5). Backend collections are all bounded (see #114), so "heap stable over
+    hours" is a frontend concern only. Separately, `prefers-reduced-motion` zeroes CSS
+    `transition`s via the `--dur-*` tokens but **not** `@keyframes`, so the streaming
+    `blink` cursor kept animating — now gated under a reduced-motion media query.
+
+117. **Release sequencing: code-complete commit, PR stays Draft; the soak/flip is
+    owner-driven (B7)**. The PR §12 checklist depends on data that does not exist until
+    the owner runs the 3-day soak — the perf-gate numbers (which must clear with
+    `performance_mode` **OFF** — it is a user opt-in, never a default-on ship for the
+    centerpiece) and the speaker FAR/FRR report. So the executor ships the B7 polish
+    commit and stops with the PR in **Draft**; the owner runs the soak, decides
+    `voice.speaker_verify.enabled` from the real curves (ON only if owner FRR ≤ 2% AND 0
+    non-owner accepted, else OFF with findings), then flips Ready + merges + tags
+    `v3.0.0`. The disruptive `e2e_regression.py --with-project` + v2/v1.1 browser/TTS
+    demos are likewise owner-run (they open a real Chromium window and may speak); the
+    executor runs only the always-green gates (`pytest` + `ruff` + FE `build`/`test`).

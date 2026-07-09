@@ -954,9 +954,11 @@ class FakeVerifier:
 
 async def test_unknown_speaker_chat_only_denies_tools(db):
     from core.safety import SafetyClass
+    from voice.speaker import SessionTrust
 
     pipeline, provider, _ = await _make_pipeline(db, ["Sorry, chat only."])
     pipeline.verifier = FakeVerifier(ok=False, similarity=0.2)
+    pipeline.session_trust = SessionTrust(demote_after=1)  # demote on a single low
     pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
     from voice.audio_io import FrameBuffer
 
@@ -985,9 +987,12 @@ async def test_owner_speaker_clears_flag_and_submits(db):
 
 
 async def test_ignore_mode_drops_unknown_voice(db):
+    from voice.speaker import SessionTrust
+
     pipeline, provider, bus = await _make_pipeline(db, ["never"])
     pipeline.verifier = FakeVerifier(ok=False, similarity=0.1)
     pipeline.sv_mode = "ignore"
+    pipeline.session_trust = SessionTrust(demote_after=1)  # confident-unknown -> drop
     events = bus.subscribe()
     pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
     from voice.audio_io import FrameBuffer
@@ -1049,3 +1054,74 @@ async def test_wake_after_ptt_verifies_again(db):
 
     pipeline._enter_listening(FrameBuffer())  # wake/barge-in path, default source
     assert pipeline._listen_source == "wake"
+
+
+# -- 13b. session-trust smoothing (B6) -----------------------------------------------
+
+
+async def test_single_low_utterance_does_not_demote(db):
+    """Optimistic-demote: one shaky utterance never locks the owner out."""
+    pipeline, provider, _ = await _make_pipeline(db, ["ok"])
+    pipeline.verifier = FakeVerifier(ok=False, similarity=0.2)  # default demote_after=2
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert provider.requests  # turn ran
+    assert "voice" not in pipeline.agent.gate.session.unverified_channels  # not denied
+    assert pipeline.session_trust.tier == "uncertain"
+
+
+async def test_sustained_unknown_demotes_and_denies(db):
+    """Two consecutive confident-low utterances demote to chat-only (defaults)."""
+    from core.safety import SafetyClass
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, _ = await _make_pipeline(db, ["one", "two"])
+    pipeline.verifier = FakeVerifier(ok=False, similarity=0.15)  # demote_after=2
+    for _ in range(2):
+        pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+        await asyncio.to_thread(pipeline._listen, FrameBuffer())
+        await asyncio.sleep(0.05)
+    gate = pipeline.agent.gate
+    assert "voice" in gate.session.unverified_channels
+    assert gate.classify("get_time", {}, channel="voice").klass is SafetyClass.DENY
+
+
+async def test_observe_mode_scores_logs_but_never_enforces(db):
+    """observe = the B7 soak mode: score + log every utterance, never gate."""
+    from voice.speaker import SessionTrust
+
+    pipeline, provider, _ = await _make_pipeline(db, ["ok"])
+    pipeline.verifier = FakeVerifier(ok=False, similarity=0.1)
+    pipeline.sv_mode = "observe"
+    pipeline.session_trust = SessionTrust(demote_after=1)  # would demote if enforcing
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert provider.requests  # turn ran
+    assert "voice" not in pipeline.agent.gate.session.unverified_channels  # never denied
+
+
+async def test_scored_utterance_is_audit_logged(db):
+    """Every scored utterance lands an audit row — the FAR/FRR data source."""
+    import json as _json
+
+    pipeline, _, _ = await _make_pipeline(db, ["ok"])
+    pipeline.verifier = FakeVerifier(ok=True, similarity=0.77)
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    rows = await db._fetchall(
+        "SELECT args FROM audit_log WHERE tool = 'speaker_verify' ORDER BY id"
+    )
+    assert rows
+    payload = _json.loads(rows[-1]["args"])
+    assert payload["score"] == pytest.approx(0.77, abs=1e-3)
+    assert payload["tier"] == "trusted"
+    assert "model" in payload

@@ -151,3 +151,56 @@ async def test_profile_round_trip_matches_enrollment_shape(tmp_path):
     assert "on" in verifier.load()
     ok, _ = verifier.verify(np.zeros(100, dtype=np.int16))
     assert ok is True
+
+
+# -- v2 multi-centroid (B6) ------------------------------------------------------------
+
+
+async def test_db_centroids_score_by_max_cosine(tmp_path):
+    """A profile is a SET of centroids; verify keeps the best match."""
+    verifier = SpeakerVerifier(
+        model_path=tmp_path / "model.onnx",
+        extractor=FakeExtractor((0.9, 0.1, 0, 0), dim=4),
+        centroids=[[1, 0, 0, 0], [0, 0, 1, 0]],  # near-match + orthogonal
+    )
+    note = verifier.load()
+    assert "2 centroids" in note
+    ok, similarity = verifier.verify(np.zeros(100, dtype=np.int16))
+    assert ok is True
+    assert similarity > 0.99  # max over centroids, not the orthogonal one
+
+
+async def test_db_centroids_take_precedence_over_json(tmp_path):
+    """When both exist, DB centroids win over the v1 JSON mean."""
+    profile = tmp_path / "owner_voice.json"
+    write_profile(profile, (0, 1, 0, 0))  # JSON mean is orthogonal to the utterance
+    verifier = SpeakerVerifier(
+        profile_path=profile,
+        extractor=FakeExtractor((1, 0, 0, 0), dim=4),
+        centroids=[[1, 0, 0, 0]],  # DB centroid aligns with the utterance
+    )
+    assert "centroids" in verifier.load()
+    ok, similarity = verifier.verify(np.zeros(100, dtype=np.int16))
+    assert ok is True and similarity > 0.99  # JSON mean would have scored ~0
+
+
+async def test_db_centroids_all_dim_mismatch_disables(tmp_path):
+    verifier = SpeakerVerifier(
+        model_path=tmp_path / "model.onnx",
+        extractor=FakeExtractor((1, 0, 0, 0), dim=4),
+        centroids=[[1, 0, 0]],  # dim 3 against a dim-4 extractor
+    )
+    note = verifier.load()
+    assert verifier.enabled is False
+    assert "dimension mismatch" in note
+
+
+async def test_db_centroids_partial_dim_match_keeps_good(tmp_path):
+    verifier = SpeakerVerifier(
+        model_path=tmp_path / "model.onnx",
+        extractor=FakeExtractor((1, 0, 0, 0), dim=4),
+        centroids=[[1, 0, 0, 0], [1, 0, 0]],  # one valid, one wrong-dim
+    )
+    note = verifier.load()
+    assert verifier.enabled is True
+    assert "1 centroids" in note

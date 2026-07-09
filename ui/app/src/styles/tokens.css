@@ -1,0 +1,99 @@
+/*
+ * Baby "Brain" design tokens (B0). One source of truth for palette, spacing,
+ * type scale, node-type colors, and motion durations. Every later phase pulls
+ * from here so the graph, chat, inspectors, and gauge stay one coherent system.
+ * Dark, cinematic; the classic palette (ui/web/style.css) is the ancestor.
+ */
+:root {
+  /* -- surfaces -- */
+  --bg: #0b0d12;
+  --bg-1: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1d212b;
+  --panel-3: #232834;
+  --border: #2a2f3a;
+  --border-soft: #20242d;
+
+  /* -- text -- */
+  --text: #e6e9ef;
+  --muted: #8b93a7;
+  --faint: #5a6273;
+
+  /* -- brand / accents -- */
+  --accent: #6ea8fe;
+  --accent-dim: #3f5f9e;
+  --green: #3fb950;
+  --amber: #d29922;
+  --red: #f85149;
+
+  /* -- node-type colors (graph subsystems) --
+   * brains warm, tools cyan, memory violet, voice green, safety red,
+   * router blue, infra (task/scheduler/telegram/browser/screen) slate. */
+  --node-brain: #f0a35e;
+  --node-brain-glow: rgba(240, 163, 94, 0.35);
+  --node-tool: #2dd4bf;
+  --node-memory: #c084fc;
+  --node-voice: #5ee0a0;
+  --node-safety: #f85149;
+  --node-router: #6ea8fe;
+  --node-infra: #9aa7bd;
+  --node-core: #e6e9ef;
+
+  /* -- edge/pulse classes -- */
+  --pulse-normal: #6ea8fe;
+  --pulse-confirm: #d29922;
+  --pulse-error: #f85149;
+  --edge: #2a2f3a;
+
+  /* -- pipeline-state accents (the central gauge) -- */
+  --state-idle: #5a6273;
+  --state-listening: #5ee0a0;
+  --state-thinking: #6ea8fe;
+  --state-speaking: #c084fc;
+  --state-executing: #f0a35e;
+
+  /* -- spacing scale -- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-8: 48px;
+
+  /* -- radius -- */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+
+  /* -- type scale -- */
+  --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Cascadia Code", Consolas, monospace;
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.82rem;
+  --fs-md: 0.95rem;
+  --fs-lg: 1.15rem;
+  --fs-xl: 1.6rem;
+  --fs-2xl: 2.4rem;
+
+  /* -- motion (non-graph; graph animation is canvas-driven) -- */
+  --dur-fast: 120ms;
+  --dur-med: 240ms;
+  --dur-slow: 420ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* -- elevation -- */
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-med: 0ms;
+    --dur-slow: 0ms;
+  }
+}
