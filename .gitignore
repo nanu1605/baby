@@ -38,21 +38,8 @@ models/owner_voice.json
 ui/app/node_modules/
 ui/app/dist/
 
-# v4 native shell (ui/shell) — commit sources + lockfile, ignore installs/builds
+# v4 native shell (ui/shell) — commit sources + Cargo.lock + icons, ignore installs/builds
 ui/shell/**/node_modules/
 ui/shell/**/target/
 ui/shell/**/dist/
 ui/shell/**/gen/
-
-# v4 V0 shell spike — throwaway comparison harness, deleted after the winner is scaffolded
-spike/**/node_modules/
-spike/**/target/
-spike/**/dist/
-spike/**/dist-electron/
-spike/**/gen/
-spike/**/release/
-spike/**/result.json
-spike/**/screenshot.png
-# generated tauri icons — keep only the committed source icon.png
-spike/tauri/src-tauri/icons/*
-!spike/tauri/src-tauri/icons/icon.png

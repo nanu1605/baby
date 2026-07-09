@@ -180,6 +180,27 @@ and `/classic` is always available regardless of the flag — the daily-driver
 parity target lives on. The React app is built on setup (`ui/app/dist`, not
 committed).
 
+### Native app + 3D brain (v4 — in progress)
+
+v4 (branch `feature/v4-native-3d-brain`) wraps the **same** FastAPI-served UI in a
+thin **Tauri** desktop shell (native window, tray, single-instance, close-to-tray,
+attach-or-spawn) and upgrades the graph to a **3D neural sphere**. The shell bundles
+no second copy of the UI — it loads `127.0.0.1:8765`, so the browser and the native
+window render the identical build (DECISIONS #119). Two code-defaulted rollback
+flags gate it, both non-bricking:
+
+- `ui.shell: browser | native` — `browser` (default) just means "don't launch the
+  exe"; the `127.0.0.1:8765` UI is untouched. Wired in V1.
+- `ui.brain: 2d | 3d` — `2d` is the v3 canvas graph (instant floor); `3d` is the
+  WebGL sphere. Lands in V3.
+
+**"Quit Baby (app)"** (the shell's tray item) closes the window and stops only a
+backend the shell *itself* spawned; an always-on autostart **service** keeps running
+(Telegram, scheduler, background tasks). Stopping the service is a separate,
+documented action *outside* the app — `scripts\autostart.ps1 -Remove` — never an app
+menu item and never an HTTP endpoint (DECISIONS #120). Build it with
+`scripts\setup.ps1` (installs Rust) or run it in dev with `scripts\dev_app.ps1`.
+
 ### Screenshots
 
 <!-- Owner: capture during the soak and drop into docs/img/ -->
@@ -196,6 +217,12 @@ committed).
 ui:
   frontend: v3          # v3 = "The Brain" React app; classic = vanilla rollback
                         # /classic is always served regardless of this flag
+  # --- v4 (in progress): both code-defaulted; no effect until their phase ships ---
+  shell: browser        # browser (default) = open the UI in a browser; native =
+                        # launch the Tauri desktop shell (wired in V1). Rollback =
+                        # shell: browser; the 127.0.0.1:8765 UI is untouched.
+  brain: 2d             # 2d (default) = the v3 canvas graph; 3d = the WebGL neural
+                        # sphere (lands in V3). Non-bricking either way.
 
 voice:
   speaker_verify:

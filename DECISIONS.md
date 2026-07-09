@@ -898,3 +898,38 @@ Running log of non-obvious choices made during the build. Newest last.
     the branch inside the spec §0.4 additive surface (VRAM + mic/TTS amplitude on the
     event stream, `ui.shell`/`ui.brain` config reads) — no `POST /shutdown`, so
     frozen ground (router/provider/safety) is untouched.
+
+121. **Shell = Tauri, not Electron; measured on the 5060 Ti (V0c).** The V0 spike
+    built byte-identical bloom-sphere scenes (~42 nodes + ~50 arcs + EffectComposer
+    bloom, shared `spike/common/`, fixed 60 s camera path) in both shells and
+    self-measured. Results (owner box, 144 Hz panel, uncapped rAF so p50 tracks
+    vsync — the discriminators are 1%-low, cold-start, footprint, and the
+    owner-judged bloom/VRAM):
+
+    | metric | Electron | Tauri |
+    |---|---|---|
+    | fps p50 | 144.9 | 142.9 (tie — vsync) |
+    | fps 1%-low | 95.4 | 49.8 |
+    | cold-start shell (ms) | 469 | 280 |
+    | installer | ~85 MB (bundled Chromium) | **1.7 MB** (NSIS) |
+    | unpacked | 269 MB | **5.9 MB** (shared WebView2) |
+    | VRAM delta | owner-deferred | owner-deferred |
+    | bloom acceptable | owner-deferred | owner-deferred |
+
+    **Chosen: Tauri.** (1) Footprint — 5.9 MB exe / 1.7 MB installer vs Electron's
+    269 MB / ~85 MB, a ~45x win, decisive for an app the owner installs + updates.
+    (2) Idle GPU/RAM — Electron bundles its own Chromium (separate GPU process +
+    caches); Tauri shares the OS WebView2, so its resident footprint is lighter,
+    which directly serves the v4 core law (#118): the shell must leave VRAM free for
+    the local 9B in the collision window. (3) Cold-start 280 vs 469 ms. (4) Bloom
+    risk is low — WebView2 is Edge/Chromium, the same WebGL2 + float-framebuffer path
+    Electron uses. (5) Spec §3 leaned Tauri. **Accepted risk:** Tauri's 1%-low
+    (49.8) dips under 60 in a *no-load* spike vs Electron's 95.4; the V2 frame
+    governor + fixed-timestep + 60-cap are built to absorb exactly this, and the
+    thin-shell architecture (#119) makes a shell swap cheap (the frontend is
+    untouched) if WebView2 bloom disappoints once the real sphere lands in V3.
+    **Owner-deferred, non-blocking:** the real VRAM delta (needs the backend up) and
+    the bloom eyeball were not captured before the decision; both are re-checked
+    against the real 3D sphere in V3, where `ui.shell`/`ui.brain` rollback plus the
+    cheap shell-swap keep the choice reversible. The `spike/` folder is deleted; the
+    winner is scaffolded at `ui/shell/`.
