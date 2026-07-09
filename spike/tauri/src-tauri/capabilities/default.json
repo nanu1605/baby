@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "V0 spike — core defaults for the main window. Custom commands (cold_start_shell_ms, save_result) need no capability.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

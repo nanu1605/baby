@@ -1,0 +1,7 @@
+{
+  "name": "baby-spike",
+  "private": true,
+  "version": "0.0.0",
+  "description": "V0 shell spike workspace — throwaway. Tauri vs Electron over one byte-identical scene. Deleted after the winner is scaffolded at ui/shell.",
+  "workspaces": ["common", "electron", "tauri"]
+}

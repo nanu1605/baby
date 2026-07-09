@@ -867,3 +867,34 @@ Running log of non-obvious choices made during the build. Newest last.
     `v3.0.0`. The disruptive `e2e_regression.py --with-project` + v2/v1.1 browser/TTS
     demos are likewise owner-run (they open a real Chromium window and may speak); the
     executor runs only the always-green gates (`pytest` + `ruff` + FE `build`/`test`).
+
+118. **v4 deliberately reverses v3's "canvas-2D only, the GPU belongs to the LLM"
+    law (V0).** v3 banned WebGL/3D because the local 9B was primary and the GPU ran
+    hot every turn. Since the NIM/OpenRouter migration cloud is primary and local is
+    fallback, so the GPU sits idle on most turns — precisely when a 3D brain renders
+    for free. The one collision (local model generating while peak spectacle is
+    wanted) is arbitrated by v4's frame governor + VRAM watchdog (V2), not banned.
+    Recorded here as a deliberate architectural decision, not drift. v3's other law —
+    honest data only — survives untouched: every directed animation rides a real
+    signal; ambient idle rotation is the sole non-signal allowance.
+
+119. **The v4 native shell is thin chrome over the FastAPI-served frontend, not a
+    second copy of the SPA (V0).** The shell window loads `http://127.0.0.1:8765/`
+    (the same `ui/app/dist` FastAPI already serves) — it does not bundle its own
+    frontend. Consequences: one build (`ui.brain: 3d|2d`, the 3D sphere, and the
+    motion system all live in `ui/app/` and render identically in browser and shell,
+    no drift); `ui.shell: browser` is non-bricking by construction (it just means
+    "don't launch the exe" — the backend and browser UI are untouched); the shell's
+    only jobs are native window, tray, single-instance, close-to-tray,
+    attach-or-spawn, installer, autostart — zero product logic.
+
+120. **v4 "Quit Baby (app)" closes the window; the always-on service persists — no
+    HTTP shutdown endpoint (V0).** The native tray item is labelled **"Quit Baby
+    (app)"**: it closes the shell window and kills only a backend the shell itself
+    spawned; an attached always-on autostart service (Telegram, scheduler, background
+    tasks) keeps running. Stopping the service is a separate, clearly-labelled
+    documented action outside the app (`autostart.ps1 -Remove` / a `Stop Baby
+    service` snippet), never an app menu item and never a remote endpoint. This keeps
+    the branch inside the spec §0.4 additive surface (VRAM + mic/TTS amplitude on the
+    event stream, `ui.shell`/`ui.brain` config reads) — no `POST /shutdown`, so
+    frozen ground (router/provider/safety) is untouched.
