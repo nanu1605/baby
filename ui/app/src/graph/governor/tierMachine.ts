@@ -33,6 +33,17 @@ export function ceilingFromConfig(tier: string | undefined): Tier {
   }
 }
 
+/**
+ * Fold ui.brain + render.tier into one ceiling (V3). ui.brain only ever LOWERS to the
+ * 2d floor (the v3 canvas graph); otherwise render.tier decides the cap.
+ */
+export function effectiveCeiling(
+  uiBrain: string | undefined,
+  renderTier: string | undefined,
+): Tier {
+  return uiBrain === "2d" ? "2d" : ceilingFromConfig(renderTier);
+}
+
 export interface TierConfig {
   /** Sustained-pressure ms before a demote. Small — protect frames fast. */
   demoteAfterMs: number;

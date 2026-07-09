@@ -10,7 +10,26 @@ const wsBackend = "ws://127.0.0.1:8765";
 export default defineConfig({
   plugins: [react()],
   base: "/",
-  build: { outDir: "dist", sourcemap: false, emptyOutDir: true },
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Isolate the three.js/R3F stack into its own chunk so it is lazy-loaded
+        // with BrainSphere and never bloats the entry bundle for 2D users (V3a).
+        manualChunks(id) {
+          if (
+            id.includes("node_modules/three") ||
+            id.includes("node_modules/@react-three") ||
+            id.includes("node_modules/postprocessing")
+          ) {
+            return "three";
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,

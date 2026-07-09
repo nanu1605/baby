@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ui.server import _DEFAULT_RENDER, _quantize_vram, _render_config
+from ui.server import _DEFAULT_RENDER, _quantize_vram, _render_config, _ui_brain
 
 
 def test_quantize_buckets_to_quarter_gb():
@@ -44,3 +44,18 @@ def test_render_config_degrades_on_garbage_instead_of_raising():
     # A typo'd target_fps must fall back to the default, never 500 /stats.
     assert _render_config({"render": {"target_fps": "60fps"}})["target_fps"] == 60
     assert _render_config({"render": {"target_fps": None}})["target_fps"] == 60
+
+
+def test_ui_brain_defaults_to_3d():
+    assert _ui_brain({}) == "3d"
+    assert _ui_brain({"ui": {}}) == "3d"
+    assert _ui_brain({"ui": {"brain": "3d"}}) == "3d"
+
+
+def test_ui_brain_2d_is_the_rollback():
+    assert _ui_brain({"ui": {"brain": "2d"}}) == "2d"
+    assert _ui_brain({"ui": {"brain": " 2D "}}) == "2d"
+
+
+def test_ui_brain_unknown_value_falls_back_to_3d():
+    assert _ui_brain({"ui": {"brain": "wat"}}) == "3d"

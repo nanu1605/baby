@@ -91,6 +91,15 @@ def _render_config(config: dict) -> dict:
     }
 
 
+def _ui_brain(config: dict) -> str:
+    """Additive read of ui.brain for the V3 3D-sphere gate. Code-default "3d" (the
+    centerpiece; the frame governor auto-demotes to the 2D floor under pressure).
+    "2d" is the one-line rollback to the v3 canvas graph. Never requires a config edit."""
+    raw = config.get("ui", {}) if isinstance(config, dict) else {}
+    val = str(raw.get("brain", "3d")).strip().lower() if isinstance(raw, dict) else "3d"
+    return "2d" if val == "2d" else "3d"
+
+
 class _StateDeriver:
     """Fold the bus event stream into a single pipeline state for the gauge (B1c).
 
@@ -310,6 +319,7 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["model"] = ctx.config.get("models", {}).get("daily", {}).get("model", "?")
         data["turn_running"] = ctx.turn_running()
         data["render"] = _render_config(ctx.config)  # V2 governor knobs (code-defaulted)
+        data["ui"] = {"brain": _ui_brain(ctx.config)}  # V3 sphere gate (code-defaulted 3d)
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router

@@ -119,6 +119,8 @@ export interface Stats {
   turn_running?: boolean;
   /** V2 frame governor knobs (code-defaulted server-side). */
   render?: { target_fps: number; tier: string; idle_full_on_desktop: boolean };
+  /** V3 sphere gate — ui.brain (code-defaulted "3d"; "2d" = v3 canvas rollback). */
+  ui?: { brain: string };
   tokens?: {
     session: {
       prompt: number;

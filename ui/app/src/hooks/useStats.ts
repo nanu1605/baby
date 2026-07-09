@@ -7,7 +7,7 @@ import { useEffect } from "react";
 import { getStats } from "../api/client";
 import { useBrain } from "../store";
 import { normRouter } from "../constants";
-import { ceilingFromConfig } from "../graph/governor/tierMachine";
+import { effectiveCeiling } from "../graph/governor/tierMachine";
 
 export function useStats(): void {
   useEffect(() => {
@@ -20,10 +20,11 @@ export function useStats(): void {
         b.setStats(s);
         if (s.router?.state) b.setRouter(normRouter(s.router.state));
         if (typeof s.game_mode === "boolean") b.setGameMode(s.game_mode);
-        if (s.render) {
-          if (s.render.target_fps > 0) b.setTargetFps(s.render.target_fps);
-          b.setRenderCeiling(ceilingFromConfig(s.render.tier));
+        if (s.render?.target_fps && s.render.target_fps > 0) {
+          b.setTargetFps(s.render.target_fps);
         }
+        // ui.brain:2d forces the 2D floor; else render.tier caps the sphere quality.
+        b.setRenderCeiling(effectiveCeiling(s.ui?.brain, s.render?.tier));
       } catch {
         /* server briefly away — reconnect/next tick handles it */
       }

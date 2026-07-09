@@ -5,8 +5,15 @@ import { useStateSocket } from "./hooks/useStateSocket";
 import { useStats } from "./hooks/useStats";
 import { useDeepLink } from "./hooks/useDeepLink";
 import { useGovernor } from "./graph/governor/useGovernor";
+import { lazy, Suspense } from "react";
 import Header from "./components/Header";
 import BrainGraph from "./components/BrainGraph";
+
+// Lazy: three loads only with BrainSphere, keeping it out of the entry bundle (V3a).
+// A ui.brain:2d box settles on BrainGraph once the first /stats resolves the flag
+// (the initial frame may briefly mount the sphere); BrainGraph is the Suspense
+// fallback so the swap is seamless.
+const BrainSphere = lazy(() => import("./components/BrainSphere"));
 import ChatPanel from "./components/ChatPanel";
 import ActivityPanel from "./components/ActivityPanel";
 import ConfirmModal from "./components/ConfirmModal";
@@ -30,13 +37,20 @@ export default function App() {
 
   const tab = useBrain((s) => s.rightTab);
   const collapsed = useBrain((s) => s.rightCollapsed);
+  const renderTier = useBrain((s) => s.renderTier);
 
   return (
     <div className="app-shell">
       <Header />
 
       <main className="stage">
-        <BrainGraph />
+        {renderTier === "2d" ? (
+          <BrainGraph />
+        ) : (
+          <Suspense fallback={<BrainGraph />}>
+            <BrainSphere />
+          </Suspense>
+        )}
 
         {collapsed ? (
           <button
