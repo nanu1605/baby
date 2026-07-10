@@ -16,6 +16,7 @@ import { cssColor, nodeColor } from "./materials";
 import { nodeVisualTarget } from "./nodeVisual";
 import { tierToRender } from "./tierGate";
 import Effects from "./Effects";
+import Pulses from "./Pulses";
 
 const R = 3;
 const TYPE_RADIUS: Record<string, number> = {
@@ -220,6 +221,8 @@ export default function Scene() {
         {edges.map((pts, i) => (
           <Edge key={i} pts={pts} color={edgeColor} />
         ))}
+        {/* Honest pulses/flares ride inside the group so they track their arcs. */}
+        <Pulses graph={graph} />
       </group>
       {plan.particles && <Particles />}
       {plan.bloom && <Effects />}
