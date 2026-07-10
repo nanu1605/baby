@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as THREE from "three";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { useBrain } from "../../store";
 import type { GraphData } from "../../types";
 import { sphereAnchors, type Vec3 } from "./sphereGeometry";
@@ -188,13 +189,7 @@ export default function Scene() {
   const plan = tierToRender(renderTier);
   const groupRef = useRef<THREE.Group>(null);
 
-  const reduced = useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      !!window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    [],
-  );
+  const reduced = useReducedMotion();
 
   const { placed, edges } = useMemo(() => {
     if (!graph) return { placed: [] as Placed[], edges: [] as Vec3[][] };

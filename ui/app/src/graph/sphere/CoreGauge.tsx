@@ -10,9 +10,10 @@
  * the flat ring keeps facing the camera at the origin. Cheap enough to keep at every
  * tier; the amplitude signals are read transiently in `useFrame` (never subscribed).
  */
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { useBrain } from "../../store";
 import { cssColor, STATE_VAR } from "./materials";
 import { micLevel, ttsLevel } from "../amplitude";
@@ -26,13 +27,7 @@ export default function CoreGauge() {
   const pipelineRef = useRef(pipeline);
   pipelineRef.current = pipeline;
 
-  const reduced = useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      !!window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    [],
-  );
+  const reduced = useReducedMotion();
 
   const ringRef = useRef<THREE.Mesh>(null);
   const ringMat = useRef<THREE.MeshStandardMaterial>(null);

@@ -5,6 +5,7 @@ import { useStateSocket } from "./hooks/useStateSocket";
 import { useStats } from "./hooks/useStats";
 import { useDeepLink } from "./hooks/useDeepLink";
 import { useGovernor } from "./graph/governor/useGovernor";
+import { useMotionFlag } from "./hooks/useMotionFlag";
 import { Component, lazy, Suspense, type ReactNode } from "react";
 import Header from "./components/Header";
 import BrainGraph from "./components/BrainGraph";
@@ -54,6 +55,7 @@ export default function App() {
   useStats();
   useDeepLink();
   useGovernor();
+  useMotionFlag();
 
   const tab = useBrain((s) => s.rightTab);
   const collapsed = useBrain((s) => s.rightCollapsed);
