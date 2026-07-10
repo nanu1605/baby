@@ -225,9 +225,18 @@ fn attach_or_spawn(app: AppHandle) {
     }
 }
 
+/// Navigate the window to the FastAPI-served UI. A per-navigation cache-buster on
+/// the (tiny) index.html defeats WebView2's shared-profile HTTP cache, which can
+/// otherwise serve a stale SPA entry across launches after a rebuild; the
+/// content-hashed assets it references still cache correctly. useDeepLink only reads
+/// location.hash and preserves location.search, so the `?r=` is inert.
 fn navigate_to_backend(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        if let Ok(url) = BACKEND_URL.parse() {
+        let bust = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        if let Ok(url) = format!("{BACKEND_URL}?r={bust}").parse() {
             let _ = w.navigate(url);
         }
         let _ = w.show();
@@ -239,6 +248,25 @@ fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
+    }
+}
+
+/// Force the webview to pull the current frontend. The shell navigates to the
+/// FastAPI-served UI once at startup and never on its own, so after a rebuild
+/// (`npm run build`) the window keeps the OLD bundle while a browser tab, refreshed,
+/// shows the new one — "works in the browser, not the app". A prod reload re-fetches
+/// with a cache-buster so WebView2 cannot serve a heuristically-cached index.html
+/// (the content-hashed assets then cache correctly); dev just reloads Vite.
+fn reload_ui(app: &AppHandle) {
+    if cfg!(debug_assertions) {
+        // Dev serves Vite (:5173) directly — a plain reload picks up HMR output.
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.eval("location.reload()");
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    } else {
+        navigate_to_backend(app); // fresh, cache-busted fetch of the prod UI
     }
 }
 
@@ -290,8 +318,9 @@ fn run_activity_tray(app: AppHandle) {
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItemBuilder::with_id("open", "Open Baby").build(app)?;
+    let reload = MenuItemBuilder::with_id("reload", "Reload UI").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit Baby (app)").build(app)?;
-    let menu = MenuBuilder::new(app).items(&[&open, &quit]).build()?;
+    let menu = MenuBuilder::new(app).items(&[&open, &reload, &quit]).build()?;
     TrayIconBuilder::with_id("main")
         .icon(status_icon(Status::Ready))
         .tooltip(status_tooltip(Status::Ready))
@@ -299,6 +328,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_main(app),
+            "reload" => reload_ui(app),
             "quit" => {
                 // Kill only a backend WE spawned; an attached service persists (#120).
                 if let Some(mut child) = app.state::<AppState>().spawned.lock().unwrap().take() {
