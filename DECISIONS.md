@@ -1031,12 +1031,49 @@ Running log of non-obvious choices made during the build. Newest last.
       9B holding VRAM for a whole offline turn) calls `preventDefault()` and falls to
       the 2D graph via a `contextLost` flag + an `App.tsx` `SphereBoundary` error
       boundary — never a black stage, never a hot lost-context loop. The retry backs
-      off on repeated losses (60 s → 2 m → 5 m cap, `graph/sphere/contextLossBackoff.ts`)
-      to quiesce a dead GPU, and resets to the 60 s fuse once a remount survives a short
-      grace so a recovered GPU returns promptly. A full remount IS the recovery path, so
-      there is no `webglcontextrestored` handler (it would race the fresh canvas).
+      off on losses that keep recurring (60 s → 2 m → 5 m cap,
+      `graph/sphere/contextLossBackoff.ts`) to quiesce a dead GPU, and resets to the 60 s
+      fuse when a loss arrives only after a long clean gap. The recovery signal is the
+      **inter-loss gap**, not "did the remount survive a few seconds" — a flaky GPU whose
+      fresh context dies after ~10 s survives any short grace yet is still dead, so a
+      grace-based reset never climbs for it (adversarial review caught this and drove the
+      rewrite). A full remount IS the recovery path, so there is no
+      `webglcontextrestored` handler (it would race the fresh canvas).
     - **`@react-three/drei` dropped** — `OrbitControls` comes straight from
       `three/examples/jsm/controls` (saves ~150 KB + one pin). Deps pinned:
       `three@0.169.0`, `@react-three/fiber@8.17.10`,
       `@react-three/postprocessing@2.16.3`, `postprocessing@6.36.4`. The sphere is
       lazy-loaded, so `ui.brain: 2d` / weak machines never fetch `three`.
+
+125. **v4 motion system: CSS-first, superseding the spec's framer-motion + lucide lock
+    (V4).** Spec §3 locked "Motion (framer-motion) + lucide" for the animated UI. Deferred
+    to build time, that lock lost to the repo's own shape, so v4 **reverses it** (recorded
+    here as a decision, not drift; owner-approved): the UI is 100 % global CSS + CSS-var
+    tokens (`styles/tokens.css` + `styles/app.css`) with motion tokens already present;
+    modals are **native `<dialog>`** (`showModal()/close()`), which framer's
+    `AnimatePresence` exit-animation fights; tests are **pure-logic only, no component/DOM
+    tests by design**, so framer JSX would be untestable in the repo norm; and a heavy
+    dep cuts against the thin-shell footprint (#119). So the motion system is plain CSS
+    driving off shared tokens — **zero new deps**.
+    - **One collapse lever, three triggers.** A pure `graph/motion.ts`
+      `motionLevel(reduced, performanceMode, tier) → full | lite | off` folds OS
+      reduced-motion, the performanceMode opt-in, and the governor's 2D floor into one
+      verdict; `useMotionFlag` publishes it to `<body data-motion>`. All enter/hover
+      motion uses the `--dur-*` durations, and reduced-motion / `data-motion="off"` both
+      zero those durations — so decorative motion collapses through the SAME mechanism
+      that already served prefers-reduced-motion. Continuous emoji loops (literal
+      durations) are gated off explicitly for reduced / off / lite.
+    - **#116 consolidated.** The three ad-hoc `matchMedia("(prefers-reduced-motion)")`
+      reads (Scene / CoreGauge / BrainGraph) collapse into one live `useReducedMotion`
+      hook — reduced-motion is now honored app-wide from a single source.
+    - **Cohesion via palette, not a new icon set.** `<body data-pstate>` drives
+      `--accent-live` so chrome accents (active-tab underline, omnibox focus ring) track
+      the live pipeline hue, matching the sphere gauge (`--accent` already equals the
+      sphere's `--state-thinking` blue). **Emoji icons stay** — a lucide swap is a
+      deliberate rebrand, parked, not a v4 polish item.
+    - **Safety.** The confirmation `<dialog>` gets ENTER animation only; Approve/Deny/Esc
+      keep firing `postConfirm` synchronously and the dialog closes instantly — **no user
+      action is ever gated behind an animation.** Pure frontend; no backend touch, so
+      frozen ground and `tests/test_safety.py` are untouched, and v4 adds **no config
+      flag** (reduced-motion is OS/CSS, performanceMode is the existing localStorage
+      opt-in).

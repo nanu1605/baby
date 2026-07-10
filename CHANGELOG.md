@@ -31,7 +31,17 @@ canvas graph. Owner finalizes the date on tag; owner merges + tags.
   on router health, the answering brain highlights, game mode ghosts the local 9B. A
   dead WebGL context falls to the 2D graph with a bounded-backoff retry. Backend touches
   are additive-only; `tests/test_safety.py` untouched (DECISIONS #124).
-- V4 (motion system) and V5 (soak + perf gates + release) still pending.
+- V4: **motion system** — a coherent, CSS-first animation layer (no framer-motion,
+  no lucide; superseding the spec's locked stack, DECISIONS #125). Shared motion tokens
+  drive overlay enter animations (dialogs, inspector, omnibox, toasts, backdrop), control
+  micro-interactions, and emoji micro-animation on real state (game-mode pulse, boost
+  glow, tier-chip spin, reconnect-pill pulse). One `motionLevel` verdict published to
+  `<body data-motion>` collapses all decorative motion under reduced-motion /
+  performanceMode / the 2D floor (a single lever consolidating Decision #116 app-wide);
+  chrome accents track the live pipeline hue via `--accent-live` for cohesion with the
+  sphere. The safety-confirm dialog animates on enter only — its resolve stays
+  synchronous. Frontend-only; no backend touch, no new config flag.
+- V5 (soak + perf gates + release) still pending.
 
 ## v3.0.0 — The Brain (2026-07-09)
 

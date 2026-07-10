@@ -1183,6 +1183,18 @@ body[data-pstate="executing"] { --accent-live: var(--state-executing); }
   animation: v4-soft-pulse 2.4s var(--ease) infinite;
 }
 .boost-chip {
+  position: relative;
+}
+/* Composited glow: a static-shadow ::after whose OPACITY pulses. opacity is
+   compositor-only; animating box-shadow directly repaints the (wide) chip each frame. */
+.boost-chip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 10px 2px var(--node-brain-glow);
+  opacity: 0;
+  pointer-events: none;
   animation: v4-glow-pulse 1.8s var(--ease) infinite;
 }
 .tier-chip .cog {
@@ -1197,8 +1209,7 @@ body[data-pstate="executing"] { --accent-live: var(--state-executing); }
   50% { opacity: 0.5; }
 }
 @keyframes v4-glow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--node-brain-glow); }
-  50% { box-shadow: 0 0 10px 2px var(--node-brain-glow); }
+  50% { opacity: 1; }
 }
 @keyframes v4-spin {
   to { transform: rotate(360deg); }
@@ -1209,19 +1220,27 @@ body[data-pstate="executing"] { --accent-live: var(--state-executing); }
       self-collapses via --dur = 0, so only these loops need an explicit gate. -- */
 @media (prefers-reduced-motion: reduce) {
   .game-btn.on,
-  .boost-chip,
+  .boost-chip::after,
   .tier-chip .cog,
   .conn-pill {
     animation: none;
   }
 }
 body[data-motion="off"] .game-btn.on,
-body[data-motion="off"] .boost-chip,
+body[data-motion="off"] .boost-chip::after,
 body[data-motion="off"] .tier-chip .cog,
 body[data-motion="off"] .conn-pill,
 body[data-motion="lite"] .game-btn.on,
-body[data-motion="lite"] .boost-chip,
+body[data-motion="lite"] .boost-chip::after,
 body[data-motion="lite"] .tier-chip .cog,
 body[data-motion="lite"] .conn-pill {
   animation: none;
+}
+/* The B7 streaming caret is decorative too: its own @media(prefers-reduced-motion)
+   gate (up at the cursor rule) doesn't cover performanceMode / the 2D floor, so extend
+   the collapse to data-motion here — keep the static ▍ (opacity:1), just stop the blink. */
+body[data-motion="off"] .msg.assistant.streaming .md-plain::after,
+body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
+  animation: none;
+  opacity: 1;
 }

@@ -20,6 +20,7 @@ export function useReducedMotion(): boolean {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia(QUERY);
     const onChange = () => setReduced(mq.matches);
+    onChange(); // reconcile any flip in the render→effect gap before subscribing
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
