@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased — v4.0.0 native app + 3D neural brain (feature/v4-native-3d-brain)
+
+The Brain grows a body and a third dimension: the same FastAPI-served UI gains a
+thin **Tauri** desktop shell, the living graph becomes a **3D neural sphere**, and a
+frame governor holds 60 fps under load. The router, provider and safety internals stay
+frozen ground — v4 adds only a native shell (loads the same `127.0.0.1:8765` build),
+additive read-only fields, and code-defaulted rollback flags. Both flags are
+non-bricking: `ui.shell: browser` keeps the browser UI, `ui.brain: 2d` keeps the v3
+canvas graph. Owner finalizes the date on tag; owner merges + tags.
+
+- V0: branch `feature/v4-native-3d-brain`; a byte-identical Tauri-vs-Electron spike
+  measured on the 5060 Ti → **Tauri** (thin chrome over the local backend, not a second
+  SPA copy). "Quit Baby (app)" closes the window; the always-on service persists — no
+  HTTP shutdown endpoint (DECISIONS #118–121).
+- V1: **native shell parity** — attach-or-spawn the backend, close-to-tray,
+  single-instance, a native tray folded off `/ws/activity`, autostart branch +
+  installer icon. The backend skips its pystray tray when `ui.shell: native`; full v3
+  parity renders inside the shell (DECISIONS #122).
+- V2: **frame governor + VRAM watchdog + fixed-timestep** — three pure, unit-tested TS
+  modules (tier machine with hysteresis, fixed-timestep accumulator, VRAM watchdog)
+  form the 60 fps spine the sphere rides. The only backend touch is an additive,
+  quantized `vram` field on `/ws/state`; `render.{target_fps,tier,idle_full_on_desktop}`
+  config is code-defaulted (DECISIONS #123).
+- V3: **the 3D neural sphere** (behind `ui.brain: 3d`). Nodes on deterministic sphere
+  regions, dark great-circle edges, glow + selective bloom shed by the governor. Honest
+  pulses fire the **real** turn path node→node; the central core is a state gauge whose
+  listening ripple / speaking shimmer ride REAL mic/TTS loudness (additive `mic_rms` /
+  `tts_rms` on `/ws/activity`, quantized + throttled at the source); brain nodes recolor
+  on router health, the answering brain highlights, game mode ghosts the local 9B. A
+  dead WebGL context falls to the 2D graph with a bounded-backoff retry. Backend touches
+  are additive-only; `tests/test_safety.py` untouched (DECISIONS #124).
+- V4 (motion system) and V5 (soak + perf gates + release) still pending.
+
 ## v3.0.0 — The Brain (2026-07-09)
 
 The vanilla web panel becomes **The Brain**: a React living-graph UI over the

@@ -14,6 +14,7 @@ import type {
 import { setBoost } from "./api/client";
 import type { Tier } from "./graph/governor/tierMachine";
 import type { VramSignal } from "./graph/governor/vramWatchdog";
+import { backoffDelayMs, nextLossCount } from "./graph/sphere/contextLossBackoff";
 
 /**
  * The single v3 store (spec §3). B0 defined the shell fields; B2 adds the chat
@@ -30,6 +31,13 @@ const TOAST_CAP = 5; // B7: bound the toast stack (auto-dismiss aside)
 
 let _toastSeq = 0;
 let _eventSeq = 0;
+
+// Context-loss retry state (V3f), module-level so it never triggers a render. The
+// count climbs while losses keep recurring (bounded backoff) and resets to the short
+// fuse when a loss arrives only after a long clean gap — see setContextLost.
+let _ctxLossCount = 0;
+let _ctxLastLossTs = 0; // 0 = no loss yet
+let _ctxRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 const PERF_KEY = "baby.performanceMode";
 function loadPerfMode(): boolean {
@@ -79,7 +87,7 @@ interface BrainState {
   vram: VramSignal | null;
   /** V3 watchdog: local model resident in VRAM? (null = unknown → fail-open full3d). */
   localModelLoaded: boolean | null;
-  /** V3 context-loss floor: WebGL context died → force the 2D graph (auto-retries). */
+  /** V3 context-loss floor: WebGL context died → force the 2D graph (backoff retry). */
   contextLost: boolean;
   /** V2 governor: current quality tier (full3d → lite3d → 2d floor). */
   renderTier: Tier;
@@ -118,7 +126,11 @@ interface BrainState {
   setVram: (v: VramSignal | null) => void;
   /** null = back to unknown (e.g. a /stats reply without the field) → fail-open. */
   setLocalModelLoaded: (on: boolean | null) => void;
-  /** Mark the WebGL context lost; schedules ONE retry so it never loops hot. */
+  /**
+   * Mark the WebGL context lost/restored. A loss schedules ONE retry on a bounded
+   * backoff (60 s → 2 m → 5 m) that climbs while losses keep recurring; a loss after a
+   * long clean gap resets to the 60 s fuse so a recovered GPU recovers promptly.
+   */
   setContextLost: (lost: boolean) => void;
   setRenderTier: (t: Tier) => void;
   setRenderCeiling: (t: Tier) => void;
@@ -213,10 +225,24 @@ export const useBrain = create<BrainState>((set) => ({
     set((st) => {
       if (st.contextLost === lost) return {};
       if (lost) {
-        // One retry per loss, on a long fuse — a genuinely broken GPU just floors
-        // again 60 s later instead of hot-looping context creation (V3f hardening,
-        // pulled forward with the watchdog redesign).
-        window.setTimeout(() => useBrain.getState().setContextLost(false), 60_000);
+        // A LIVE context died → floor to 2D and schedule ONE retry on the bounded
+        // fuse. The gap since the previous loss decides the fuse: a loss that recurs
+        // quickly (a genuinely broken GPU, often the local 9B holding VRAM for a whole
+        // offline turn) climbs 60 s → 2 m → 5 m so it quiesces instead of hot-looping
+        // Canvas creation; a loss after a long clean stretch is an isolated blip and
+        // starts back at 60 s (a recovered GPU recovers promptly). Keying on the
+        // inter-loss gap — not "did the remount survive a few seconds" — is what makes
+        // a flaky GPU (fresh context dies after ~10 s) actually escalate.
+        if (_ctxRetryTimer !== undefined) clearTimeout(_ctxRetryTimer);
+        // performance.now() (monotonic) so an NTP/wall-clock jump can't skew the gap.
+        const now = performance.now();
+        const gap = _ctxLastLossTs === 0 ? Infinity : now - _ctxLastLossTs;
+        _ctxLossCount = nextLossCount(_ctxLossCount, gap);
+        _ctxLastLossTs = now;
+        _ctxRetryTimer = setTimeout(() => {
+          _ctxRetryTimer = undefined;
+          useBrain.getState().setContextLost(false);
+        }, backoffDelayMs(_ctxLossCount));
       }
       return { contextLost: lost };
     }),

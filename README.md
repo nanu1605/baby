@@ -191,8 +191,10 @@ flags gate it, both non-bricking:
 
 - `ui.shell: browser | native` — `browser` (default) just means "don't launch the
   exe"; the `127.0.0.1:8765` UI is untouched. Native shell shipped in V1.
-- `ui.brain: 2d | 3d` — `2d` is the v3 canvas graph (instant floor); `3d` is the
-  WebGL sphere. Lands in V3.
+- `ui.brain: 2d | 3d` — code-default **`3d`**, the WebGL neural sphere (the V2
+  governor auto-demotes to the 2D floor under VRAM/frame pressure, so 3d-by-default is
+  self-protecting); `ui.brain: 2d` is the one-line rollback to the v3 canvas graph.
+  Shipped in V3.
 
 **Docker-Desktop model (V1).** The assistant runs as an always-on background
 service; the native window **attaches** to it — or **spawns** one (`pythonw run.py
@@ -234,8 +236,9 @@ ui:
   shell: browser        # browser (default) = open the UI in a browser; native =
                         # launch the Tauri desktop shell (wired in V1). Rollback =
                         # shell: browser; the 127.0.0.1:8765 UI is untouched.
-  brain: 2d             # 2d (default) = the v3 canvas graph; 3d = the WebGL neural
-                        # sphere (lands in V3). Non-bricking either way.
+  brain: 3d             # 3d (code-default) = the WebGL neural sphere; 2d = the v3
+                        # canvas graph (rollback). Non-bricking either way — the
+                        # governor auto-demotes to the 2d floor under GPU pressure.
 
 render:                 # v4 frame governor (V2), all code-defaulted
   target_fps: 60        # the frame budget the governor protects

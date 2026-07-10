@@ -992,3 +992,51 @@ Running log of non-obvious choices made during the build. Newest last.
     header tier chip surfaces a demote so it is observable in V2 — the 2D graph looks
     the same at any tier, so the visible payoff is V3; V2 is the safety net that lands
     first, on purpose.
+
+124. **v4 3D neural sphere: the same honest brain, in three dimensions (V3).** Behind
+    `ui.brain: 3d` (code-default `3d`; `2d` is the one-line rollback to the v3 canvas
+    graph), a react-three-fiber sphere renders the identical honest-data layer the 2D
+    `BrainGraph` reads — `pulseBus`, `edgeMap`, `/api/graph`, the store — so browser and
+    native shell show the same truth. Only the renderer differs.
+    - **Geometry.** Nodes land on deterministic sphere anchors by group region
+      (Fibonacci cap patches, `graph/sphere/sphereGeometry.ts`); edges are great-circle
+      arcs that bow outward, with origin edges drawn radial (`greatCircle.ts`).
+      Zero-signal edges stay dark — the honest-data law, unchanged from v3.
+    - **Firing = the real turn path.** `Pulses.tsx` subscribes the SAME `pulseBus`
+      feed the 2D graph does; a turn sends a sprite node→node along the visible arc, a
+      tool fires the real 2-hop through `safety_gate`, errors/confirms flash. No timer
+      fabricates motion; every sprite rides a real `PulseAction`.
+    - **Senses + mood.** `CoreGauge.tsx` is the central state gauge (idle breathe /
+      listening ripple / thinking orbit / speaking shimmer / executing sweep). The
+      ripple and shimmer ride REAL loudness — the ONLY backend touch this whole phase,
+      and strictly additive per spec §0.4: `mic_rms` (RMS-computed, quantized, and
+      throttled to ~15 Hz at the publish site, off the voice pipeline's existing
+      thread-safe hand-off) and `tts_rms` (RMS-computed per 100 ms audio chunk in
+      `audio_io.play` via a new optional `on_level` callback — ~10 Hz by the chunk
+      cadence, no extra throttle — then quantized at the publish site). Both are added
+      to `_ACTIVITY_KINDS`; router / provider / safety logic and `tests/test_safety.py`
+      are untouched.
+    - **Amplitude is a module singleton, not the store.** A 15 Hz `set()` would
+      re-render every subscriber, so `graph/amplitude.ts` holds the levels in a module
+      mutable (the `pulseBus` precedent); `foldAmplitude` intercepts `mic_rms`/`tts_rms`
+      in the activity socket BEFORE `pushEvent`, else the 500-cap event ring floods in
+      ~33 s. Node recolor rides router health (offline→red / degraded→amber on the
+      cloud brains), `activeBrain` highlights the answering brain, and game-mode ghosts
+      the local 9B.
+    - **The governor is the sole on/off seam.** `ui.brain` + `render.tier` fold into
+      one `renderCeiling`; the V2 tier machine's `renderTier` gates what draws
+      (`tierToRender`) — bloom + particles shed first on demote, and the 2D graph is the
+      floor. No new flag surface.
+    - **Context-loss floor + bounded backoff.** A dead WebGL context (often the local
+      9B holding VRAM for a whole offline turn) calls `preventDefault()` and falls to
+      the 2D graph via a `contextLost` flag + an `App.tsx` `SphereBoundary` error
+      boundary — never a black stage, never a hot lost-context loop. The retry backs
+      off on repeated losses (60 s → 2 m → 5 m cap, `graph/sphere/contextLossBackoff.ts`)
+      to quiesce a dead GPU, and resets to the 60 s fuse once a remount survives a short
+      grace so a recovered GPU returns promptly. A full remount IS the recovery path, so
+      there is no `webglcontextrestored` handler (it would race the fresh canvas).
+    - **`@react-three/drei` dropped** — `OrbitControls` comes straight from
+      `three/examples/jsm/controls` (saves ~150 KB + one pin). Deps pinned:
+      `three@0.169.0`, `@react-three/fiber@8.17.10`,
+      `@react-three/postprocessing@2.16.3`, `postprocessing@6.36.4`. The sphere is
+      lazy-loaded, so `ui.brain: 2d` / weak machines never fetch `three`.
