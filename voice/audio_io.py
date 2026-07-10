@@ -93,9 +93,18 @@ class AudioIO:
             except queue.Empty:
                 return
 
-    def play(self, samples, samplerate: int, stop: threading.Event) -> bool:
-        """Play int16 samples; returns False if stopped early (barge-in)."""
+    def play(self, samples, samplerate: int, stop: threading.Event, on_level=None) -> bool:
+        """Play int16 samples; returns False if stopped early (barge-in).
+
+        ``on_level`` (optional) is called per ~100 ms chunk with that chunk's
+        0..1 RMS — the honest TTS-amplitude source for the UI. Additive: absent
+        callers are unaffected, and a failing callback never breaks playback.
+        """
         import sounddevice as sd
+
+        rms = None
+        if on_level is not None:
+            from voice.amplitude import rms_int16 as rms
 
         chunk = int(samplerate * CHUNK_MS / 1000)
         with sd.OutputStream(
@@ -104,7 +113,13 @@ class AudioIO:
             for start in range(0, len(samples), chunk):
                 if stop.is_set():
                     return False
-                out.write(samples[start : start + chunk])
+                block = samples[start : start + chunk]
+                out.write(block)
+                if rms is not None:
+                    try:
+                        on_level(rms(block))
+                    except Exception:  # noqa: BLE001 — amplitude must never kill audio
+                        pass
         return not stop.is_set()
 
     def beep(self) -> None:

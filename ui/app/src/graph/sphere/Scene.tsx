@@ -13,10 +13,17 @@ import type { GraphData } from "../../types";
 import { sphereAnchors, type Vec3 } from "./sphereGeometry";
 import { arcPoints } from "./greatCircle";
 import { cssColor, nodeColor } from "./materials";
-import { nodeVisualTarget } from "./nodeVisual";
+import { nodeVisualTarget, type NodeSignals } from "./nodeVisual";
 import { tierToRender } from "./tierGate";
 import Effects from "./Effects";
 import Pulses from "./Pulses";
+import CoreGauge from "./CoreGauge";
+
+/** Live per-node signals, read transiently in the frame loop (no subscription). */
+function readNodeSignals(): NodeSignals {
+  const b = useBrain.getState();
+  return { gameMode: b.gameMode, router: b.router, activeBrain: b.activeBrain };
+}
 
 const R = 3;
 const TYPE_RADIUS: Record<string, number> = {
@@ -67,20 +74,27 @@ interface Placed {
  */
 function NodeMesh({ node, pos }: Placed) {
   const mat = useRef<THREE.MeshStandardMaterial>(null);
+  const baseColor = useMemo(() => nodeColor(node.type), [node.type]);
   // Frozen at mount — a node that mounts mid-game-mode starts ghosted, no flash.
   const initial = useMemo(
-    () => nodeVisualTarget(node.id, useBrain.getState().gameMode),
+    () => nodeVisualTarget(node.id, readNodeSignals()),
     [node.id],
   );
 
   useFrame((_, delta) => {
     const m = mat.current;
     if (!m) return;
-    const target = nodeVisualTarget(node.id, useBrain.getState().gameMode);
+    // Live signals (game mode / router health / active brain) read transiently.
+    const target = nodeVisualTarget(node.id, readNodeSignals());
     // Exponential ease (~0.25 s time-constant), frame-rate independent.
     const k = 1 - Math.exp(-delta * 4);
     m.emissiveIntensity += (target.emissiveIntensity - m.emissiveIntensity) * k;
     m.opacity += (target.opacity - m.opacity) * k;
+    // Router-health recolor: ease toward the target hue (or back to base colour).
+    // cssColor returns a cached instance; lerp mutates m.color/emissive only.
+    const tc = target.color ? cssColor(target.color) : baseColor;
+    m.color.lerp(tc, k);
+    m.emissive.lerp(tc, k);
   });
 
   return (
@@ -224,6 +238,9 @@ export default function Scene() {
         {/* Honest pulses/flares ride inside the group so they track their arcs. */}
         <Pulses graph={graph} />
       </group>
+      {/* State gauge sits in world space at the origin so its flat ring keeps
+          facing the camera (outside the rotating group). */}
+      <CoreGauge />
       {plan.particles && <Particles />}
       {plan.bloom && <Effects />}
     </>

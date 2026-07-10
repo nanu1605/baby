@@ -48,6 +48,11 @@ _ACTIVITY_KINDS = {
     "task_done",
     "project_started",
     "project_done",
+    # V3e honest amplitude (additive) — the 3D core gauge's listening ripple /
+    # speaking shimmer. Throttled ~15/~10 Hz at the source; intercepted client-side
+    # by foldAmplitude BEFORE the event ring so they never pollute the feed.
+    "mic_rms",
+    "tts_rms",
 }
 
 # V2 frame governor: VRAM is pushed onto /ws/state so the client-side watchdog can
