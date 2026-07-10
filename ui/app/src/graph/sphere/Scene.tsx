@@ -170,7 +170,11 @@ export default function Scene() {
             <meshStandardMaterial
               color={nodeColor(node.type)}
               emissive={nodeColor(node.type)}
-              emissiveIntensity={0.22}
+              // HDR-punch (>1) so the node cores cross the bloom threshold and glow
+              // as crisp points instead of a flat wash; ACES tone mapping (Effects)
+              // rolls the rest of the scene back into contrast. V3d/e will modulate
+              // this by real signal — uniform here is the resting/static baseline.
+              emissiveIntensity={1.35}
               roughness={0.5}
               metalness={0.1}
             />
