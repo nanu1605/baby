@@ -52,7 +52,7 @@ export default function Header() {
           className={`tier-chip tier-${renderTier}`}
           title="frame governor: 3D quality tier — demotes to hold 60 fps and free VRAM for the local model"
         >
-          ⚙ {renderTier}
+          <span className="cog">⚙</span> {renderTier}
         </span>
       )}
 
