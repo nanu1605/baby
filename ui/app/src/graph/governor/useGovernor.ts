@@ -19,7 +19,7 @@ import {
   type Tier,
   type TierConfig,
 } from "./tierMachine";
-import { vramPressured } from "./vramWatchdog";
+import { vramCeiling } from "./vramWatchdog";
 
 /** Lower of two tiers (used to fold the user's performance opt-in into the ceiling). */
 function lower(a: Tier, b: Tier): Tier {
@@ -32,6 +32,7 @@ export function useGovernor(): void {
     let stopped = false;
     let last = performance.now();
     let state = initialTierState();
+    let vramCap: Tier = "full3d"; // watchdog ceiling, remembered for its hysteresis
 
     const tick = (now: number) => {
       if (stopped) return;
@@ -54,13 +55,21 @@ export function useGovernor(): void {
       const plausible = dtMs < stallCutoffMs;
       const stepDt = plausible ? dtMs : 0; // a stall advances neither stress nor calm
       const framePressed = plausible && dtMs > budgetMs * 1.5;
-      const pressured = framePressed || vramPressured(b.vram);
 
-      // Effective ceiling = config ceiling, further capped by the ⚡ performance opt-in.
-      const ceiling = lower(b.renderCeiling, b.performanceMode ? "lite3d" : "full3d");
+      // VRAM is a CEILING, not ladder pressure: tight headroom sheds bloom (lite3d),
+      // only critically-full VRAM floors to 2d — so a warm local model on a small
+      // card dims the spectacle instead of hiding the sphere. Real fps contention
+      // still walks the ladder via frame pressure below.
+      vramCap = vramCeiling(b.vram, vramCap);
+
+      // Effective ceiling = config ceiling ∧ ⚡ performance opt-in ∧ VRAM headroom.
+      const ceiling = lower(
+        lower(b.renderCeiling, b.performanceMode ? "lite3d" : "full3d"),
+        vramCap,
+      );
       const cfg: TierConfig = { ...DEFAULT_TIER_CONFIG, ceiling };
 
-      state = stepTier(state, { pressured, dtMs: stepDt, cfg });
+      state = stepTier(state, { pressured: framePressed, dtMs: stepDt, cfg });
       if (state.tier !== b.renderTier) b.setRenderTier(state.tier);
     };
 

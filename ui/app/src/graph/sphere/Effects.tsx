@@ -17,7 +17,11 @@ import { ToneMappingMode } from "postprocessing";
 
 export default function Effects() {
   return (
-    <EffectComposer>
+    // multisampling 0: the default 8x MSAA half-float input buffer is the composer's
+    // dominant VRAM cost (~0.5 GB at typical sizes) and is largely redundant under
+    // mipmap-blur bloom. Keeping the footprint ~0.15 GB also keeps it safely inside
+    // the watchdog's 0.75 GB lift pad (no promote→allocate→shed loop).
+    <EffectComposer multisampling={0}>
       <Bloom
         intensity={1.15}
         luminanceThreshold={0.55}

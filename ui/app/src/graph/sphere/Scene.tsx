@@ -13,6 +13,7 @@ import type { GraphData } from "../../types";
 import { sphereAnchors, type Vec3 } from "./sphereGeometry";
 import { arcPoints } from "./greatCircle";
 import { cssColor, nodeColor } from "./materials";
+import { nodeVisualTarget } from "./nodeVisual";
 import { tierToRender } from "./tierGate";
 import Effects from "./Effects";
 
@@ -49,6 +50,62 @@ function Controls() {
 interface Placed {
   node: GraphData["nodes"][number];
   pos: Vec3;
+}
+
+/**
+ * One node sphere. The material eases toward its honest visual target each frame:
+ * game mode offloads the local 9B, so `brain:daily` dims until its bloom washes
+ * out (nodeVisual.ts) — a smooth transition between two REAL states, not ambient
+ * motion. transparent stays on so the ghost fade needs no material recompile.
+ *
+ * The eased fields are deliberately NOT reactive props (review-caught): passing the
+ * live target through JSX makes R3F's prop diff snap the material in the same React
+ * commit that flips gameMode, turning the ease into dead code. So the JSX carries
+ * mount-time values only, gameMode is read transiently inside the frame loop (no
+ * per-node re-render either), and useFrame owns the live values.
+ */
+function NodeMesh({ node, pos }: Placed) {
+  const mat = useRef<THREE.MeshStandardMaterial>(null);
+  // Frozen at mount — a node that mounts mid-game-mode starts ghosted, no flash.
+  const initial = useMemo(
+    () => nodeVisualTarget(node.id, useBrain.getState().gameMode),
+    [node.id],
+  );
+
+  useFrame((_, delta) => {
+    const m = mat.current;
+    if (!m) return;
+    const target = nodeVisualTarget(node.id, useBrain.getState().gameMode);
+    // Exponential ease (~0.25 s time-constant), frame-rate independent.
+    const k = 1 - Math.exp(-delta * 4);
+    m.emissiveIntensity += (target.emissiveIntensity - m.emissiveIntensity) * k;
+    m.opacity += (target.opacity - m.opacity) * k;
+  });
+
+  return (
+    <mesh
+      position={pos}
+      onClick={(e) => {
+        e.stopPropagation();
+        useBrain.getState().selectNode(node.id);
+      }}
+    >
+      <sphereGeometry args={[TYPE_RADIUS[node.type] ?? 0.16, 24, 24]} />
+      <meshStandardMaterial
+        ref={mat}
+        color={nodeColor(node.type)}
+        emissive={nodeColor(node.type)}
+        // HDR-punch (>1) so loaded node cores cross the bloom threshold and glow as
+        // crisp points; ACES tone mapping (Effects) rolls the rest back into
+        // contrast. Mount-time values — the frame loop owns them afterwards.
+        emissiveIntensity={initial.emissiveIntensity}
+        opacity={initial.opacity}
+        transparent
+        roughness={0.5}
+        metalness={0.1}
+      />
+    </mesh>
+  );
 }
 
 function Edge({ pts, color }: { pts: Vec3[]; color: THREE.Color }) {
@@ -158,27 +215,7 @@ export default function Scene() {
       <Controls />
       <group ref={groupRef}>
         {placed.map(({ node, pos }) => (
-          <mesh
-            key={node.id}
-            position={pos}
-            onClick={(e) => {
-              e.stopPropagation();
-              useBrain.getState().selectNode(node.id);
-            }}
-          >
-            <sphereGeometry args={[TYPE_RADIUS[node.type] ?? 0.16, 24, 24]} />
-            <meshStandardMaterial
-              color={nodeColor(node.type)}
-              emissive={nodeColor(node.type)}
-              // HDR-punch (>1) so the node cores cross the bloom threshold and glow
-              // as crisp points instead of a flat wash; ACES tone mapping (Effects)
-              // rolls the rest of the scene back into contrast. V3d/e will modulate
-              // this by real signal — uniform here is the resting/static baseline.
-              emissiveIntensity={1.35}
-              roughness={0.5}
-              metalness={0.1}
-            />
-          </mesh>
+          <NodeMesh key={node.id} node={node} pos={pos} />
         ))}
         {edges.map((pts, i) => (
           <Edge key={i} pts={pts} color={edgeColor} />
