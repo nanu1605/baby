@@ -19,7 +19,7 @@ import {
   type Tier,
   type TierConfig,
 } from "./tierMachine";
-import { INITIAL_VRAM_STATE, stepVramCeiling } from "./vramWatchdog";
+import { modelCeiling } from "./vramWatchdog";
 
 /** Lower of two tiers (used to fold the user's performance opt-in into the ceiling). */
 function lower(a: Tier, b: Tier): Tier {
@@ -32,7 +32,6 @@ export function useGovernor(): void {
     let stopped = false;
     let last = performance.now();
     let state = initialTierState();
-    let vram = INITIAL_VRAM_STATE; // watchdog state — ceiling + floor debounce timers
 
     const tick = (now: number) => {
       if (stopped) return;
@@ -56,18 +55,13 @@ export function useGovernor(): void {
       const stepDt = plausible ? dtMs : 0; // a stall advances neither stress nor calm
       const framePressed = plausible && dtMs > budgetMs * 1.5;
 
-      // VRAM is a CEILING, not ladder pressure: tight headroom sheds bloom (lite3d),
-      // only SUSTAINED critically-full VRAM floors to 2d — so a warm local model on
-      // a small card dims the spectacle instead of hiding the sphere, and a model
-      // reload spike never floors at all. Real fps contention still walks the
-      // ladder via frame pressure below. Stall-guarded dt: a hidden tab must not
-      // run the floor debounce timers.
-      vram = stepVramCeiling(b.vram, stepDt, vram);
-
-      // Effective ceiling = config ceiling ∧ ⚡ performance opt-in ∧ VRAM headroom.
+      // The GPU watchdog is a CEILING, not ladder pressure: a resident local model
+      // sheds bloom (lite3d) but keeps the sphere; everything else stays full3d.
+      // Real fps contention (incl. VRAM paging) walks the ladder via frame
+      // pressure; a lost WebGL context floors to 2D in BrainSphere.
       const ceiling = lower(
         lower(b.renderCeiling, b.performanceMode ? "lite3d" : "full3d"),
-        vram.ceiling,
+        modelCeiling(b.localModelLoaded),
       );
       const cfg: TierConfig = { ...DEFAULT_TIER_CONFIG, ceiling };
 

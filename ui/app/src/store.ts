@@ -77,6 +77,10 @@ interface BrainState {
   performanceMode: boolean;
   /** V2 frame governor: VRAM signal off /ws/state (null = no NVML / not seen yet). */
   vram: VramSignal | null;
+  /** V3 watchdog: local model resident in VRAM? (null = unknown → fail-open full3d). */
+  localModelLoaded: boolean | null;
+  /** V3 context-loss floor: WebGL context died → force the 2D graph (auto-retries). */
+  contextLost: boolean;
   /** V2 governor: current quality tier (full3d → lite3d → 2d floor). */
   renderTier: Tier;
   /** V2 governor: config ceiling from render.tier ("auto" → full3d). */
@@ -112,6 +116,10 @@ interface BrainState {
   setActiveBrain: (id: string | null) => void;
   togglePerformanceMode: () => void;
   setVram: (v: VramSignal | null) => void;
+  /** null = back to unknown (e.g. a /stats reply without the field) → fail-open. */
+  setLocalModelLoaded: (on: boolean | null) => void;
+  /** Mark the WebGL context lost; schedules ONE retry so it never loops hot. */
+  setContextLost: (lost: boolean) => void;
   setRenderTier: (t: Tier) => void;
   setRenderCeiling: (t: Tier) => void;
   setTargetFps: (fps: number) => void;
@@ -163,6 +171,8 @@ export const useBrain = create<BrainState>((set) => ({
   activeBrain: null,
   performanceMode: loadPerfMode(),
   vram: null,
+  localModelLoaded: null,
+  contextLost: false,
   renderTier: "full3d",
   renderCeiling: "full3d",
   targetFps: 60,
@@ -197,6 +207,19 @@ export const useBrain = create<BrainState>((set) => ({
       return { performanceMode: next };
     }),
   setVram: (v) => set({ vram: v }),
+  setLocalModelLoaded: (on) =>
+    set((st) => (st.localModelLoaded === on ? {} : { localModelLoaded: on })),
+  setContextLost: (lost) =>
+    set((st) => {
+      if (st.contextLost === lost) return {};
+      if (lost) {
+        // One retry per loss, on a long fuse — a genuinely broken GPU just floors
+        // again 60 s later instead of hot-looping context creation (V3f hardening,
+        // pulled forward with the watchdog redesign).
+        window.setTimeout(() => useBrain.getState().setContextLost(false), 60_000);
+      }
+      return { contextLost: lost };
+    }),
   setRenderTier: (t) => set((st) => (st.renderTier === t ? {} : { renderTier: t })),
   setRenderCeiling: (t) => set((st) => (st.renderCeiling === t ? {} : { renderCeiling: t })),
   setTargetFps: (fps) => set((st) => (st.targetFps === fps ? {} : { targetFps: fps })),

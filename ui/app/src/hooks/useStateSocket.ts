@@ -27,9 +27,14 @@ export function useStateSocket(): void {
       }
       if (typeof msg.router === "string") b.setRouter(normRouter(msg.router));
       if (typeof msg.game_mode === "boolean") b.setGameMode(msg.game_mode);
-      // V2: the additive throttled VRAM signal drives the governor's watchdog.
+      // V2: the additive throttled VRAM signal (observability; the watchdog now
+      // keys on model residency below).
       if (typeof msg.vram_used_gb === "number" && typeof msg.vram_total_gb === "number") {
         b.setVram({ usedGb: msg.vram_used_gb, totalGb: msg.vram_total_gb });
+      }
+      // V3 watchdog: local model resident → the governor sheds bloom (lite3d cap).
+      if (typeof msg.local_model_loaded === "boolean") {
+        b.setLocalModelLoaded(msg.local_model_loaded);
       }
     }, (up) => useBrain.getState().setWsStatus("state", up));
     return () => sock.close();

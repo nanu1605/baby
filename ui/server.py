@@ -329,6 +329,11 @@ def create_app(ctx: UIContext) -> FastAPI:
         game = getattr(ctx.agent.provider, "game_mode", None)
         if game is not None:
             data["game_mode"] = bool(game)
+        # V3 watchdog signal (additive §0.4 GPU-state): is the local model resident?
+        # Read from the shared sampler cache; omitted while unknown (fail-open UI).
+        _ensure_vram_sampler()
+        if _vram_cache["local_loaded"] is not None:
+            data["local_model_loaded"] = _vram_cache["local_loaded"]
         latency = getattr(ctx.agent.provider, "latency", None)
         if latency:
             def pct(samples, p):
@@ -579,7 +584,7 @@ def create_app(ctx: UIContext) -> FastAPI:
         finally:
             pump.cancel()
 
-    _vram_cache: dict = {"used": None, "total": None, "task": None}
+    _vram_cache: dict = {"used": None, "total": None, "local_loaded": None, "task": None}
 
     def _read_gpu():
         try:
@@ -587,6 +592,29 @@ def create_app(ctx: UIContext) -> FastAPI:
 
             return _gpu()
         except Exception:  # noqa: BLE001 — no GPU is not an error
+            return None
+
+    async def _read_local_loaded():
+        # V3 watchdog signal (additive §0.4): is the LOCAL daily model resident in
+        # VRAM right now? Reuses the provider's own read-only /api/ps helper —
+        # desktop-wide NVML "free" proved meaningless on Windows (apps overcommit),
+        # so the honest #118 demote trigger is model residency, not headroom.
+        # All provider shapes expose loaded_context_length at the TOP level (the
+        # router classes delegate to their daily Ollama; the bare local_primary
+        # rollback provider self-reports), so read it there — reaching through
+        # .daily missed the rollback shape (review-caught).
+        # Semantics: no helper on the provider → None (field omitted → UI fails
+        # open); helper answered → bool. Note the helper itself folds "ollama
+        # unreachable" into None==not-resident → False here; that reads as "lift
+        # the cap" during a wedged-daemon window, which the frame governor
+        # backstops — conservative enough, and usually simply true (daemon down
+        # means nothing is resident).
+        try:
+            fn = getattr(ctx.agent.provider, "loaded_context_length", None)
+            if fn is None:
+                return None
+            return (await fn()) is not None
+        except Exception:  # noqa: BLE001 — unknown beats a crashed sampler
             return None
 
     async def _vram_sampler() -> None:
@@ -601,6 +629,7 @@ def create_app(ctx: UIContext) -> FastAPI:
             else:
                 _vram_cache["used"] = None
                 _vram_cache["total"] = None
+            _vram_cache["local_loaded"] = await _read_local_loaded()
             await asyncio.sleep(_VRAM_SAMPLE_S)
 
     def _ensure_vram_sampler() -> None:
@@ -624,6 +653,8 @@ def create_app(ctx: UIContext) -> FastAPI:
         if used is not None:
             snap["vram_used_gb"] = used
             snap["vram_total_gb"] = _vram_cache["total"]
+        if _vram_cache["local_loaded"] is not None:
+            snap["local_model_loaded"] = _vram_cache["local_loaded"]
         return snap
 
     async def _state_pump(ws: WebSocket) -> None:

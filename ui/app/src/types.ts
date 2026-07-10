@@ -121,6 +121,8 @@ export interface Stats {
   render?: { target_fps: number; tier: string; idle_full_on_desktop: boolean };
   /** V3 sphere gate — ui.brain (code-defaulted "3d"; "2d" = v3 canvas rollback). */
   ui?: { brain: string };
+  /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
+  local_model_loaded?: boolean;
   tokens?: {
     session: {
       prompt: number;
