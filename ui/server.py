@@ -408,6 +408,40 @@ def create_app(ctx: UIContext) -> FastAPI:
         ctx.bus.publish("status", "ui", text="fresh conversation started")
         return {"conversation_id": ctx.agent.conversation_id}
 
+    @app.get("/api/conversations")
+    async def api_conversations(
+        limit: int = 50,
+        offset: int = 0,
+        include_archived: bool = False,
+        channel: str = "ui",
+    ):
+        """History sidebar list (v5): real conversations with a derived title +
+        message_count + last_message_at, newest activity first. Empty/unused and
+        (by default) archived rows are excluded. active_conversation_id lets the
+        sidebar highlight the live chat before any turn fires — the id is
+        otherwise only on the turn_start WS payload."""
+        convos = await ctx.db.list_conversations(
+            channel=channel,
+            limit=max(1, min(limit, 200)),
+            offset=max(0, offset),
+            include_archived=include_archived,
+        )
+        return {
+            "conversations": convos,
+            "active_conversation_id": ctx.agent.conversation_id,
+        }
+
+    @app.get("/api/conversations/{conv_id}")
+    async def api_conversation_detail(conv_id: int, limit: int = 200):
+        """One conversation's messages, read-only (v5 viewer). Reuses get_history
+        (status='ok' + user/assistant only), so quarantined/failed turns never
+        render. 404 when the conversation doesn't exist."""
+        meta = await ctx.db.get_conversation_meta(conv_id)
+        if meta is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        messages = await ctx.db.get_history(conv_id, max(1, min(limit, 500)))
+        return {"meta": meta, "messages": messages}
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:

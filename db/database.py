@@ -86,6 +86,14 @@ class Database:
                 await self.conn.execute(
                     f"ALTER TABLE conversations ADD COLUMN {column} INTEGER DEFAULT 0"
                 )
+        # v5 chat history: editable title + soft-archive flag (additive; NULL/0
+        # on existing rows so nothing changes until the UI sets them).
+        if "title" not in have:
+            await self.conn.execute("ALTER TABLE conversations ADD COLUMN title TEXT")
+        if "archived" not in have:
+            await self.conn.execute(
+                "ALTER TABLE conversations ADD COLUMN archived INTEGER DEFAULT 0"
+            )
         cur = await self.conn.execute("PRAGMA table_info(tasks)")
         have = {row["name"] for row in await cur.fetchall()}
         if "project_id" not in have:
@@ -187,6 +195,82 @@ class Database:
             (channel,),
         )
         return row["id"] if row else None
+
+    # The metadata SELECT shared by the list + detail endpoints (v5). Derives
+    # message_count / last_message_at from OK user+assistant rows, and the first
+    # user message for a title fallback.
+    _CONV_META_SELECT = (
+        "SELECT c.id, c.channel, c.started_at, c.title, "
+        "       COALESCE(c.archived, 0) AS archived, c.summary, "
+        "       COUNT(m.id) AS message_count, "
+        "       MAX(m.created_at) AS last_message_at, "
+        "       (SELECT content FROM messages mu WHERE mu.conversation_id = c.id "
+        "        AND mu.role = 'user' AND mu.status = 'ok' ORDER BY mu.id LIMIT 1) "
+        "        AS first_user "
+        "FROM conversations c "
+        "LEFT JOIN messages m ON m.conversation_id = c.id "
+        "  AND m.status = 'ok' AND m.role IN ('user', 'assistant') "
+    )
+
+    @staticmethod
+    def _conversation_meta(r) -> dict:
+        """Shape one metadata row for the API, deriving a title when unset:
+        explicit title → summary first line → first user message → 'New chat'."""
+        title = (r["title"] or "").strip()
+        if not title:
+            summary = (r["summary"] or "").strip()
+            if summary:
+                title = summary.splitlines()[0][:80]
+            elif r["first_user"]:
+                title = " ".join(r["first_user"].split())[:60]
+            else:
+                title = "New chat"
+        return {
+            "id": r["id"],
+            "channel": r["channel"],
+            "title": title,
+            "started_at": r["started_at"],
+            "last_message_at": r["last_message_at"],
+            "message_count": r["message_count"],
+            "archived": bool(r["archived"]),
+        }
+
+    async def list_conversations(
+        self,
+        *,
+        channel: str | None = "ui",
+        limit: int = 50,
+        offset: int = 0,
+        include_archived: bool = False,
+    ) -> list[dict]:
+        """Conversations with derived metadata for the history sidebar (v5).
+
+        Only conversations with at least one OK user/assistant message surface
+        (boot and /conversation/new create empty rows that never get used —
+        HAVING drops them). channel=None spans every channel; the default
+        'ui' keeps voice/telegram/scheduler/cli threads out of the UI sidebar.
+        Newest activity first."""
+        rows = await self._fetchall(
+            self._CONV_META_SELECT
+            + "WHERE (? IS NULL OR c.channel = ?) "
+            "  AND (? OR COALESCE(c.archived, 0) = 0) "
+            "GROUP BY c.id "
+            "HAVING message_count > 0 "
+            "ORDER BY COALESCE(last_message_at, c.started_at) DESC, c.id DESC "
+            "LIMIT ? OFFSET ?",
+            (channel, channel, 1 if include_archived else 0, limit, offset),
+        )
+        return [self._conversation_meta(r) for r in rows]
+
+    async def get_conversation_meta(self, conversation_id: int) -> dict | None:
+        """One conversation's derived metadata, or None if it doesn't exist."""
+        row = await self._fetchone(
+            self._CONV_META_SELECT + "WHERE c.id = ? GROUP BY c.id",
+            (conversation_id,),
+        )
+        if row is None or row["id"] is None:
+            return None
+        return self._conversation_meta(row)
 
     # -- audit ---------------------------------------------------------------
 
