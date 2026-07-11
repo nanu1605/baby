@@ -7,6 +7,7 @@ import sys
 
 import yaml
 
+from core import paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.intents import parse_yes
@@ -15,8 +16,8 @@ from core.safety import SafetyConfig, SafetyGate
 from db.database import Database
 
 
-def load_config(config_path: str = "config.yaml") -> dict:
-    with open(config_path, encoding="utf-8") as f:
+def load_config(config_path: str | None = None) -> dict:
+    with open(config_path or paths.ensure_config(), encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -57,12 +58,12 @@ async def _render(bus: EventBus, gate: SafetyGate) -> None:
         raise
 
 
-async def run_cli(config_path: str = "config.yaml") -> None:
+async def run_cli(config_path: str | None = None) -> None:
     from core.router import build_provider
 
     config = load_config(config_path)
     daily = config["models"]["daily"]
-    db = Database("baby.db")
+    db = Database(paths.db_path())
     await db.connect()
     bus = EventBus()
     provider = build_provider(config, bus=bus, db=db)

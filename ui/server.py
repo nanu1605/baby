@@ -18,6 +18,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from core import paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.safety import SafetyGate
@@ -854,7 +855,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import files as files_tools
     from tools import web as web_tools
 
-    db = Database("baby.db")
+    db = Database(paths.db_path())
     asyncio.get_running_loop().set_exception_handler(_quiet_playwright_teardown)
     await db.connect()
     bus = EventBus()
