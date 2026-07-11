@@ -1,5 +1,44 @@
 # Changelog
 
+## v5.0.0 — chat history & default cloud mode (2026-07-11)
+
+Baby learns to look back and boots lighter. A collapsible **chat-history sidebar**
+surfaces real past conversations over two additive read endpoints
+(`GET /api/conversations`, `GET /api/conversations/{id}`) — most of the storage was
+already there (v2 conversations + summaries, v3 FTS/vector search), so v5 mostly
+*surfaces* it. And Baby now **boots in cloud (game) mode by default**: the local 9B
+isn't warmed at launch, so the GPU is free from the start; privacy-pinned turns still
+run local. Frozen ground holds — no router/provider/safety logic changed; the branch
+adds only read endpoints, a scoped delete, a readiness flag, and a boot-time
+game-mode data-set. Owner merges + tags.
+
+- **H0 — read spine.** Additive `conversations.title` + `conversations.archived`
+  columns; `list_conversations` / `get_conversation_meta` (derived title, counts,
+  last-activity; empty/archived/cross-channel excluded); `GET /api/conversations`
+  (+ `active_conversation_id`) and `GET /api/conversations/{id}` (reuses `get_history`,
+  so quarantined/failed turns never render).
+- **H1 — history sidebar.** Reverse-chron list with a prominent **New chat**; open a
+  past chat **read-only** (view-only), with an explicit **Resume here** that rehydrates
+  it into the live session within the per-brain budget (`POST …/resume`, guarded on
+  `turn_running()`); the store gains `setTranscript` + a viewing gate so a live turn
+  can't corrupt a frozen transcript. The omnibox conversation-hit now **deep-links**
+  into the viewer (closing the v3 "nowhere to land" loop). `ui.history: off` hides it.
+- **H2 — manage.** Rename, archive/unarchive, and **delete** — the delete purges the
+  message rows, the FTS mirror (trigger), the `message_vectors` rows (explicitly — vec0
+  isn't trigger-backed, and `messages.id` has no `AUTOINCREMENT`, so a reused rowid
+  could otherwise inherit a stale embedding), and `usage_log`; a deleted chat can't
+  resurface via `/api/search`. Deleting the live chat rolls to a fresh one. No phantom
+  brain pulses on any switch.
+- **H3 — default cloud mode.** `startup.cloud_mode` (code-default `true`): `ready_check`
+  skips the local warm and never `sys.exit`s on an unreachable Ollama; `run_ui` sets
+  `provider.game_mode = True` directly (the ladder already branches on it — no routing
+  change). Privacy pins still force local on demand; toggle-off re-warms + re-announces
+  "Baby ready". Rollback `startup.cloud_mode: false`.
+- **H4 — release.** Version aligned to 5.0.0 across every track; docs + acceptance
+  checklist (`tests/manual/v5_history_checklist.md`); the always-green gate. Owner runs
+  the real-box acceptance (boot VRAM, pinned-turn capture-mock, 3-day soak) then merges
+  + tags `v5.0.0`.
+
 ## v4.0.0 — native app + 3D neural brain (2026-07-11)
 
 The Brain grows a body and a third dimension: the same FastAPI-served UI gains a

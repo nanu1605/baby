@@ -1077,3 +1077,55 @@ Running log of non-obvious choices made during the build. Newest last.
       frozen ground and `tests/test_safety.py` are untouched, and v4 adds **no config
       flag** (reduced-motion is OS/CSS, performanceMode is the existing localStorage
       opt-in).
+
+126. **v5 chat history & default cloud mode — surface what exists, purge what deletes,
+    boot lighter (H0–H4).** v5 is mostly *surfacing*: the `conversations` + `messages`
+    tables, rolling summaries, and the FTS/vector search all predate it, so the branch
+    adds only additive read endpoints + UI plus one scoped delete and one boot flag.
+    Frozen ground holds — no router/provider/safety logic changed.
+    - **Derived metadata, not new storage.** `conversations` gained only `title` +
+      `archived` (additive `_migrate`); `message_count`, `last_message_at`, and the
+      fallback title (explicit → summary first line → first user message → "New chat")
+      are DERIVED in `list_conversations` / `get_conversation_meta`. The list is scoped
+      `channel='ui'` with `HAVING message_count > 0` so boot/`new`-created empties and
+      voice/telegram/scheduler threads never pollute the UI sidebar. `active_conversation_id`
+      rides the list response because the live id was otherwise only on the `turn_start`
+      WS payload — the sidebar needs it to highlight "current" on a cold page load.
+    - **View-only + explicit Resume, against the single stream (owner-chosen).** The
+      agent is stateless between turns — `_loop` rebuilds context from
+      `self.conversation_id` every turn — so **resume is just reassigning that attr**
+      (`POST /api/conversations/{id}/resume`, guarded on `turn_running()`; rehydration
+      honors the per-brain budget for free). But because it silently redirects the live
+      stream, opening a chat is **read-only by default**; an explicit "Resume here"
+      makes the redirect intentional. A store viewing-gate no-ops the streaming reducers
+      while a past chat is displayed, so a live turn can't corrupt the frozen transcript.
+      Switching replaces the transcript via `setTranscript` (never `appendToken`) → **no
+      phantom brain pulses** (honest-data intact). The omnibox conversation-hit now
+      deep-links into this viewer, closing the v3 "nowhere to land" parking-lot item.
+    - **Scoped delete purges the RAG vectors explicitly (the rowid-reuse fix).**
+      `MemoryStore.delete_conversation` deletes the message rows (the `messages_ad`
+      trigger self-purges the FTS mirror), the `message_vectors` rows **explicitly**
+      (vec0 is NOT trigger-backed — and `messages.id` is `INTEGER PRIMARY KEY` **without
+      `AUTOINCREMENT`**, so a reused rowid could otherwise inherit a stale embedding),
+      and `usage_log`; `audit_log` is retained (wipe_all policy). A `Database`
+      base-table twin covers the memory-off path (no vectors exist). Proven
+      un-resurrectable via `/api/search` on both the FTS and vector paths. Deleting the
+      **live** conversation rolls the agent to a fresh one so it never points at a
+      deleted row (409 only while that live turn is running). **Pin-to-top was parked**
+      (optional-if-cheap, unneeded with resume + a clean list).
+    - **Default cloud mode = a boot data-set, not a logic change.** `startup.cloud_mode`
+      (code-default `true`) makes `ready_check` skip the VRAM-loading warm ping and
+      never `sys.exit` on an unreachable Ollama (a non-fatal liveness probe feeds an
+      honest note); `run_ui` then sets `provider.game_mode = True` **directly** —
+      **not** `set_game_mode(True)`, which would `unload()` a never-warmed model +
+      publish a spurious status. The `_ladder` already branches on `game_mode`, so no
+      `core/router.py` line changes. **Privacy pins are safe by construction:** the pin
+      branch sits ABOVE the game-mode branch, so a pinned `read_file`/`run_shell` turn
+      still forces local (lazy Ollama load, `keep_alive:0` evict) — pinned bytes never
+      reach cloud even under default cloud mode. Offline / no-key at boot: Baby still
+      starts and a normal turn returns the router's existing honest "all cloud
+      unreachable" message (auto-loading local for offline *normal* turns would require
+      editing the frozen ladder — off the table); the mitigation is **docs + rollback**
+      (`startup.cloud_mode: false` or a cloud key; the v6 installer wizard handles key
+      entry for end users). Rollbacks: `ui.history: off`, `startup.cloud_mode: false` —
+      both code-defaulted, never written to `config.yaml`.
