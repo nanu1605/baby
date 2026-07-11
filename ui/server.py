@@ -106,6 +106,15 @@ def _ui_brain(config: dict) -> str:
     return "2d" if val == "2d" else "3d"
 
 
+def _ui_history(config: dict) -> str:
+    """Additive read of ui.history for the v5 chat-history sidebar. Code-default
+    "on" (the v5 headline feature); "off" hides the sidebar with no other change.
+    Never requires a config edit."""
+    raw = config.get("ui", {}) if isinstance(config, dict) else {}
+    val = str(raw.get("history", "on")).strip().lower() if isinstance(raw, dict) else "on"
+    return "off" if val == "off" else "on"
+
+
 class _StateDeriver:
     """Fold the bus event stream into a single pipeline state for the gauge (B1c).
 
@@ -325,7 +334,10 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["model"] = ctx.config.get("models", {}).get("daily", {}).get("model", "?")
         data["turn_running"] = ctx.turn_running()
         data["render"] = _render_config(ctx.config)  # V2 governor knobs (code-defaulted)
-        data["ui"] = {"brain": _ui_brain(ctx.config)}  # V3 sphere gate (code-defaulted 3d)
+        data["ui"] = {
+            "brain": _ui_brain(ctx.config),  # V3 sphere gate (code-defaulted 3d)
+            "history": _ui_history(ctx.config),  # v5 history sidebar (code-defaulted on)
+        }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
@@ -441,6 +453,24 @@ def create_app(ctx: UIContext) -> FastAPI:
             return JSONResponse({"error": "no such conversation"}, status_code=404)
         messages = await ctx.db.get_history(conv_id, max(1, min(limit, 500)))
         return {"meta": meta, "messages": messages}
+
+    @app.post("/api/conversations/{conv_id}/resume")
+    async def api_conversation_resume(conv_id: int):
+        """Continue a past conversation in the live session (v5). Reassigns the
+        agent's conversation_id so the next turn rehydrates that conversation's
+        context (summary + windowed history + RAG) — the same stateless-per-turn
+        mechanism /conversation/new relies on, honoring the per-brain budget.
+        Guarded on turn_running(). Publishes a bus status only (NOT turn_start),
+        so the brain fires no phantom pulse on the switch."""
+        if ctx.turn_running():
+            return JSONResponse(
+                {"error": "turn in progress — try again when idle"}, status_code=409
+            )
+        if await ctx.db.get_conversation_meta(conv_id) is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        ctx.agent.conversation_id = conv_id
+        ctx.bus.publish("status", "ui", text="resumed conversation")
+        return {"conversation_id": conv_id}
 
     @app.get("/memory")
     async def memory_view(limit: int = 200):

@@ -103,6 +103,12 @@ interface BrainState {
   boostArmed: boolean;
   /** B5: fact id to best-effort-highlight in the memory panel (search fly-to). */
   focusFact: number | null;
+  /** v5: the live conversation id (sidebar "active" highlight; null until known). */
+  activeConversationId: number | null;
+  /** v5: conversation being VIEWED read-only (null = the live transcript). While
+   *  non-null, the streaming chat reducers no-op so a live turn on the active chat
+   *  can't corrupt the frozen viewed transcript. */
+  viewingConversationId: number | null;
 
   // chat
   messages: ChatMessage[];
@@ -141,6 +147,10 @@ interface BrainState {
   armBoost: () => void;
   disarmBoost: () => void;
   setFocusFact: (id: number | null) => void;
+  setActiveConversationId: (id: number | null) => void;
+  setViewing: (id: number | null) => void;
+  /** v5: replace the whole transcript (past-chat viewer + resume/new backfill). */
+  setTranscript: (rows: ChatMessage[]) => void;
 
   // chat reducers
   addUserMessage: (text: string) => void;
@@ -193,6 +203,8 @@ export const useBrain = create<BrainState>((set) => ({
   graph: null,
   boostArmed: false,
   focusFact: null,
+  activeConversationId: null,
+  viewingConversationId: null,
 
   messages: [],
   activeConfirm: null,
@@ -274,23 +286,40 @@ export const useBrain = create<BrainState>((set) => ({
     set({ boostArmed: false });
   },
   setFocusFact: (id) => set({ focusFact: id }),
+  setActiveConversationId: (id) =>
+    set((st) => (st.activeConversationId === id ? {} : { activeConversationId: id })),
+  setViewing: (id) =>
+    set((st) => (st.viewingConversationId === id ? {} : { viewingConversationId: id })),
+  setTranscript: (rows) => set({ messages: capMessages(rows) }),
 
+  // Every streaming reducer below no-ops while a past chat is being VIEWED
+  // (viewingConversationId != null) — a live turn on the active conversation must
+  // not append into the frozen read-only transcript (v5).
   addUserMessage: (text) =>
-    set((st) => ({ messages: capMessages([...st.messages, { role: "user", text }]) })),
+    set((st) =>
+      st.viewingConversationId !== null
+        ? {}
+        : { messages: capMessages([...st.messages, { role: "user", text }]) },
+    ),
 
   // turn_start: open an empty streaming assistant bubble.
   startTurn: () =>
-    set((st) => ({
-      messages: capMessages([
-        ...st.messages,
-        { role: "assistant", text: "", streaming: true },
-      ]),
-    })),
+    set((st) =>
+      st.viewingConversationId !== null
+        ? {}
+        : {
+            messages: capMessages([
+              ...st.messages,
+              { role: "assistant", text: "", streaming: true },
+            ]),
+          },
+    ),
 
   // token: append to the open streaming bubble (create one if a token races
   // ahead of turn_start, matching the classic UI's defensive check).
   appendToken: (text) =>
     set((st) => {
+      if (st.viewingConversationId !== null) return {};
       const msgs = st.messages.slice();
       const last = msgs[msgs.length - 1];
       if (last && last.role === "assistant" && last.streaming) {
@@ -306,6 +335,7 @@ export const useBrain = create<BrainState>((set) => ({
   // attach the brain + token badges and stop streaming.
   finishTurn: ({ reply, brain, tokens }) =>
     set((st) => {
+      if (st.viewingConversationId !== null) return {};
       const msgs = st.messages.slice();
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
@@ -319,16 +349,25 @@ export const useBrain = create<BrainState>((set) => ({
     }),
 
   addSystemNote: (text) =>
-    set((st) => ({ messages: capMessages([...st.messages, { role: "system", text }]) })),
+    set((st) =>
+      st.viewingConversationId !== null
+        ? {}
+        : { messages: capMessages([...st.messages, { role: "system", text }]) },
+    ),
 
   loadHistory: (rows) =>
-    set((st) => ({ messages: capMessages([...rows, ...st.messages]) })),
+    set((st) =>
+      st.viewingConversationId !== null
+        ? {}
+        : { messages: capMessages([...rows, ...st.messages]) },
+    ),
 
   // Chat socket dropped mid-turn: close the open streaming bubble so the blinking
   // cursor stops, and drop a one-line system note. No-op when nothing is streaming
   // (an idle-time drop needs no chat note — the header pill carries that signal).
   interruptTurn: () =>
     set((st) => {
+      if (st.viewingConversationId !== null) return {};
       const msgs = st.messages.slice();
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];

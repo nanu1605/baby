@@ -5,6 +5,8 @@
  */
 import type {
   ChatMessage,
+  ConversationDetail,
+  ConversationList,
   GraphData,
   MemoryFact,
   NodeStats,
@@ -45,6 +47,25 @@ export const postConfirm = (id: string, approved: boolean) =>
 export const postKill = () => postJSON("/kill");
 
 export const postGameMode = (on: boolean) => postJSON("/game_mode", { on });
+
+// -- v5 chat history ---------------------------------------------------------
+
+/** History sidebar list: real conversations + the live conversation id. */
+export const getConversations = (opts?: { includeArchived?: boolean }) =>
+  getJSON<ConversationList>(
+    `/api/conversations${opts?.includeArchived ? "?include_archived=true" : ""}`,
+  );
+
+/** One conversation's meta + messages (read-only viewer). */
+export const getConversation = (id: number) =>
+  getJSON<ConversationDetail>(`/api/conversations/${id}`);
+
+/** Start a fresh UI conversation; archives the current one by abandoning it. */
+export const newConversation = () => postJSON("/conversation/new");
+
+/** Continue a past conversation in the live session (409 if a turn is running). */
+export const resumeConversation = (id: number) =>
+  postJSON(`/api/conversations/${id}/resume`);
 
 export const getMemory = (limit = 200) =>
   getJSON<MemoryFact[]>(`/memory?limit=${limit}`);

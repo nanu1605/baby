@@ -90,8 +90,23 @@ describe("resultAction", () => {
   it("fact → mem_facts + focusFact (best-effort highlight)", () => {
     expect(resultAction(fact(7))).toEqual({ nodeId: "mem_facts", focusFact: 7 });
   });
-  it("conversation → mem_rag + Chat tab", () => {
-    expect(resultAction(convo(1))).toEqual({ nodeId: "mem_rag", tab: "chat" });
+  it("conversation → mem_rag + Chat tab + open that conversation (v5 deep-link)", () => {
+    expect(resultAction(convo(1))).toEqual({
+      nodeId: "mem_rag",
+      tab: "chat",
+      openConversation: 9, // the convo fixture's conversation_id
+    });
+  });
+  it("conversation without a conversation_id → no openConversation", () => {
+    const orphan: ConversationResult = {
+      type: "conversation",
+      id: 1,
+      snippet: "c",
+      ts: "2026-01-01",
+      node_id: "mem_rag",
+      conversation_id: null,
+    };
+    expect(resultAction(orphan)).toEqual({ nodeId: "mem_rag", tab: "chat" });
   });
   it("activity → its tool node, no tab/focus", () => {
     expect(resultAction(activity(1, "web_search"))).toEqual({

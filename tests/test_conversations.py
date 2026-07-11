@@ -201,3 +201,55 @@ def test_conversations_endpoints(tmp_path):
         assert missing.status_code == 404
     finally:
         asyncio.run(db.close())
+
+
+# -- resume endpoint (H1) ------------------------------------------------------
+
+
+def _resume_client(tmp_path):
+    db = Database(tmp_path / "resume.db")
+    conv = asyncio.run(_boot(db))  # the live conversation, with one turn
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    agent = AgentCore(FakeProvider([]), db, conv, channel="ui", bus=bus, gate=gate)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=_CONFIG)
+    return TestClient(create_app(ctx)), db, ctx, conv
+
+
+def test_resume_reassigns_active_conversation(tmp_path):
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        other = asyncio.run(db.create_conversation("ui"))
+        asyncio.run(_turn(db, other, 1, "older question", "older answer"))
+        assert ctx.agent.conversation_id == conv
+        r = client.post(f"/api/conversations/{other}/resume")
+        assert r.status_code == 200
+        assert r.json()["conversation_id"] == other
+        assert ctx.agent.conversation_id == other  # the live session switched
+    finally:
+        asyncio.run(db.close())
+
+
+def test_resume_404_leaves_active_unchanged(tmp_path):
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        r = client.post("/api/conversations/999999/resume")
+        assert r.status_code == 404
+        assert ctx.agent.conversation_id == conv
+    finally:
+        asyncio.run(db.close())
+
+
+def test_resume_409_while_turn_running(tmp_path):
+    import types
+
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        other = asyncio.run(db.create_conversation("ui"))
+        asyncio.run(_turn(db, other, 1, "q", "a"))
+        ctx.voice = types.SimpleNamespace(turn_running=lambda: True)  # force busy
+        r = client.post(f"/api/conversations/{other}/resume")
+        assert r.status_code == 409
+        assert ctx.agent.conversation_id == conv  # never switched mid-turn
+    finally:
+        asyncio.run(db.close())

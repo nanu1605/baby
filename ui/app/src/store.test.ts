@@ -60,6 +60,50 @@ describe("chat stream reducers", () => {
   });
 });
 
+describe("v5 view-only gate (viewingConversationId)", () => {
+  beforeEach(() =>
+    useBrain.setState({ messages: [], viewingConversationId: null, activeConversationId: null }),
+  );
+
+  it("setTranscript replaces the whole transcript", () => {
+    const b = useBrain.getState();
+    b.addUserMessage("live one");
+    b.setTranscript([
+      { role: "user", text: "past q" },
+      { role: "assistant", text: "past a" },
+    ]);
+    expect(useBrain.getState().messages).toEqual([
+      { role: "user", text: "past q" },
+      { role: "assistant", text: "past a" },
+    ]);
+  });
+
+  it("streaming reducers no-op while a past chat is being viewed", () => {
+    const b = useBrain.getState();
+    b.setTranscript([{ role: "user", text: "frozen" }]);
+    b.setViewing(42);
+    // A live turn arrives while viewing — must not touch the frozen transcript.
+    b.startTurn();
+    b.appendToken("live token");
+    b.finishTurn({ reply: "live reply" });
+    b.addUserMessage("typed while viewing");
+    b.addSystemNote("busy");
+    expect(useBrain.getState().messages).toEqual([{ role: "user", text: "frozen" }]);
+  });
+
+  it("returns to live streaming once viewing clears", () => {
+    const b = useBrain.getState();
+    b.setViewing(7);
+    b.startTurn(); // ignored
+    b.setViewing(null);
+    b.startTurn();
+    b.appendToken("hi");
+    const msgs = useBrain.getState().messages;
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toMatchObject({ role: "assistant", text: "hi", streaming: true });
+  });
+});
+
 describe("long-session hygiene caps (B7)", () => {
   beforeEach(() => useBrain.setState({ messages: [], toasts: [] }));
 
