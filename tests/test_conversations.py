@@ -253,3 +253,78 @@ def test_resume_409_while_turn_running(tmp_path):
         assert ctx.agent.conversation_id == conv  # never switched mid-turn
     finally:
         asyncio.run(db.close())
+
+
+# -- rename / archive / delete endpoints (H2) ----------------------------------
+
+
+def test_patch_rename_and_archive(tmp_path):
+    client, db, conv = _client(tmp_path)
+    try:
+        r = client.patch(f"/api/conversations/{conv}", json={"title": "My Renamed Chat"})
+        assert r.status_code == 200
+        assert r.json()["title"] == "My Renamed Chat"
+
+        client.patch(f"/api/conversations/{conv}", json={"archived": True})
+        listing = client.get("/api/conversations").json()
+        assert conv not in [c["id"] for c in listing["conversations"]]  # hidden
+        withall = client.get(
+            "/api/conversations", params={"include_archived": True}
+        ).json()
+        row = next(c for c in withall["conversations"] if c["id"] == conv)
+        assert row["archived"] is True and row["title"] == "My Renamed Chat"
+
+        # unarchive brings it back
+        client.patch(f"/api/conversations/{conv}", json={"archived": False})
+        assert conv in [c["id"] for c in client.get("/api/conversations").json()["conversations"]]
+
+        assert client.patch(f"/api/conversations/{conv}", json={"title": "  "}).status_code == 400
+        assert client.patch("/api/conversations/999999", json={"title": "x"}).status_code == 404
+    finally:
+        asyncio.run(db.close())
+
+
+def test_delete_non_active_conversation(tmp_path):
+    client, db, conv = _client(tmp_path)  # conv is the active conversation
+    try:
+        other = asyncio.run(db.create_conversation("ui"))
+        asyncio.run(_turn(db, other, 1, "delete me", "ok"))
+        r = client.delete(f"/api/conversations/{other}")
+        assert r.status_code == 200
+        assert "new_conversation_id" not in r.json()  # active one untouched
+        assert asyncio.run(db.get_conversation_meta(other)) is None
+        assert asyncio.run(db.get_conversation_meta(conv)) is not None
+    finally:
+        asyncio.run(db.close())
+
+
+def test_delete_active_conversation_creates_replacement(tmp_path):
+    client, db, conv = _client(tmp_path)  # ctx.agent.conversation_id == conv
+    try:
+        r = client.delete(f"/api/conversations/{conv}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["deleted"] == conv
+        assert "new_conversation_id" in body
+        # The replacement is a fresh EMPTY conversation. Its id may reuse the
+        # deleted one's rowid (messages/conversations.id has no AUTOINCREMENT) —
+        # that's fine; test by emptiness, not id.
+        meta = asyncio.run(db.get_conversation_meta(body["new_conversation_id"]))
+        assert meta is not None and meta["message_count"] == 0
+        # the deleted conversation's messages are gone
+        assert asyncio.run(db.get_history(conv, 50)) == []
+    finally:
+        asyncio.run(db.close())
+
+
+def test_delete_409_when_active_turn_running(tmp_path):
+    import types
+
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        ctx.voice = types.SimpleNamespace(turn_running=lambda: True)
+        r = client.delete(f"/api/conversations/{conv}")  # conv is active + busy
+        assert r.status_code == 409
+        assert asyncio.run(db.get_conversation_meta(conv)) is not None  # not deleted
+    finally:
+        asyncio.run(db.close())

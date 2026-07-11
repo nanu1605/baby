@@ -1,17 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { useBrain } from "../store";
-import { getConversations } from "../api/client";
-import { openConversationView, startNewChat } from "../lib/historyActions";
+import {
+  archiveConversation,
+  getConversations,
+  renameConversation,
+} from "../api/client";
+import {
+  deleteConversationFlow,
+  openConversationView,
+  startNewChat,
+} from "../lib/historyActions";
 import type { ConversationMeta } from "../types";
 
 /**
  * v5 chat-history sidebar — the left column of the stage. Lists real past
- * conversations (newest activity first), a prominent "New chat" button, and a
- * read-only viewer on click. The active/viewed chat is highlighted. Archived
- * chats hide behind a filter. Gated on ui.history === "on" by the caller.
+ * conversations (newest activity first), a prominent "New chat" button, a
+ * read-only viewer on click, and per-row rename / archive / delete. The
+ * active/viewed chat is highlighted; archived chats hide behind a filter.
+ * Gated on ui.history === "on" by the caller.
  *
- * Opening a chat replaces the transcript via setTranscript (never appendToken),
- * so switching fires no phantom brain pulse.
+ * Opening/switching a chat replaces the transcript via setTranscript (never
+ * appendToken), so it fires no phantom brain pulse.
  */
 export default function HistorySidebar() {
   const activeId = useBrain((s) => s.activeConversationId);
@@ -33,7 +42,7 @@ export default function HistorySidebar() {
   }, [showArchived]);
 
   // Refresh on mount, when the archived filter flips, and whenever the live
-  // conversation changes (new chat / resume) so the prior chat drops into the list.
+  // conversation changes (new chat / resume / delete) so the list stays honest.
   useEffect(() => {
     refresh();
   }, [refresh, activeId]);
@@ -47,13 +56,6 @@ export default function HistorySidebar() {
     }
   };
 
-  const onOpen = (id: number) => {
-    openConversationView(id).catch(() =>
-      pushToast("Couldn't open that conversation.", "error"),
-    );
-  };
-
-  // Highlight the chat currently in the panel: the viewed one, else the live one.
   const highlightId = viewingId ?? activeId;
 
   if (collapsed) {
@@ -92,19 +94,12 @@ export default function HistorySidebar() {
           <div className="history-empty">No past chats yet.</div>
         ) : (
           list.map((c) => (
-            <button
+            <HistoryRow
               key={c.id}
-              className={"history-item" + (c.id === highlightId ? " active" : "")}
-              onClick={() => onOpen(c.id)}
-              title={c.title}
-            >
-              <span className="history-item-title">{c.title}</span>
-              <span className="history-item-meta">
-                <span>{relTime(c.last_message_at ?? c.started_at)}</span>
-                <span className="history-item-count">{c.message_count}</span>
-                {c.archived && <span className="history-item-archived">archived</span>}
-              </span>
-            </button>
+              conv={c}
+              active={c.id === highlightId}
+              onRefresh={refresh}
+            />
           ))
         )}
       </div>
@@ -118,6 +113,108 @@ export default function HistorySidebar() {
         Show archived
       </label>
     </aside>
+  );
+}
+
+function HistoryRow({
+  conv,
+  active,
+  onRefresh,
+}: {
+  conv: ConversationMeta;
+  active: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const pushToast = useBrain((s) => s.pushToast);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(conv.title);
+
+  const open = () =>
+    openConversationView(conv.id).catch(() =>
+      pushToast("Couldn't open that conversation.", "error"),
+    );
+
+  const commitRename = async () => {
+    setEditing(false);
+    const title = draft.trim();
+    if (!title || title === conv.title) return;
+    try {
+      await renameConversation(conv.id, title);
+      await onRefresh();
+    } catch {
+      pushToast("Rename failed.", "error");
+    }
+  };
+
+  const onArchive = async () => {
+    try {
+      await archiveConversation(conv.id, !conv.archived);
+      await onRefresh();
+    } catch {
+      pushToast("Archive failed.", "error");
+    }
+  };
+
+  const onDelete = async () => {
+    if (!window.confirm("Delete this chat permanently? It's removed from search too."))
+      return;
+    const ok = await deleteConversationFlow(conv.id);
+    if (!ok) {
+      pushToast("Can't delete the active chat while a turn is running.", "error");
+      return;
+    }
+    await onRefresh();
+  };
+
+  if (editing) {
+    return (
+      <div className="history-item editing">
+        <input
+          className="history-rename-input"
+          value={draft}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            else if (e.key === "Escape") {
+              setDraft(conv.title);
+              setEditing(false);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={"history-item" + (active ? " active" : "")}>
+      <button className="history-item-open" onClick={open} title={conv.title}>
+        <span className="history-item-title">{conv.title}</span>
+        <span className="history-item-meta">
+          <span>{relTime(conv.last_message_at ?? conv.started_at)}</span>
+          <span className="history-item-count">{conv.message_count}</span>
+          {conv.archived && <span className="history-item-archived">archived</span>}
+        </span>
+      </button>
+      <div className="history-item-actions">
+        <button
+          title="Rename"
+          onClick={() => {
+            setDraft(conv.title);
+            setEditing(true);
+          }}
+        >
+          ✎
+        </button>
+        <button title={conv.archived ? "Unarchive" : "Archive"} onClick={onArchive}>
+          {conv.archived ? "⤴" : "🗄"}
+        </button>
+        <button title="Delete" onClick={onDelete}>
+          🗑
+        </button>
+      </div>
+    </div>
   );
 }
 

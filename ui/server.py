@@ -472,6 +472,43 @@ def create_app(ctx: UIContext) -> FastAPI:
         ctx.bus.publish("status", "ui", text="resumed conversation")
         return {"conversation_id": conv_id}
 
+    @app.patch("/api/conversations/{conv_id}")
+    async def api_conversation_update(conv_id: int, body: dict):
+        """Rename and/or archive a conversation (v5). Additive metadata edits;
+        404 when the conversation doesn't exist. Returns the updated meta."""
+        if await ctx.db.get_conversation_meta(conv_id) is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        if "title" in body:
+            title = str(body["title"]).strip()
+            if not title:
+                return JSONResponse({"error": "title cannot be empty"}, status_code=400)
+            await ctx.db.rename_conversation(conv_id, title[:200])
+        if "archived" in body:
+            await ctx.db.set_conversation_archived(conv_id, bool(body["archived"]))
+        return await ctx.db.get_conversation_meta(conv_id)
+
+    @app.delete("/api/conversations/{conv_id}")
+    async def api_conversation_delete(conv_id: int):
+        """Hard-delete a conversation INCLUDING its RAG vectors, so a deleted chat
+        can't resurface via /api/search (v5). If it's the live conversation, roll
+        to a fresh one afterwards so the agent never points at a deleted row; 409
+        only if that live turn is currently running."""
+        if conv_id == ctx.agent.conversation_id and ctx.turn_running():
+            return JSONResponse(
+                {"error": "turn in progress — try again when idle"}, status_code=409
+            )
+        if await ctx.db.get_conversation_meta(conv_id) is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        if ctx.memory is not None:
+            result = await ctx.memory.store.delete_conversation(conv_id)
+        else:
+            result = await ctx.db.delete_conversation(conv_id)
+        if conv_id == ctx.agent.conversation_id:
+            ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
+            result["new_conversation_id"] = ctx.agent.conversation_id
+        ctx.bus.publish("status", "ui", text="conversation deleted")
+        return result
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:

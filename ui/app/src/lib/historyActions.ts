@@ -10,6 +10,7 @@
  */
 import { useBrain } from "../store";
 import {
+  deleteConversation,
   getConversation,
   getHistory,
   newConversation,
@@ -66,5 +67,26 @@ export async function resumeConversationLive(id: number): Promise<boolean> {
   b.setViewing(null);
   b.setTranscript(toChat(detail.messages));
   b.setActiveConversationId(id);
+  return true;
+}
+
+/**
+ * Delete a conversation. If the backend rolled the live session to a fresh
+ * conversation (the deleted one was live), adopt it and clear the panel; if we
+ * were only viewing the deleted chat, drop back to the live transcript.
+ * Returns false on a backend refusal (409 turn-in-progress / 404).
+ */
+export async function deleteConversationFlow(id: number): Promise<boolean> {
+  const r = await deleteConversation(id);
+  if (!r.ok) return false;
+  const data = (await r.json().catch(() => ({}))) as { new_conversation_id?: number };
+  const b = useBrain.getState();
+  if (typeof data.new_conversation_id === "number") {
+    b.setViewing(null);
+    b.setActiveConversationId(data.new_conversation_id);
+    b.setTranscript([]);
+  } else if (b.viewingConversationId === id) {
+    await returnToLive();
+  }
   return true;
 }

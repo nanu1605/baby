@@ -28,6 +28,14 @@ async function postJSON(url: string, body?: unknown): Promise<Response> {
   });
 }
 
+async function patchJSON(url: string, body: unknown): Promise<Response> {
+  return fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export const getStats = () => getJSON<Stats>("/stats");
 
 export const getGraph = () => getJSON<GraphData>("/api/graph");
@@ -66,6 +74,18 @@ export const newConversation = () => postJSON("/conversation/new");
 /** Continue a past conversation in the live session (409 if a turn is running). */
 export const resumeConversation = (id: number) =>
   postJSON(`/api/conversations/${id}/resume`);
+
+/** Rename a conversation (editable title). */
+export const renameConversation = (id: number, title: string) =>
+  patchJSON(`/api/conversations/${id}`, { title });
+
+/** Archive / unarchive a conversation (soft-hide from the main list). */
+export const archiveConversation = (id: number, archived: boolean) =>
+  patchJSON(`/api/conversations/${id}`, { archived });
+
+/** Hard-delete a conversation incl. its RAG vectors (can't resurface in search). */
+export const deleteConversation = (id: number) =>
+  fetch(`/api/conversations/${id}`, { method: "DELETE" });
 
 export const getMemory = (limit = 200) =>
   getJSON<MemoryFact[]>(`/memory?limit=${limit}`);

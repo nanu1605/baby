@@ -272,6 +272,42 @@ class Database:
             return None
         return self._conversation_meta(row)
 
+    async def rename_conversation(self, conversation_id: int, title: str) -> None:
+        await self._write(
+            "UPDATE conversations SET title = ? WHERE id = ?", (title, conversation_id)
+        )
+
+    async def set_conversation_archived(
+        self, conversation_id: int, archived: bool
+    ) -> None:
+        await self._write(
+            "UPDATE conversations SET archived = ? WHERE id = ?",
+            (1 if archived else 0, conversation_id),
+        )
+
+    async def delete_conversation(self, conversation_id: int) -> dict:
+        """Base-table delete for the memory-disabled path (v5): messages (the
+        messages_ad trigger self-purges FTS), usage_log, and the conversation
+        row. No vector tables exist when memory is off, so there are none to
+        purge — MemoryStore.delete_conversation is the full RAG-purging version."""
+        async with self.lock:
+            cur = await self.conn.execute(
+                "SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?",
+                (conversation_id,),
+            )
+            n = (await cur.fetchone())["n"]
+            await self.conn.execute(
+                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+            )
+            await self.conn.execute(
+                "DELETE FROM usage_log WHERE conversation_id = ?", (conversation_id,)
+            )
+            await self.conn.execute(
+                "DELETE FROM conversations WHERE id = ?", (conversation_id,)
+            )
+            await self.conn.commit()
+        return {"deleted": conversation_id, "messages": n}
+
     # -- audit ---------------------------------------------------------------
 
     async def add_audit(
