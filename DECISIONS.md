@@ -1178,3 +1178,45 @@ Running log of non-obvious choices made during the build. Newest last.
        `pyproject`/`uv.lock` + `config.default.yaml` + `EULA.txt`; first-run fetches
        the managed Python, the deps, [Full] Ollama + 9B, and the voice/embedder
        assets. STOP for owner ratification before W1.
+
+128. **v6 W1 -- per-user state relocation, a conservative shipped config, and the
+     installed shell layout (owner ratified W0's four decisions 2026-07-11).**
+     - **State relocation is opt-in, so dev stays byte-identical.** New `core/paths.py`
+       resolves `config.yaml` / `.env` / `baby.db` under `BABY_HOME` when that env is
+       set (an installed build), else the current dir (a repo checkout, unchanged).
+       Nothing moves unless `BABY_HOME` is set. Wired the three cwd-relative runtime
+       load sites (`run.py`, `clients/cli.py`, `ui/server.py`); scripts that take
+       explicit paths are left alone. `ensure_config()` seeds the shipped template into
+       `BABY_HOME` on first run **only if absent** -- a returning user's config is never
+       clobbered (in dev the target already exists, so it is a no-op). The safety gate
+       itself is untouched frozen ground; this only relocates where its config is read.
+     - **The shipped config is a separate, conservative file -- not the owner's.** New
+       tracked `installer/config.default.yaml` carries the most conservative posture for
+       a stranger (`safety.mode: enforce`, `auto_allow_app_close: []` so every app-close
+       is confirmed, blank owner PII, `game_mode.auto_detect: false`, localhost UI). The
+       code defaults were already conservative (`core/safety.py:36-42`,
+       `clients/cli.py:23-30`); the risk was only the owner's populated `config.yaml`, so
+       the fix is a distinct template, never a commit to `config.yaml`. `router.mode` and
+       `startup.cloud_mode` are left for the W2/W4 wizard to stamp from the chosen mode +
+       validated keys (a keyless-Full install must land `local_primary` or boot crashes,
+       `core/router.py:1010-1017`). A `tests/test_fresh_install_defaults.py` gate builds
+       the **real** `SafetyGate` from the template and asserts enforce + empty allowlist.
+     - **The installed shell splits code from state.** In dev, run.py + `.venv` are
+       co-located and the shell's `resolve_layout()` (was `resolve_baby_home`) returns
+       that one dir -- unchanged. Installed, run.py + the Python source ship next to the
+       exe (a read-mostly install dir) while the venv + config/db live in
+       `%LOCALAPPDATA%\baby`; the shell runs the data-home venv's `pythonw`, sets cwd to
+       the code dir, and exports `BABY_HOME` **only when the layout actually splits** (so
+       dev never gets a spurious `BABY_HOME`). If the installed venv is missing (first-run
+       not finished, W3), the shell says so rather than falling back to a depless system
+       Python. `bundle.windows.nsis.installMode: currentUser` (no admin) +
+       `bundle.licenseFile` = the EULA license page; `nsis.installerHooks` is the
+       post-install first-run trigger wired in W3.
+     - **Deferred to a build-integration pass (W1c tail / W3):** the full resource
+       manifest that stages the filtered Python source tree (+ bundled `uv.exe`) next to
+       the exe so `installer/config.default.yaml` lands where `paths._TEMPLATE` expects.
+       It needs iterating against a real `tauri build` and is coupled to first-run
+       provisioning, so it is done deliberately, not guessed blind.
+     - **Owner gap surfaced:** the repo has **no LICENSE** (currently all-rights-reserved).
+       A public release needs one, and SignPath-OSS free signing requires an OSI-approved
+       license (MIT/Apache-2.0) -- an owner prerequisite before W6.

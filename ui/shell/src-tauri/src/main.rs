@@ -20,7 +20,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -122,44 +122,105 @@ fn wait_ready(timeout: Duration) -> bool {
     backend_up()
 }
 
-/// Find the repo so the shell can spawn `run.py`. BABY_HOME wins; otherwise walk up
-/// from the exe looking for run.py + .venv (true in dev, where the exe lives under
-/// ui/shell/src-tauri/target/). An installed shell with no repo returns None and the
-/// shell shows a "start the backend" message instead of guessing.
-fn resolve_baby_home() -> Option<PathBuf> {
+/// Where the backend's code and writable state live. In dev these are the same
+/// repo dir (run.py + .venv co-located). An installed build (v6) SPLITS them:
+/// run.py + the Python source ship next to the exe (read-mostly install dir),
+/// while the venv + config.yaml/.env/baby.db live in a per-user writable data
+/// home (`%LOCALAPPDATA%\baby`, matched by the backend's own `core/paths.py`).
+struct Layout {
+    /// Holds run.py + the Python source + shipped assets; the process cwd.
+    code_dir: PathBuf,
+    /// BABY_HOME: the venv + config/db. Equals code_dir in dev.
+    data_home: PathBuf,
+}
+
+impl Layout {
+    fn installed(&self) -> bool {
+        self.code_dir != self.data_home
+    }
+}
+
+fn localappdata_baby() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA")
+        .ok()
+        .map(|p| PathBuf::from(p).join("baby"))
+}
+
+/// Resolve the code + data layout. Dev (repo, run.py + .venv co-located) is
+/// detected first and behaves exactly as before. An installed shell finds run.py
+/// next to the exe and points the venv/state at `%LOCALAPPDATA%\baby`. Returns
+/// None only when no run.py can be found at all.
+fn resolve_layout() -> Option<Layout> {
+    // Explicit override: BABY_HOME pointing at a co-located run.py (advanced/dev).
     if let Ok(home) = std::env::var("BABY_HOME") {
         let p = PathBuf::from(home);
         if p.join("run.py").is_file() {
-            return Some(p);
+            return Some(Layout {
+                code_dir: p.clone(),
+                data_home: p,
+            });
         }
     }
+    // Dev: walk up from the exe for a dir with run.py + .venv co-located.
     let mut dir = std::env::current_exe().ok()?;
     while dir.pop() {
         if dir.join("run.py").is_file() && dir.join(".venv").is_dir() {
-            return Some(dir);
+            return Some(Layout {
+                code_dir: dir.clone(),
+                data_home: dir,
+            });
         }
+    }
+    // Installed: run.py ships next to the exe; state lives in %LOCALAPPDATA%\baby.
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    if exe_dir.join("run.py").is_file() {
+        let data_home = localappdata_baby()?;
+        return Some(Layout {
+            code_dir: exe_dir,
+            data_home,
+        });
     }
     None
 }
 
 /// Spawn `pythonw run.py --all` detached (no console window), recording the child so
-/// quit can kill it. Prefers the repo venv's pythonw, falls back to PATH.
-fn spawn_backend(app: &AppHandle, home: &Path) {
-    let venv_pythonw = home.join(".venv").join("Scripts").join("pythonw.exe");
+/// quit can kill it. Python comes from the data-home venv; the script + cwd come from
+/// the code dir; an installed layout also exports BABY_HOME so the backend resolves
+/// config/db into the per-user data home.
+fn spawn_backend(app: &AppHandle, layout: &Layout) {
+    let venv_pythonw = layout
+        .data_home
+        .join(".venv")
+        .join("Scripts")
+        .join("pythonw.exe");
     let exe = if venv_pythonw.is_file() {
         venv_pythonw
+    } else if layout.installed() {
+        // Installed but the venv isn't built yet: first-run setup (W3) hasn't
+        // finished. Don't fall back to a system python that lacks Baby's deps.
+        show_splash_message(
+            app,
+            "Baby is still finishing first-run setup. Reopen it once setup completes.",
+        );
+        return;
     } else {
-        PathBuf::from("pythonw")
+        PathBuf::from("pythonw") // dev fallback: repo without a local venv
     };
     let mut cmd = Command::new(exe);
     cmd.arg("run.py")
         .arg("--all")
-        .current_dir(home)
+        .current_dir(&layout.code_dir)
         // Tell the backend the native shell owns the tray, so it skips its pystray icon
         // even when ui.shell isn't set to native (avoids a double tray). Only affects a
         // backend WE spawn; an attached always-on service relies on ui.shell instead.
         .env("BABY_SHELL_TRAY", "1")
         .creation_flags(CREATE_NO_WINDOW);
+    // Only export BABY_HOME when the layout actually splits (installed). In dev the
+    // two dirs are identical, so leaving it unset keeps the cwd-relative behavior
+    // byte-identical to before.
+    if layout.installed() {
+        cmd.env("BABY_HOME", &layout.data_home);
+    }
     match cmd.spawn() {
         Ok(child) => {
             *app.state::<AppState>().spawned.lock().unwrap() = Some(child);
@@ -209,8 +270,8 @@ fn attach_or_spawn(app: AppHandle) {
         return;
     }
     // Manual/dev launch with nothing listening → spawn our own backend.
-    match resolve_baby_home() {
-        Some(home) => spawn_backend(&app, &home),
+    match resolve_layout() {
+        Some(layout) => spawn_backend(&app, &layout),
         None => {
             show_splash_message(
                 &app,
