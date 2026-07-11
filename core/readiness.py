@@ -58,15 +58,31 @@ async def _wait_for_provider(provider: OllamaProvider, wait_s: int, notes: list[
 
 
 async def ready_check(
-    provider: OllamaProvider, db: Database, *, wait_s: int = 120
+    provider: OllamaProvider, db: Database, *, wait_s: int = 120, cloud_mode: bool = False
 ) -> tuple[bool, list[str]]:
     """Run the readiness sequence. Returns (ok, human-readable notes).
 
     Steps: provider reachable (with a wait_s grace window for the logon race)
     → 1-token warm-up ping (loads the model into VRAM) → served-context
     verification. DB is assumed connected by caller.
+
+    cloud_mode (v5 default): boot in cloud/game mode — the local model is NOT
+    warmed, so the GPU stays free and cloud answers. Local liveness is probed for
+    an honest note but never blocks or exits; a pinned/offline turn lazy-loads it
+    on demand via the router ladder. No warm ping, no `ollama serve` spawn.
     """
     notes: list[str] = []
+
+    if cloud_mode:
+        reachable = await provider.healthy()
+        notes.append(
+            "cloud mode: local model warm skipped — GPU free, cloud answers; "
+            "local lazy-loads on demand"
+            if reachable
+            else "cloud mode: Ollama not reachable at boot — cloud primary; the "
+            "local brain will load on demand when a turn needs it"
+        )
+        return True, notes
 
     if not await _wait_for_provider(provider, wait_s, notes):
         notes.append("Baby could not start: Ollama is not reachable at 127.0.0.1:11434.")

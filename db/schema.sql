@@ -4,7 +4,9 @@ CREATE TABLE IF NOT EXISTS conversations (
   started_at TEXT DEFAULT (datetime('now')),
   summary TEXT,                        -- rolling summary lives here
   summarized_upto INTEGER DEFAULT 0,   -- last message id folded into summary
-  extracted_upto INTEGER DEFAULT 0     -- last message id scanned for facts
+  extracted_upto INTEGER DEFAULT 0,    -- last message id scanned for facts
+  title TEXT,                          -- v5: editable chat title (NULL → derived)
+  archived INTEGER DEFAULT 0           -- v5: soft-hide from the history sidebar
 );
 
 CREATE TABLE IF NOT EXISTS messages (

@@ -103,6 +103,29 @@ export interface MemoryFact {
   active: boolean;
 }
 
+// -- v5 chat history (GET /api/conversations[/{id}]) --------------------------
+
+/** One conversation's derived metadata for the history sidebar. */
+export interface ConversationMeta {
+  id: number;
+  channel: string;
+  title: string;
+  started_at: string;
+  last_message_at: string | null;
+  message_count: number;
+  archived: boolean;
+}
+
+export interface ConversationList {
+  conversations: ConversationMeta[];
+  active_conversation_id: number | null;
+}
+
+export interface ConversationDetail {
+  meta: ConversationMeta;
+  messages: { role: string; content: string; created_at?: string }[];
+}
+
 /** Partial /stats shape — only what the header reads. */
 export interface Stats {
   model?: string;
@@ -119,8 +142,9 @@ export interface Stats {
   turn_running?: boolean;
   /** V2 frame governor knobs (code-defaulted server-side). */
   render?: { target_fps: number; tier: string; idle_full_on_desktop: boolean };
-  /** V3 sphere gate — ui.brain (code-defaulted "3d"; "2d" = v3 canvas rollback). */
-  ui?: { brain: string };
+  /** V3 sphere gate — ui.brain (code-defaulted "3d"; "2d" = v3 canvas rollback).
+   *  v5 adds ui.history ("on"/"off") — the chat-history sidebar rollback flag. */
+  ui?: { brain: string; history?: string };
   /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
   local_model_loaded?: boolean;
   tokens?: {

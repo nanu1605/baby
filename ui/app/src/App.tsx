@@ -36,6 +36,7 @@ class SphereBoundary extends Component<{ children: ReactNode }, { failed: boolea
   }
 }
 import ChatPanel from "./components/ChatPanel";
+import HistorySidebar from "./components/HistorySidebar";
 import ActivityPanel from "./components/ActivityPanel";
 import ConfirmModal from "./components/ConfirmModal";
 import MemoryDialog from "./components/MemoryDialog";
@@ -61,12 +62,17 @@ export default function App() {
   const collapsed = useBrain((s) => s.rightCollapsed);
   const renderTier = useBrain((s) => s.renderTier);
   const contextLost = useBrain((s) => s.contextLost);
+  // v5 history sidebar: shown unless ui.history is explicitly "off" (code-default
+  // "on"). Undefined before the first /stats resolves → shown, matching the default.
+  const historyOn = useBrain((s) => s.stats?.ui?.history) !== "off";
 
   return (
     <div className="app-shell">
       <Header />
 
       <main className="stage">
+        {historyOn && <HistorySidebar />}
+
         {renderTier === "2d" || contextLost ? (
           <BrainGraph />
         ) : (

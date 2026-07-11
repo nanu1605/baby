@@ -390,6 +390,38 @@ class MemoryStore:
             await self.db.conn.commit()
         return {"deleted": fact_id, "text": row["text"]}
 
+    async def delete_conversation(self, conversation_id: int) -> dict:
+        """Hard-delete one conversation and everything that could resurface it
+        (v5 sidebar 'delete'): its messages (the messages_ad trigger self-purges
+        the FTS mirror), their vector rows, its usage_log rows, and the
+        conversation row. The vec0 message_vectors table is NOT trigger-backed,
+        so the rows are deleted explicitly (mirroring delete_fact) — and because
+        messages.id has no AUTOINCREMENT, a reused rowid could otherwise inherit a
+        stale embedding. Collect the ids BEFORE deleting the messages. audit_log
+        is retained (same policy as wipe_all)."""
+        async with self.db.lock:
+            cur = await self.db.conn.execute(
+                "SELECT id FROM messages WHERE conversation_id = ?", (conversation_id,)
+            )
+            ids = [r["id"] for r in await cur.fetchall()]
+            await self.db.conn.execute(
+                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+            )
+            if ids:
+                placeholders = ",".join("?" * len(ids))
+                await self.db.conn.execute(
+                    f"DELETE FROM {self._msg_table} WHERE message_id IN ({placeholders})",
+                    ids,
+                )
+            await self.db.conn.execute(
+                "DELETE FROM usage_log WHERE conversation_id = ?", (conversation_id,)
+            )
+            await self.db.conn.execute(
+                "DELETE FROM conversations WHERE id = ?", (conversation_id,)
+            )
+            await self.db.conn.commit()
+        return {"deleted": conversation_id, "messages": len(ids)}
+
     async def wipe_all(self) -> dict:
         """True amnesia: every fact, every vector, the raw turns and the rolling
         summaries — then VACUUM. Dropping raw messages AND resetting the embed

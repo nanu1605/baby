@@ -5,9 +5,12 @@ A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
 default, but privacy-pinned turns never leave the PC, and the warm local 9B
 keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **v4.0.0 — native app + 3D neural brain** ✅ — a thin Tauri desktop shell,
-> the living graph reborn as a 3D neural sphere, and a coherent motion system, all held
-> to 60 fps by a frame governor. The browser UI and the v3 2D graph stay one flag away.
+> Status: **v5.0.0 — chat history & default cloud mode** ✅ — a collapsible history
+> sidebar (browse, open read-only, resume, rename, delete, archive) over additive read
+> endpoints, plus a search deep-link that finally lands on the matched conversation. And
+> Baby now boots in cloud mode with the local 9B idle, so the GPU is free from launch;
+> privacy-pinned turns still run local. The browser UI and every prior rollback flag
+> stay one line away.
 > Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
 > change spec: [NIM_MIGRATION_PLAN.md](NIM_MIGRATION_PLAN.md)
 
@@ -227,7 +230,7 @@ scripts\autostart.ps1 -Shell native    # open the window (attaching) at logon to
 
 ## Config
 
-`config.yaml` is the reference (richly commented). The v3 + v4 knobs:
+`config.yaml` is the reference (richly commented). The v3 + v4 + v5 knobs:
 
 ```yaml
 ui:
@@ -240,11 +243,24 @@ ui:
   brain: 3d             # 3d (code-default) = the WebGL neural sphere; 2d = the v3
                         # canvas graph (rollback). Non-bricking either way — the
                         # governor auto-demotes to the 2d floor under GPU pressure.
+  # --- v5: code-defaulted, non-bricking ---
+  history: on           # on (code-default) = the chat-history sidebar; off hides it
+                        # entirely (rollback) — nothing else changes.
 
 render:                 # v4 frame governor (V2), all code-defaulted
   target_fps: 60        # the frame budget the governor protects
   tier: auto            # auto = full3d ceiling; lite3d / 2d cap the quality lower
   idle_full_on_desktop: true
+
+startup:                # v5 default cloud mode (code-defaulted)
+  cloud_mode: true      # true (code-default) = boot in cloud/game mode: the local 9B
+                        # is NOT warmed, the GPU stays free, cloud answers, and local
+                        # lazy-loads on demand (incl. privacy-pinned turns, which stay
+                        # local). false = warm the local model at boot (pre-v5).
+                        # NOTE (running from source): default cloud mode needs at least
+                        # one cloud key in .env — with no key set, chat can't answer
+                        # until you add a key or set cloud_mode: false. (The v6 installer
+                        # wizard will handle key entry for end users.)
 
 voice:
   speaker_verify:
@@ -315,3 +331,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | v2.0.0 ✅ | Conversation mode + proceed/cancel (#2, #4), memory v2 — budgeted context + cross-session RAG + clear/wipe (#3, #5), token telemetry (#8) |
 | v3.0.0 ✅ | **The Brain** — living-graph UI (honest pulses, status gauge, node inspectors, "Search the brain…" omnibox) over a read-only graph data spine; speaker verification v2 (multi-centroid, session-trust, ships OFF); responsive + reconnect-resilient |
 | v4.0.0 ✅ | **Native app + 3D neural brain** — a thin Tauri desktop shell over the same FastAPI-served UI (attach-or-spawn, close-to-tray, single-instance, native tray); the living graph reborn as a 3D neural sphere (honest firing, mic/TTS amplitude gauge, router recolor, game-mode ghost); a 60 fps frame governor + VRAM watchdog; a CSS-first motion system; both rollback flags non-bricking (`ui.shell: browser`, `ui.brain: 2d`) |
+| v5.0.0 ✅ | **Chat history & default cloud mode** — a collapsible history sidebar over additive read endpoints (`/api/conversations[/{id}]`): browse, open read-only, resume (rehydrates within the per-brain budget), rename, archive, and delete (purges the RAG vectors so a deleted chat can't resurface in search); the omnibox conversation-hit now deep-links into the viewer; Baby boots in cloud (game) mode by default (local 9B idle, GPU free, privacy-pinned turns still local); rollbacks `ui.history: off` and `startup.cloud_mode: false` |

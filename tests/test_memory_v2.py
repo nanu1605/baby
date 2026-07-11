@@ -199,6 +199,34 @@ async def test_wipe_then_reconcile_reembeds_nothing(mstore, db):
     assert await mstore.search_messages("electric cars") == []
 
 
+async def test_delete_conversation_purges_rows_vectors_and_search(mstore, db):
+    """v5 scoped delete: a deleted chat leaves NOTHING that could resurface it —
+    not the message rows, not the FTS mirror, not the vec0 vectors, not RAG, and
+    not the conversation row. Proves the explicit message_vectors purge (the
+    rowid-reuse fix) on both search paths."""
+    conv = await db.create_conversation("ui")
+    await _add(db, conv, "user", "we compared the nexon and punch electric cars")
+    await _add(db, conv, "assistant", "the nexon won on range")
+    await mstore.embed_new_messages(conv)
+
+    # Pre-conditions: findable via FTS and vector RAG, and vectors exist.
+    assert await db.search_messages_fts("nexon")
+    assert await mstore.search_messages("nexon electric cars")
+    cur = await db.conn.execute(f"SELECT COUNT(*) AS n FROM {mstore._msg_table}")
+    assert (await cur.fetchone())["n"] >= 1
+
+    result = await mstore.delete_conversation(conv)
+    assert result["deleted"] == conv
+
+    # Post: every trace is gone.
+    assert await db.get_history(conv, 50) == []
+    assert await db.search_messages_fts("nexon") == []
+    assert await mstore.search_messages("nexon electric cars") == []
+    cur = await db.conn.execute(f"SELECT COUNT(*) AS n FROM {mstore._msg_table}")
+    assert (await cur.fetchone())["n"] == 0
+    assert await db.get_conversation_meta(conv) is None
+
+
 # -- P4c: agent-level RAG injection + live embedding --------------------------
 
 

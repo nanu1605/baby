@@ -58,3 +58,37 @@ async def test_waits_until_ollama_comes_up(db, monkeypatch):
     assert any("waiting up to 60s" in n for n in notes)
     assert any(n.startswith("Ollama up after") for n in notes)
     assert provider.healthy_calls == 3
+
+
+# -- v5 default cloud mode: boot without warming the local model ---------------
+
+
+class ChatTrackingProvider(ScriptedProvider):
+    """Counts warm-up chat() calls so a test can assert cloud mode skips the warm."""
+
+    def __init__(self, healthy_script):
+        super().__init__(healthy_script)
+        self.chat_calls = 0
+
+    async def chat(self, messages, tools=None, **opts):
+        self.chat_calls += 1
+        yield Chunk(delta="pong", done=True)
+
+
+async def test_cloud_mode_skips_warm_even_when_unreachable(db):
+    # In cloud mode Baby boots regardless of local liveness and NEVER warms the
+    # 9B — a probe is taken only for an honest note.
+    provider = ChatTrackingProvider([False])  # local unreachable
+    ok, notes = await readiness.ready_check(provider, db, cloud_mode=True)
+    assert ok is True  # boots anyway (no sys.exit upstream)
+    assert provider.chat_calls == 0  # no warm ping → GPU stays free
+    assert provider.healthy_calls == 1  # one liveness probe for the note
+    assert any("cloud mode" in n for n in notes)
+
+
+async def test_cloud_mode_off_still_warms(db):
+    # The default (cloud_mode omitted) reproduces the pre-v5 warm-at-boot path.
+    provider = ChatTrackingProvider([True])
+    ok, _ = await readiness.ready_check(provider, db)
+    assert ok is True
+    assert provider.chat_calls == 1  # warmed as before

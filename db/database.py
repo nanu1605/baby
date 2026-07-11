@@ -86,6 +86,14 @@ class Database:
                 await self.conn.execute(
                     f"ALTER TABLE conversations ADD COLUMN {column} INTEGER DEFAULT 0"
                 )
+        # v5 chat history: editable title + soft-archive flag (additive; NULL/0
+        # on existing rows so nothing changes until the UI sets them).
+        if "title" not in have:
+            await self.conn.execute("ALTER TABLE conversations ADD COLUMN title TEXT")
+        if "archived" not in have:
+            await self.conn.execute(
+                "ALTER TABLE conversations ADD COLUMN archived INTEGER DEFAULT 0"
+            )
         cur = await self.conn.execute("PRAGMA table_info(tasks)")
         have = {row["name"] for row in await cur.fetchall()}
         if "project_id" not in have:
@@ -187,6 +195,131 @@ class Database:
             (channel,),
         )
         return row["id"] if row else None
+
+    # The metadata SELECT shared by the list + detail endpoints (v5). Derives
+    # message_count / last_message_at from OK user+assistant rows, and the first
+    # user message for a title fallback.
+    _CONV_META_SELECT = (
+        "SELECT c.id, c.channel, c.started_at, c.title, "
+        "       COALESCE(c.archived, 0) AS archived, c.summary, "
+        "       COUNT(m.id) AS message_count, "
+        "       MAX(m.created_at) AS last_message_at, "
+        "       (SELECT content FROM messages mu WHERE mu.conversation_id = c.id "
+        "        AND mu.role = 'user' AND mu.status = 'ok' ORDER BY mu.id LIMIT 1) "
+        "        AS first_user "
+        "FROM conversations c "
+        "LEFT JOIN messages m ON m.conversation_id = c.id "
+        "  AND m.status = 'ok' AND m.role IN ('user', 'assistant') "
+    )
+
+    @staticmethod
+    def _conversation_meta(r) -> dict:
+        """Shape one metadata row for the API, deriving a title when unset:
+        explicit title → summary first line → first user message → 'New chat'."""
+        title = (r["title"] or "").strip()
+        if not title:
+            summary = (r["summary"] or "").strip()
+            if summary:
+                title = summary.splitlines()[0][:80]
+            elif r["first_user"]:
+                title = " ".join(r["first_user"].split())[:60]
+            else:
+                title = "New chat"
+        return {
+            "id": r["id"],
+            "channel": r["channel"],
+            "title": title,
+            "started_at": r["started_at"],
+            "last_message_at": r["last_message_at"],
+            "message_count": r["message_count"],
+            "archived": bool(r["archived"]),
+        }
+
+    async def list_conversations(
+        self,
+        *,
+        channel: str | None = "ui",
+        limit: int = 50,
+        offset: int = 0,
+        include_archived: bool = False,
+    ) -> list[dict]:
+        """Conversations with derived metadata for the history sidebar (v5).
+
+        Only conversations with at least one OK user/assistant message surface
+        (boot and /conversation/new create empty rows that never get used —
+        HAVING drops them). channel=None spans every channel; the default
+        'ui' keeps voice/telegram/scheduler/cli threads out of the UI sidebar.
+        Newest activity first."""
+        rows = await self._fetchall(
+            self._CONV_META_SELECT
+            + "WHERE (? IS NULL OR c.channel = ?) "
+            "  AND (? OR COALESCE(c.archived, 0) = 0) "
+            "GROUP BY c.id "
+            "HAVING message_count > 0 "
+            "ORDER BY COALESCE(last_message_at, c.started_at) DESC, c.id DESC "
+            "LIMIT ? OFFSET ?",
+            (channel, channel, 1 if include_archived else 0, limit, offset),
+        )
+        return [self._conversation_meta(r) for r in rows]
+
+    async def get_conversation_meta(self, conversation_id: int) -> dict | None:
+        """One conversation's derived metadata, or None if it doesn't exist."""
+        row = await self._fetchone(
+            self._CONV_META_SELECT + "WHERE c.id = ? GROUP BY c.id",
+            (conversation_id,),
+        )
+        if row is None or row["id"] is None:
+            return None
+        return self._conversation_meta(row)
+
+    async def rename_conversation(self, conversation_id: int, title: str) -> None:
+        await self._write(
+            "UPDATE conversations SET title = ? WHERE id = ?", (title, conversation_id)
+        )
+
+    async def set_conversation_archived(
+        self, conversation_id: int, archived: bool
+    ) -> None:
+        await self._write(
+            "UPDATE conversations SET archived = ? WHERE id = ?",
+            (1 if archived else 0, conversation_id),
+        )
+
+    async def delete_conversation(self, conversation_id: int) -> dict:
+        """Base-table delete for the memory-disabled path (v5): messages (the
+        messages_ad trigger self-purges FTS), any message-vector rows, usage_log,
+        and the conversation row. The vector tables are normally purged by
+        MemoryStore.delete_conversation, but a run whose embedder failed to warm
+        degrades to memory-off while message_vectors from an EARLIER run still
+        holds rows in baby.db — so purge them best-effort here too (guarded: the
+        table may be absent), closing the rowid-reuse mis-embedding hazard on
+        this path as well (messages.id has no AUTOINCREMENT)."""
+        async with self.lock:
+            cur = await self.conn.execute(
+                "SELECT id FROM messages WHERE conversation_id = ?", (conversation_id,)
+            )
+            ids = [r["id"] for r in await cur.fetchall()]
+            await self.conn.execute(
+                "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
+            )
+            if ids:
+                placeholders = ",".join("?" * len(ids))
+                for table in ("message_vectors", "message_embeddings"):
+                    try:
+                        await self.conn.execute(
+                            f"DELETE FROM {table} WHERE message_id IN ({placeholders})",
+                            ids,
+                        )
+                    except aiosqlite.OperationalError:
+                        pass  # table absent (memory never initialized) — nothing to purge
+            await self.conn.execute(
+                "DELETE FROM usage_log WHERE conversation_id = ?", (conversation_id,)
+            )
+            await self.conn.execute(
+                "DELETE FROM conversations WHERE id = ?", (conversation_id,)
+            )
+            await self.conn.commit()
+        return {"deleted": conversation_id, "messages": len(ids)}
 
     # -- audit ---------------------------------------------------------------
 

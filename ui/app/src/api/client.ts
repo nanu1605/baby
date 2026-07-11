@@ -5,6 +5,8 @@
  */
 import type {
   ChatMessage,
+  ConversationDetail,
+  ConversationList,
   GraphData,
   MemoryFact,
   NodeStats,
@@ -23,6 +25,14 @@ async function postJSON(url: string, body?: unknown): Promise<Response> {
     method: "POST",
     headers: body === undefined ? {} : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+async function patchJSON(url: string, body: unknown): Promise<Response> {
+  return fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -45,6 +55,37 @@ export const postConfirm = (id: string, approved: boolean) =>
 export const postKill = () => postJSON("/kill");
 
 export const postGameMode = (on: boolean) => postJSON("/game_mode", { on });
+
+// -- v5 chat history ---------------------------------------------------------
+
+/** History sidebar list: real conversations + the live conversation id. */
+export const getConversations = (opts?: { includeArchived?: boolean }) =>
+  getJSON<ConversationList>(
+    `/api/conversations${opts?.includeArchived ? "?include_archived=true" : ""}`,
+  );
+
+/** One conversation's meta + messages (read-only viewer). */
+export const getConversation = (id: number) =>
+  getJSON<ConversationDetail>(`/api/conversations/${id}`);
+
+/** Start a fresh UI conversation; archives the current one by abandoning it. */
+export const newConversation = () => postJSON("/conversation/new");
+
+/** Continue a past conversation in the live session (409 if a turn is running). */
+export const resumeConversation = (id: number) =>
+  postJSON(`/api/conversations/${id}/resume`);
+
+/** Rename a conversation (editable title). */
+export const renameConversation = (id: number, title: string) =>
+  patchJSON(`/api/conversations/${id}`, { title });
+
+/** Archive / unarchive a conversation (soft-hide from the main list). */
+export const archiveConversation = (id: number, archived: boolean) =>
+  patchJSON(`/api/conversations/${id}`, { archived });
+
+/** Hard-delete a conversation incl. its RAG vectors (can't resurface in search). */
+export const deleteConversation = (id: number) =>
+  fetch(`/api/conversations/${id}`, { method: "DELETE" });
 
 export const getMemory = (limit = 200) =>
   getJSON<MemoryFact[]>(`/memory?limit=${limit}`);

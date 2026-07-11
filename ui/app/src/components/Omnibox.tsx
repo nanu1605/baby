@@ -9,6 +9,7 @@ import {
   totalCount,
 } from "../lib/searchResults";
 import type { FlatItem } from "../lib/searchResults";
+import { openConversationView } from "../lib/historyActions";
 import { ICONS } from "../constants";
 import type { SearchGroupKey, SearchItem, SearchResponse } from "../types";
 
@@ -94,7 +95,7 @@ export default function Omnibox() {
   const choose = useCallback(
     (fi: FlatItem | undefined) => {
       if (!fi) return;
-      const { nodeId, tab, focusFact } = resultAction(fi.item);
+      const { nodeId, tab, focusFact, openConversation } = resultAction(fi.item);
       const st = useBrain.getState();
       // Never select a target that isn't in the loaded graph (a de-registered
       // tool's audit row anchors to a missing tool:<name>). Only block when the
@@ -107,6 +108,12 @@ export default function Omnibox() {
       if (focusFact != null) st.setFocusFact(focusFact);
       st.selectNode(nodeId); // → camera fly-to + #node hash + inspector drawer
       if (tab) st.setTab(tab);
+      // v5: a conversation hit opens that conversation read-only in the panel.
+      if (openConversation != null) {
+        openConversationView(openConversation).catch(() =>
+          st.pushToast("Couldn't open that conversation.", "error"),
+        );
+      }
       commitRecent(query);
       setQuery("");
       setResp(null);

@@ -1,0 +1,361 @@
+"""H0 chat-history read spine: conversation list/detail metadata + endpoints.
+
+The history sidebar surfaces REAL conversations only: empty rows (boot and
+/conversation/new create them) are dropped, quarantined/failed turns never
+count or render, archived rows hide by default, and the title is derived when
+unset. These fixtures pin that contract at the DB layer plus the two additive
+GET endpoints.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+from fastapi.testclient import TestClient
+
+from core.agent import AgentCore
+from core.bus import EventBus
+from core.safety import SafetyConfig, SafetyGate
+from db.database import Database
+from tests.conftest import FakeProvider
+from ui.server import UIContext, create_app
+
+
+async def _turn(db: Database, conv: int, turn_id: int, user: str, assistant: str) -> None:
+    """One completed user+assistant turn (both rows share a turn_id, status ok)."""
+    await db.add_message(conv, "user", user, turn_id=turn_id)
+    await db.add_message(conv, "assistant", assistant, turn_id=turn_id)
+
+
+# -- list metadata -------------------------------------------------------------
+
+
+async def test_list_derives_title_and_counts(db):
+    conv = await db.create_conversation("ui")
+    await _turn(db, conv, 1, "how do I center a div?", "use flexbox")
+    await _turn(db, conv, 2, "thanks", "anytime")
+
+    rows = await db.list_conversations()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == conv
+    assert row["channel"] == "ui"
+    assert row["message_count"] == 4  # 2 user + 2 assistant
+    assert row["title"] == "how do I center a div?"  # first user message
+    assert row["archived"] is False
+    assert row["last_message_at"] is not None
+
+
+async def test_empty_conversations_excluded(db):
+    # Boot / new-chat create a conversation row before any message — it must not
+    # pollute the sidebar (HAVING message_count > 0).
+    empty = await db.create_conversation("ui")
+    used = await db.create_conversation("ui")
+    await _turn(db, used, 1, "hi", "hello")
+
+    ids = [r["id"] for r in await db.list_conversations()]
+    assert used in ids
+    assert empty not in ids
+
+
+async def test_channel_filter_keeps_ui_only_by_default(db):
+    ui_conv = await db.create_conversation("ui")
+    voice_conv = await db.create_conversation("voice")
+    await _turn(db, ui_conv, 1, "ui question", "ui answer")
+    await _turn(db, voice_conv, 1, "voice question", "voice answer")
+
+    ui_ids = [r["id"] for r in await db.list_conversations()]  # default channel="ui"
+    assert ui_ids == [ui_conv]
+
+    voice_ids = [r["id"] for r in await db.list_conversations(channel="voice")]
+    assert voice_ids == [voice_conv]
+
+    all_ids = {r["id"] for r in await db.list_conversations(channel=None)}
+    assert {ui_conv, voice_conv} <= all_ids
+
+
+async def test_pagination_and_recency_order(db):
+    convs = []
+    for i in range(3):
+        c = await db.create_conversation("ui")
+        await _turn(db, c, 1, f"q{i}", f"a{i}")
+        convs.append(c)
+    # Newest activity first: the last-created conversation leads.
+    ordered = [r["id"] for r in await db.list_conversations()]
+    assert ordered == list(reversed(convs))
+
+    page1 = await db.list_conversations(limit=2, offset=0)
+    page2 = await db.list_conversations(limit=2, offset=2)
+    assert len(page1) == 2 and len(page2) == 1
+    assert [r["id"] for r in page1] + [r["id"] for r in page2] == ordered
+
+
+async def test_archived_hidden_unless_requested(db):
+    keep = await db.create_conversation("ui")
+    gone = await db.create_conversation("ui")
+    await _turn(db, keep, 1, "keep me", "ok")
+    await _turn(db, gone, 1, "archive me", "ok")
+    # Set archived directly (the setter is H2); H0 only reads the column.
+    await db._write("UPDATE conversations SET archived = 1 WHERE id = ?", (gone,))
+
+    visible = [r["id"] for r in await db.list_conversations()]
+    assert visible == [keep]
+
+    withall = {r["id"] for r in await db.list_conversations(include_archived=True)}
+    assert {keep, gone} <= withall
+    archived_row = next(r for r in await db.list_conversations(include_archived=True)
+                        if r["id"] == gone)
+    assert archived_row["archived"] is True
+
+
+# -- title derivation ----------------------------------------------------------
+
+
+async def test_title_prefers_explicit_then_summary_then_first_user(db):
+    # explicit title wins
+    c1 = await db.create_conversation("ui")
+    await _turn(db, c1, 1, "first user text", "a")
+    await db._write("UPDATE conversations SET title = ? WHERE id = ?", ("My Chat", c1))
+    # summary first line (no title)
+    c2 = await db.create_conversation("ui")
+    await _turn(db, c2, 1, "another user text", "a")
+    await db._write(
+        "UPDATE conversations SET summary = ? WHERE id = ?",
+        ("Debugging the router\nmore detail", c2),
+    )
+    # fallback to first user message (no title, no summary)
+    c3 = await db.create_conversation("ui")
+    await _turn(db, c3, 1, "just the first message", "a")
+
+    by_id = {r["id"]: r["title"] for r in await db.list_conversations()}
+    assert by_id[c1] == "My Chat"
+    assert by_id[c2] == "Debugging the router"  # first line only
+    assert by_id[c3] == "just the first message"
+
+
+# -- quarantine exclusion ------------------------------------------------------
+
+
+async def test_quarantined_turn_excluded_from_count_and_detail(db):
+    conv = await db.create_conversation("ui")
+    await _turn(db, conv, 1, "good question", "good answer")
+    await _turn(db, conv, 2, "poison turn", "poison answer")
+    await db.mark_turn(conv, 2, "failed")  # quarantine the whole turn
+
+    meta = await db.get_conversation_meta(conv)
+    assert meta is not None
+    assert meta["message_count"] == 2  # only the ok turn's two rows
+
+    history = await db.get_history(conv, 50)
+    contents = [m["content"] for m in history]
+    assert "good question" in contents
+    assert "poison turn" not in contents
+    assert "poison answer" not in contents
+
+
+async def test_get_conversation_meta_missing_returns_none(db):
+    assert await db.get_conversation_meta(99999) is None
+
+
+# -- endpoints -----------------------------------------------------------------
+
+
+_CONFIG = {"models": {"daily": {"provider": "ollama", "model": "m"}}}
+
+
+def _client(tmp_path):
+    db = Database(tmp_path / "conv.db")
+    conv = asyncio.run(_boot(db))
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    agent = AgentCore(FakeProvider([]), db, conv, channel="ui", bus=bus, gate=gate)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=_CONFIG)
+    return TestClient(create_app(ctx)), db, conv
+
+
+async def _boot(db: Database) -> int:
+    await db.connect()
+    conv = await db.create_conversation("ui")
+    await _turn(db, conv, 1, "endpoint question", "endpoint answer")
+    return conv
+
+
+def test_conversations_endpoints(tmp_path):
+    client, db, conv = _client(tmp_path)
+    try:
+        listing = client.get("/api/conversations").json()
+        assert listing["active_conversation_id"] == conv
+        ids = [c["id"] for c in listing["conversations"]]
+        assert conv in ids
+        one = next(c for c in listing["conversations"] if c["id"] == conv)
+        assert one["title"] == "endpoint question"
+        assert one["message_count"] == 2
+
+        detail = client.get(f"/api/conversations/{conv}").json()
+        assert detail["meta"]["id"] == conv
+        assert [m["content"] for m in detail["messages"]] == [
+            "endpoint question", "endpoint answer",
+        ]
+
+        missing = client.get("/api/conversations/424242")
+        assert missing.status_code == 404
+    finally:
+        asyncio.run(db.close())
+
+
+# -- resume endpoint (H1) ------------------------------------------------------
+
+
+def _resume_client(tmp_path):
+    db = Database(tmp_path / "resume.db")
+    conv = asyncio.run(_boot(db))  # the live conversation, with one turn
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    agent = AgentCore(FakeProvider([]), db, conv, channel="ui", bus=bus, gate=gate)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=_CONFIG)
+    return TestClient(create_app(ctx)), db, ctx, conv
+
+
+def test_resume_reassigns_active_conversation(tmp_path):
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        other = asyncio.run(db.create_conversation("ui"))
+        asyncio.run(_turn(db, other, 1, "older question", "older answer"))
+        assert ctx.agent.conversation_id == conv
+        r = client.post(f"/api/conversations/{other}/resume")
+        assert r.status_code == 200
+        assert r.json()["conversation_id"] == other
+        assert ctx.agent.conversation_id == other  # the live session switched
+    finally:
+        asyncio.run(db.close())
+
+
+def test_resume_404_leaves_active_unchanged(tmp_path):
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        r = client.post("/api/conversations/999999/resume")
+        assert r.status_code == 404
+        assert ctx.agent.conversation_id == conv
+    finally:
+        asyncio.run(db.close())
+
+
+def test_resume_409_while_turn_running(tmp_path):
+    import types
+
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        other = asyncio.run(db.create_conversation("ui"))
+        asyncio.run(_turn(db, other, 1, "q", "a"))
+        ctx.voice = types.SimpleNamespace(turn_running=lambda: True)  # force busy
+        r = client.post(f"/api/conversations/{other}/resume")
+        assert r.status_code == 409
+        assert ctx.agent.conversation_id == conv  # never switched mid-turn
+    finally:
+        asyncio.run(db.close())
+
+
+# -- rename / archive / delete endpoints (H2) ----------------------------------
+
+
+def test_patch_rename_and_archive(tmp_path):
+    client, db, conv = _client(tmp_path)
+    try:
+        r = client.patch(f"/api/conversations/{conv}", json={"title": "My Renamed Chat"})
+        assert r.status_code == 200
+        assert r.json()["title"] == "My Renamed Chat"
+
+        client.patch(f"/api/conversations/{conv}", json={"archived": True})
+        listing = client.get("/api/conversations").json()
+        assert conv not in [c["id"] for c in listing["conversations"]]  # hidden
+        withall = client.get(
+            "/api/conversations", params={"include_archived": True}
+        ).json()
+        row = next(c for c in withall["conversations"] if c["id"] == conv)
+        assert row["archived"] is True and row["title"] == "My Renamed Chat"
+
+        # unarchive brings it back
+        client.patch(f"/api/conversations/{conv}", json={"archived": False})
+        assert conv in [c["id"] for c in client.get("/api/conversations").json()["conversations"]]
+
+        assert client.patch(f"/api/conversations/{conv}", json={"title": "  "}).status_code == 400
+        assert client.patch("/api/conversations/999999", json={"title": "x"}).status_code == 404
+    finally:
+        asyncio.run(db.close())
+
+
+def test_delete_non_active_conversation(tmp_path):
+    client, db, conv = _client(tmp_path)  # conv is the active conversation
+    try:
+        other = asyncio.run(db.create_conversation("ui"))
+        asyncio.run(_turn(db, other, 1, "delete me", "ok"))
+        r = client.delete(f"/api/conversations/{other}")
+        assert r.status_code == 200
+        assert "new_conversation_id" not in r.json()  # active one untouched
+        assert asyncio.run(db.get_conversation_meta(other)) is None
+        assert asyncio.run(db.get_conversation_meta(conv)) is not None
+    finally:
+        asyncio.run(db.close())
+
+
+def test_delete_active_conversation_creates_replacement(tmp_path):
+    client, db, conv = _client(tmp_path)  # ctx.agent.conversation_id == conv
+    try:
+        r = client.delete(f"/api/conversations/{conv}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["deleted"] == conv
+        assert "new_conversation_id" in body
+        # The replacement is a fresh EMPTY conversation. Its id may reuse the
+        # deleted one's rowid (messages/conversations.id has no AUTOINCREMENT) —
+        # that's fine; test by emptiness, not id.
+        meta = asyncio.run(db.get_conversation_meta(body["new_conversation_id"]))
+        assert meta is not None and meta["message_count"] == 0
+        # the deleted conversation's messages are gone
+        assert asyncio.run(db.get_history(conv, 50)) == []
+    finally:
+        asyncio.run(db.close())
+
+
+def test_delete_409_when_active_turn_running(tmp_path):
+    import types
+
+    client, db, ctx, conv = _resume_client(tmp_path)
+    try:
+        ctx.voice = types.SimpleNamespace(turn_running=lambda: True)
+        r = client.delete(f"/api/conversations/{conv}")  # conv is active + busy
+        assert r.status_code == 409
+        assert asyncio.run(db.get_conversation_meta(conv)) is not None  # not deleted
+    finally:
+        asyncio.run(db.close())
+
+
+def test_db_delete_twin_purges_orphaned_message_vectors(tmp_path):
+    # The memory-OFF Database.delete_conversation twin must still purge
+    # message_vectors rows left by an earlier memory-ON run (embedder-warmup
+    # failed → memory=None, but the vec table persists in baby.db). Otherwise a
+    # reused message rowid inherits a stale embedding (messages.id has no
+    # AUTOINCREMENT). Guarded so an absent table is a no-op.
+    db = Database(tmp_path / "vecpurge.db")
+
+    async def run():
+        await db.connect()
+        conv = await db.create_conversation("ui")
+        mid = await db.add_message(conv, "user", "vector me", turn_id=1)
+        # simulate a leftover vector row from a prior memory-on run
+        await db.conn.execute(
+            "CREATE TABLE message_vectors (message_id INTEGER PRIMARY KEY, embedding BLOB)"
+        )
+        await db.conn.execute(
+            "INSERT INTO message_vectors (message_id, embedding) VALUES (?, ?)", (mid, b"x")
+        )
+        await db.conn.commit()
+
+        result = await db.delete_conversation(conv)
+        assert result["deleted"] == conv
+        cur = await db.conn.execute("SELECT COUNT(*) AS n FROM message_vectors")
+        n = (await cur.fetchone())["n"]
+        await db.close()
+        return n
+
+    assert asyncio.run(run()) == 0  # the orphaned vector row is gone

@@ -72,17 +72,23 @@ export interface ResultAction {
   nodeId: string;
   tab?: "chat";
   focusFact?: number;
+  /** v5: conversation to open read-only in the chat panel (the deep-link target). */
+  openConversation?: number;
 }
 
 /**
- * Map a result → what selecting it should do. Reads only the server-stamped
- * `node_id` (never fabricates one). A conversation also switches the right panel
- * to Chat (its content lives there, not in the graph); a fact requests a
- * best-effort highlight of that fact id in the memory panel.
+ * Map a result → what selecting it should do. Reads only server-stamped fields
+ * (never fabricates an anchor). A conversation switches to the Chat tab AND, when
+ * the backend supplied its conversation_id, opens that conversation read-only in
+ * the panel (v5 — closes the v3 loop where a conversation hit had nowhere to
+ * land); a fact requests a best-effort highlight of that fact id in memory.
  */
 export function resultAction(item: SearchItem): ResultAction {
   const action: ResultAction = { nodeId: item.node_id };
-  if (item.type === "conversation") action.tab = "chat";
+  if (item.type === "conversation") {
+    action.tab = "chat";
+    if (item.conversation_id != null) action.openConversation = item.conversation_id;
+  }
   if (item.type === "fact") action.focusFact = item.id;
   return action;
 }

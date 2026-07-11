@@ -106,6 +106,15 @@ def _ui_brain(config: dict) -> str:
     return "2d" if val == "2d" else "3d"
 
 
+def _ui_history(config: dict) -> str:
+    """Additive read of ui.history for the v5 chat-history sidebar. Code-default
+    "on" (the v5 headline feature); "off" hides the sidebar with no other change.
+    Never requires a config edit."""
+    raw = config.get("ui", {}) if isinstance(config, dict) else {}
+    val = str(raw.get("history", "on")).strip().lower() if isinstance(raw, dict) else "on"
+    return "off" if val == "off" else "on"
+
+
 class _StateDeriver:
     """Fold the bus event stream into a single pipeline state for the gauge (B1c).
 
@@ -325,7 +334,10 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["model"] = ctx.config.get("models", {}).get("daily", {}).get("model", "?")
         data["turn_running"] = ctx.turn_running()
         data["render"] = _render_config(ctx.config)  # V2 governor knobs (code-defaulted)
-        data["ui"] = {"brain": _ui_brain(ctx.config)}  # V3 sphere gate (code-defaulted 3d)
+        data["ui"] = {
+            "brain": _ui_brain(ctx.config),  # V3 sphere gate (code-defaulted 3d)
+            "history": _ui_history(ctx.config),  # v5 history sidebar (code-defaulted on)
+        }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
@@ -407,6 +419,95 @@ def create_app(ctx: UIContext) -> FastAPI:
         ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
         ctx.bus.publish("status", "ui", text="fresh conversation started")
         return {"conversation_id": ctx.agent.conversation_id}
+
+    @app.get("/api/conversations")
+    async def api_conversations(
+        limit: int = 50,
+        offset: int = 0,
+        include_archived: bool = False,
+        channel: str = "ui",
+    ):
+        """History sidebar list (v5): real conversations with a derived title +
+        message_count + last_message_at, newest activity first. Empty/unused and
+        (by default) archived rows are excluded. active_conversation_id lets the
+        sidebar highlight the live chat before any turn fires — the id is
+        otherwise only on the turn_start WS payload."""
+        convos = await ctx.db.list_conversations(
+            channel=channel,
+            limit=max(1, min(limit, 200)),
+            offset=max(0, offset),
+            include_archived=include_archived,
+        )
+        return {
+            "conversations": convos,
+            "active_conversation_id": ctx.agent.conversation_id,
+        }
+
+    @app.get("/api/conversations/{conv_id}")
+    async def api_conversation_detail(conv_id: int, limit: int = 200):
+        """One conversation's messages, read-only (v5 viewer). Reuses get_history
+        (status='ok' + user/assistant only), so quarantined/failed turns never
+        render. 404 when the conversation doesn't exist."""
+        meta = await ctx.db.get_conversation_meta(conv_id)
+        if meta is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        messages = await ctx.db.get_history(conv_id, max(1, min(limit, 500)))
+        return {"meta": meta, "messages": messages}
+
+    @app.post("/api/conversations/{conv_id}/resume")
+    async def api_conversation_resume(conv_id: int):
+        """Continue a past conversation in the live session (v5). Reassigns the
+        agent's conversation_id so the next turn rehydrates that conversation's
+        context (summary + windowed history + RAG) — the same stateless-per-turn
+        mechanism /conversation/new relies on, honoring the per-brain budget.
+        Guarded on turn_running(). Publishes a bus status only (NOT turn_start),
+        so the brain fires no phantom pulse on the switch."""
+        if ctx.turn_running():
+            return JSONResponse(
+                {"error": "turn in progress — try again when idle"}, status_code=409
+            )
+        if await ctx.db.get_conversation_meta(conv_id) is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        ctx.agent.conversation_id = conv_id
+        ctx.bus.publish("status", "ui", text="resumed conversation")
+        return {"conversation_id": conv_id}
+
+    @app.patch("/api/conversations/{conv_id}")
+    async def api_conversation_update(conv_id: int, body: dict):
+        """Rename and/or archive a conversation (v5). Additive metadata edits;
+        404 when the conversation doesn't exist. Returns the updated meta."""
+        if await ctx.db.get_conversation_meta(conv_id) is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        if "title" in body:
+            title = str(body["title"]).strip()
+            if not title:
+                return JSONResponse({"error": "title cannot be empty"}, status_code=400)
+            await ctx.db.rename_conversation(conv_id, title[:200])
+        if "archived" in body:
+            await ctx.db.set_conversation_archived(conv_id, bool(body["archived"]))
+        return await ctx.db.get_conversation_meta(conv_id)
+
+    @app.delete("/api/conversations/{conv_id}")
+    async def api_conversation_delete(conv_id: int):
+        """Hard-delete a conversation INCLUDING its RAG vectors, so a deleted chat
+        can't resurface via /api/search (v5). If it's the live conversation, roll
+        to a fresh one afterwards so the agent never points at a deleted row; 409
+        only if that live turn is currently running."""
+        if conv_id == ctx.agent.conversation_id and ctx.turn_running():
+            return JSONResponse(
+                {"error": "turn in progress — try again when idle"}, status_code=409
+            )
+        if await ctx.db.get_conversation_meta(conv_id) is None:
+            return JSONResponse({"error": "no such conversation"}, status_code=404)
+        if ctx.memory is not None:
+            result = await ctx.memory.store.delete_conversation(conv_id)
+        else:
+            result = await ctx.db.delete_conversation(conv_id)
+        if conv_id == ctx.agent.conversation_id:
+            ctx.agent.conversation_id = await ctx.db.create_conversation("ui")
+            result["new_conversation_id"] = ctx.agent.conversation_id
+        ctx.bus.publish("status", "ui", text="conversation deleted")
+        return result
 
     @app.get("/memory")
     async def memory_view(limit: int = 200):
@@ -760,7 +861,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     provider = build_provider(config, bus=bus, db=db)
 
     wait_s = int(config.get("startup", {}).get("wait_for_model_s", 120))
-    ok, notes = await ready_check(provider, db, wait_s=wait_s)
+    # v5: default to cloud (game) mode at boot — don't warm the local 9B, keep the
+    # GPU free, let cloud answer. Code-default True; startup.cloud_mode: false
+    # restores warm-at-boot. Safe-default read (never requires a config edit).
+    cloud_mode = bool(config.get("startup", {}).get("cloud_mode", True))
+    ok, notes = await ready_check(provider, db, wait_s=wait_s, cloud_mode=cloud_mode)
     for note in notes:
         print(note)
     if not ok:
@@ -771,6 +876,15 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     # Cloud-primary router runs a 45 s NIM health probe; needs the live loop.
     if hasattr(provider, "start"):
         provider.start()
+
+    # v5 default cloud mode: start with the local brain unloaded, all routing on
+    # cloud. Set the flag directly (NOT set_game_mode, which would try to unload a
+    # model that was never warmed + publish a spurious status). The ladder already
+    # branches on game_mode — this changes no routing logic. Privacy pins still
+    # force local on demand (they sit above the game-mode branch), and the existing
+    # toggle re-warms local + re-announces "Baby ready" when the owner turns it off.
+    if cloud_mode and hasattr(provider, "game_mode"):
+        provider.game_mode = True
 
     gamewatch = None
     if config.get("game_mode", {}).get("auto_detect") and hasattr(provider, "set_game_mode"):
@@ -966,6 +1080,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             cue.play_degraded()
     else:
         ready_msg = f"Baby ready (text only) — http://{host}:{port}"
+    if cloud_mode:
+        ready_msg += " · cloud mode (local brain idle)"
     print(ready_msg)
     _toast("Baby ready", ready_msg)
     bus.publish("status", "ui", text=ready_msg)
