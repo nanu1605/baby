@@ -22,6 +22,9 @@
   /* -- brand / accents -- */
   --accent: #6ea8fe;
   --accent-dim: #3f5f9e;
+  /* Live accent — tracks the pipeline state (V4); defaults to the static accent,
+     which already equals the sphere's --state-thinking / --node-router blue. */
+  --accent-live: var(--accent);
   --green: #3fb950;
   --amber: #d29922;
   --red: #f85149;
@@ -77,11 +80,19 @@
   --fs-xl: 1.6rem;
   --fs-2xl: 2.4rem;
 
-  /* -- motion (non-graph; graph animation is canvas-driven) -- */
+  /* -- motion (non-graph; graph animation is canvas-driven) --
+   * Durations + one base ease shipped in B0; V4 adds a named-ease set so the whole
+   * chrome shares one motion vocabulary. CSS has no springs, so --ease-spring is an
+   * overshoot bezier. reduced-motion / performanceMode / the 2D floor all collapse
+   * motion by zeroing the durations (see the media/data-motion blocks below). */
   --dur-fast: 120ms;
   --dur-med: 240ms;
   --dur-slow: 420ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* decel — enters settle softly */
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0); /* accel — exits leave quickly */
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1); /* Material emphasized decel */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* slight overshoot for chips/toasts */
 
   /* -- elevation -- */
   --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35);
@@ -96,4 +107,14 @@
     --dur-med: 0ms;
     --dur-slow: 0ms;
   }
+}
+
+/* performanceMode / the 2D-floor tier collapse decorative motion through the SAME
+   zeroed-duration lever as prefers-reduced-motion. useMotionFlag publishes
+   data-motion="off" (from motionLevel); keyframe animations self-disable off this
+   attribute too (see app.css). One mechanism, three triggers. */
+body[data-motion="off"] {
+  --dur-fast: 0ms;
+  --dur-med: 0ms;
+  --dur-slow: 0ms;
 }

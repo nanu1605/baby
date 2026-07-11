@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Baby</title>
+  <!--
+    V0 splash. The shell bundles NO SPA of its own (DECISIONS #119); in prod it
+    opens this local placeholder and V1's probe_backend navigates the window to the
+    live FastAPI-served UI at 127.0.0.1:8765 once it is healthy. In dev the window
+    loads the ui/app Vite server (:5173) directly, so this file is prod-only.
+  -->
+  <style>
+    html, body {
+      margin: 0; height: 100%; background: #0b0d12; color: #cbd5e1;
+      font: 14px/1.5 system-ui, "Segoe UI", sans-serif;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .wrap { text-align: center; opacity: 0.9; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%; background: #22c55e;
+      display: inline-block; margin-right: 8px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    small { color: #64748b; }
+    @media (prefers-reduced-motion: reduce) { .dot { animation: none; opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div><span class="dot"></span>Starting Baby&hellip;</div>
+    <p><small>Attaching to the assistant at 127.0.0.1:8765</small></p>
+  </div>
+</body>
+</html>

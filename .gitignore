@@ -37,3 +37,9 @@ models/owner_voice.json
 # v3 frontend (ui/app) — build-on-setup: commit sources + lockfile, ignore installs/builds
 ui/app/node_modules/
 ui/app/dist/
+
+# v4 native shell (ui/shell) — commit sources + Cargo.lock + icons, ignore installs/builds
+ui/shell/**/node_modules/
+ui/shell/**/target/
+ui/shell/**/dist/
+ui/shell/**/gen/

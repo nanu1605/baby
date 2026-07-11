@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { getStats } from "../api/client";
 import { useBrain } from "../store";
 import { normRouter } from "../constants";
+import { effectiveCeiling } from "../graph/governor/tierMachine";
 
 export function useStats(): void {
   useEffect(() => {
@@ -19,6 +20,19 @@ export function useStats(): void {
         b.setStats(s);
         if (s.router?.state) b.setRouter(normRouter(s.router.state));
         if (typeof s.game_mode === "boolean") b.setGameMode(s.game_mode);
+        if (s.render?.target_fps && s.render.target_fps > 0) {
+          b.setTargetFps(s.render.target_fps);
+        }
+        // ui.brain:2d forces the 2D floor; else render.tier caps the sphere quality.
+        b.setRenderCeiling(effectiveCeiling(s.ui?.brain, s.render?.tier));
+        // V3 watchdog signal also rides /stats so a ws hiccup can't strand the tier.
+        // A successful reply WITHOUT the field means the backend no longer knows
+        // (provider swapped, sampler cold) → reset to unknown so the documented
+        // fail-open (null → full3d) stays reachable; never let a stale `true` cap
+        // the sphere forever (review-caught).
+        b.setLocalModelLoaded(
+          typeof s.local_model_loaded === "boolean" ? s.local_model_loaded : null,
+        );
       } catch {
         /* server briefly away — reconnect/next tick handles it */
       }

@@ -5,8 +5,9 @@ A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
 default, but privacy-pinned turns never leave the PC, and the warm local 9B
 keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **v3.0.0 — "The Brain"** ✅ — a living-graph UI over the real
-> router/voice/memory/tool paths, plus speaker verification v2.
+> Status: **v4.0.0 — native app + 3D neural brain** ✅ — a thin Tauri desktop shell,
+> the living graph reborn as a 3D neural sphere, and a coherent motion system, all held
+> to 60 fps by a frame governor. The browser UI and the v3 2D graph stay one flag away.
 > Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
 > change spec: [NIM_MIGRATION_PLAN.md](NIM_MIGRATION_PLAN.md)
 
@@ -180,6 +181,42 @@ and `/classic` is always available regardless of the flag — the daily-driver
 parity target lives on. The React app is built on setup (`ui/app/dist`, not
 committed).
 
+### Native app + 3D brain (v4.0.0)
+
+v4 (branch `feature/v4-native-3d-brain`) wraps the **same** FastAPI-served UI in a
+thin **Tauri** desktop shell (native window, tray, single-instance, close-to-tray,
+attach-or-spawn) and upgrades the graph to a **3D neural sphere**. The shell bundles
+no second copy of the UI — it loads `127.0.0.1:8765`, so the browser and the native
+window render the identical build (DECISIONS #119). Two code-defaulted rollback
+flags gate it, both non-bricking:
+
+- `ui.shell: browser | native` — `browser` (default) just means "don't launch the
+  exe"; the `127.0.0.1:8765` UI is untouched. Native shell shipped in V1.
+- `ui.brain: 2d | 3d` — code-default **`3d`**, the WebGL neural sphere (the V2
+  governor auto-demotes to the 2D floor under VRAM/frame pressure, so 3d-by-default is
+  self-protecting); `ui.brain: 2d` is the one-line rollback to the v3 canvas graph.
+  Shipped in V3.
+
+**Docker-Desktop model (V1).** The assistant runs as an always-on background
+service; the native window **attaches** to it — or **spawns** one (`pythonw run.py
+--all`) if none is running, polling `127.0.0.1:8765` until ready, then loading the
+UI. Closing the window (X) **hides to tray**; the tray shows Baby's status
+(green ready / amber working / red waiting on a confirmation, folded off
+`/ws/activity`) and its only exit is **"Quit Baby (app)"**, which closes the window
+and stops *only* a backend the shell itself spawned — an attached always-on service
+keeps running (Telegram, scheduler, background tasks). Stopping the **service** is a
+separate, documented action *outside* the app — `scripts\autostart.ps1 -Remove` —
+never an app menu item and never an HTTP endpoint (DECISIONS #120, #122).
+
+Build/run the native shell:
+
+```powershell
+scripts\setup.ps1                      # installs Rust + builds the shell (fail-soft)
+npm --prefix ui/shell run build        # -> NSIS installer + baby-shell.exe
+scripts\dev_app.ps1                    # dev: window against the ui/app Vite server
+scripts\autostart.ps1 -Shell native    # open the window (attaching) at logon too
+```
+
 ### Screenshots
 
 <!-- Owner: capture during the soak and drop into docs/img/ -->
@@ -190,12 +227,24 @@ committed).
 
 ## Config
 
-`config.yaml` is the reference (richly commented). The v3 knobs:
+`config.yaml` is the reference (richly commented). The v3 + v4 knobs:
 
 ```yaml
 ui:
   frontend: v3          # v3 = "The Brain" React app; classic = vanilla rollback
                         # /classic is always served regardless of this flag
+  # --- v4: both code-defaulted, non-bricking rollback flags ---
+  shell: browser        # browser (default) = open the UI in a browser; native =
+                        # launch the Tauri desktop shell (wired in V1). Rollback =
+                        # shell: browser; the 127.0.0.1:8765 UI is untouched.
+  brain: 3d             # 3d (code-default) = the WebGL neural sphere; 2d = the v3
+                        # canvas graph (rollback). Non-bricking either way — the
+                        # governor auto-demotes to the 2d floor under GPU pressure.
+
+render:                 # v4 frame governor (V2), all code-defaulted
+  target_fps: 60        # the frame budget the governor protects
+  tier: auto            # auto = full3d ceiling; lite3d / 2d cap the quality lower
+  idle_full_on_desktop: true
 
 voice:
   speaker_verify:
@@ -265,3 +314,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | v1.1.1 ✅ | Hotfix: sensor tool contract (#6) + DB poison hygiene (#7) |
 | v2.0.0 ✅ | Conversation mode + proceed/cancel (#2, #4), memory v2 — budgeted context + cross-session RAG + clear/wipe (#3, #5), token telemetry (#8) |
 | v3.0.0 ✅ | **The Brain** — living-graph UI (honest pulses, status gauge, node inspectors, "Search the brain…" omnibox) over a read-only graph data spine; speaker verification v2 (multi-centroid, session-trust, ships OFF); responsive + reconnect-resilient |
+| v4.0.0 ✅ | **Native app + 3D neural brain** — a thin Tauri desktop shell over the same FastAPI-served UI (attach-or-spawn, close-to-tray, single-instance, native tray); the living graph reborn as a 3D neural sphere (honest firing, mic/TTS amplitude gauge, router recolor, game-mode ghost); a 60 fps frame governor + VRAM watchdog; a CSS-first motion system; both rollback flags non-bricking (`ui.shell: browser`, `ui.brain: 2d`) |

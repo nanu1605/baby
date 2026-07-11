@@ -1,0 +1,23 @@
+[package]
+name = "baby-shell"
+version = "4.0.0"
+description = "Baby - native desktop shell (thin Tauri chrome over the FastAPI-served UI)"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# tray-icon: the native status tray. image-png: load the bundled status dots from
+# PNG bytes. Backend spawn is Rust-side std::process::Command (no shell plugin, no
+# webview capability exposed); the tray status socket is a blocking tungstenite
+# client on its own thread (plain ws://, no TLS).
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tungstenite = "0.24"
+
+[profile.release]
+opt-level = "s"
+lto = true

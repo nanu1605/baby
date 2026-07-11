@@ -12,6 +12,9 @@ import type {
   Tokens,
 } from "./types";
 import { setBoost } from "./api/client";
+import type { Tier } from "./graph/governor/tierMachine";
+import type { VramSignal } from "./graph/governor/vramWatchdog";
+import { backoffDelayMs, nextLossCount } from "./graph/sphere/contextLossBackoff";
 
 /**
  * The single v3 store (spec §3). B0 defined the shell fields; B2 adds the chat
@@ -28,6 +31,13 @@ const TOAST_CAP = 5; // B7: bound the toast stack (auto-dismiss aside)
 
 let _toastSeq = 0;
 let _eventSeq = 0;
+
+// Context-loss retry state (V3f), module-level so it never triggers a render. The
+// count climbs while losses keep recurring (bounded backoff) and resets to the short
+// fuse when a loss arrives only after a long clean gap — see setContextLost.
+let _ctxLossCount = 0;
+let _ctxLastLossTs = 0; // 0 = no loss yet
+let _ctxRetryTimer: ReturnType<typeof setTimeout> | undefined;
 
 const PERF_KEY = "baby.performanceMode";
 function loadPerfMode(): boolean {
@@ -73,6 +83,18 @@ interface BrainState {
   activeBrain: string | null;
   /** B3 perf opt-in: stop the render clock when quiet, no particles, static core. */
   performanceMode: boolean;
+  /** V2 frame governor: VRAM signal off /ws/state (null = no NVML / not seen yet). */
+  vram: VramSignal | null;
+  /** V3 watchdog: local model resident in VRAM? (null = unknown → fail-open full3d). */
+  localModelLoaded: boolean | null;
+  /** V3 context-loss floor: WebGL context died → force the 2D graph (backoff retry). */
+  contextLost: boolean;
+  /** V2 governor: current quality tier (full3d → lite3d → 2d floor). */
+  renderTier: Tier;
+  /** V2 governor: config ceiling from render.tier ("auto" → full3d). */
+  renderCeiling: Tier;
+  /** V2 governor: target fps from render.target_fps (default 60). */
+  targetFps: number;
   events: LiveEvent[];
   selectedNode: string | null;
   /** Full topology, lifted from BrainGraph so the inspector drawer can resolve ids. */
@@ -101,6 +123,18 @@ interface BrainState {
   setGameMode: (on: boolean) => void;
   setActiveBrain: (id: string | null) => void;
   togglePerformanceMode: () => void;
+  setVram: (v: VramSignal | null) => void;
+  /** null = back to unknown (e.g. a /stats reply without the field) → fail-open. */
+  setLocalModelLoaded: (on: boolean | null) => void;
+  /**
+   * Mark the WebGL context lost/restored. A loss schedules ONE retry on a bounded
+   * backoff (60 s → 2 m → 5 m) that climbs while losses keep recurring; a loss after a
+   * long clean gap resets to the 60 s fuse so a recovered GPU recovers promptly.
+   */
+  setContextLost: (lost: boolean) => void;
+  setRenderTier: (t: Tier) => void;
+  setRenderCeiling: (t: Tier) => void;
+  setTargetFps: (fps: number) => void;
   pushEvent: (e: LiveEvent) => void;
   selectNode: (id: string | null) => void;
   setGraph: (g: GraphData) => void;
@@ -148,6 +182,12 @@ export const useBrain = create<BrainState>((set) => ({
   gameMode: false,
   activeBrain: null,
   performanceMode: loadPerfMode(),
+  vram: null,
+  localModelLoaded: null,
+  contextLost: false,
+  renderTier: "full3d",
+  renderCeiling: "full3d",
+  targetFps: 60,
   events: [],
   selectedNode: null,
   graph: null,
@@ -178,6 +218,37 @@ export const useBrain = create<BrainState>((set) => ({
       }
       return { performanceMode: next };
     }),
+  setVram: (v) => set({ vram: v }),
+  setLocalModelLoaded: (on) =>
+    set((st) => (st.localModelLoaded === on ? {} : { localModelLoaded: on })),
+  setContextLost: (lost) =>
+    set((st) => {
+      if (st.contextLost === lost) return {};
+      if (lost) {
+        // A LIVE context died → floor to 2D and schedule ONE retry on the bounded
+        // fuse. The gap since the previous loss decides the fuse: a loss that recurs
+        // quickly (a genuinely broken GPU, often the local 9B holding VRAM for a whole
+        // offline turn) climbs 60 s → 2 m → 5 m so it quiesces instead of hot-looping
+        // Canvas creation; a loss after a long clean stretch is an isolated blip and
+        // starts back at 60 s (a recovered GPU recovers promptly). Keying on the
+        // inter-loss gap — not "did the remount survive a few seconds" — is what makes
+        // a flaky GPU (fresh context dies after ~10 s) actually escalate.
+        if (_ctxRetryTimer !== undefined) clearTimeout(_ctxRetryTimer);
+        // performance.now() (monotonic) so an NTP/wall-clock jump can't skew the gap.
+        const now = performance.now();
+        const gap = _ctxLastLossTs === 0 ? Infinity : now - _ctxLastLossTs;
+        _ctxLossCount = nextLossCount(_ctxLossCount, gap);
+        _ctxLastLossTs = now;
+        _ctxRetryTimer = setTimeout(() => {
+          _ctxRetryTimer = undefined;
+          useBrain.getState().setContextLost(false);
+        }, backoffDelayMs(_ctxLossCount));
+      }
+      return { contextLost: lost };
+    }),
+  setRenderTier: (t) => set((st) => (st.renderTier === t ? {} : { renderTier: t })),
+  setRenderCeiling: (t) => set((st) => (st.renderCeiling === t ? {} : { renderCeiling: t })),
+  setTargetFps: (fps) => set((st) => (st.targetFps === fps ? {} : { targetFps: fps })),
   pushEvent: (e) =>
     set((st) => {
       const events =

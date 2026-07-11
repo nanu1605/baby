@@ -867,3 +867,213 @@ Running log of non-obvious choices made during the build. Newest last.
     `v3.0.0`. The disruptive `e2e_regression.py --with-project` + v2/v1.1 browser/TTS
     demos are likewise owner-run (they open a real Chromium window and may speak); the
     executor runs only the always-green gates (`pytest` + `ruff` + FE `build`/`test`).
+
+118. **v4 deliberately reverses v3's "canvas-2D only, the GPU belongs to the LLM"
+    law (V0).** v3 banned WebGL/3D because the local 9B was primary and the GPU ran
+    hot every turn. Since the NIM/OpenRouter migration cloud is primary and local is
+    fallback, so the GPU sits idle on most turns — precisely when a 3D brain renders
+    for free. The one collision (local model generating while peak spectacle is
+    wanted) is arbitrated by v4's frame governor + VRAM watchdog (V2), not banned.
+    Recorded here as a deliberate architectural decision, not drift. v3's other law —
+    honest data only — survives untouched: every directed animation rides a real
+    signal; ambient idle rotation is the sole non-signal allowance.
+
+119. **The v4 native shell is thin chrome over the FastAPI-served frontend, not a
+    second copy of the SPA (V0).** The shell window loads `http://127.0.0.1:8765/`
+    (the same `ui/app/dist` FastAPI already serves) — it does not bundle its own
+    frontend. Consequences: one build (`ui.brain: 3d|2d`, the 3D sphere, and the
+    motion system all live in `ui/app/` and render identically in browser and shell,
+    no drift); `ui.shell: browser` is non-bricking by construction (it just means
+    "don't launch the exe" — the backend and browser UI are untouched); the shell's
+    only jobs are native window, tray, single-instance, close-to-tray,
+    attach-or-spawn, installer, autostart — zero product logic.
+
+120. **v4 "Quit Baby (app)" closes the window; the always-on service persists — no
+    HTTP shutdown endpoint (V0).** The native tray item is labelled **"Quit Baby
+    (app)"**: it closes the shell window and kills only a backend the shell itself
+    spawned; an attached always-on autostart service (Telegram, scheduler, background
+    tasks) keeps running. Stopping the service is a separate, clearly-labelled
+    documented action outside the app (`autostart.ps1 -Remove` / a `Stop Baby
+    service` snippet), never an app menu item and never a remote endpoint. This keeps
+    the branch inside the spec §0.4 additive surface (VRAM + mic/TTS amplitude on the
+    event stream, `ui.shell`/`ui.brain` config reads) — no `POST /shutdown`, so
+    frozen ground (router/provider/safety) is untouched.
+
+121. **Shell = Tauri, not Electron; measured on the 5060 Ti (V0c).** The V0 spike
+    built byte-identical bloom-sphere scenes (~42 nodes + ~50 arcs + EffectComposer
+    bloom, shared `spike/common/`, fixed 60 s camera path) in both shells and
+    self-measured. Results (owner box, 144 Hz panel, uncapped rAF so p50 tracks
+    vsync — the discriminators are 1%-low, cold-start, footprint, and the
+    owner-judged bloom/VRAM):
+
+    | metric | Electron | Tauri |
+    |---|---|---|
+    | fps p50 | 144.9 | 142.9 (tie — vsync) |
+    | fps 1%-low | 95.4 | 49.8 |
+    | cold-start shell (ms) | 469 | 280 |
+    | installer | ~85 MB (bundled Chromium) | **1.7 MB** (NSIS) |
+    | unpacked | 269 MB | **5.9 MB** (shared WebView2) |
+    | VRAM delta | owner-deferred | owner-deferred |
+    | bloom acceptable | owner-deferred | owner-deferred |
+
+    **Chosen: Tauri.** (1) Footprint — 5.9 MB exe / 1.7 MB installer vs Electron's
+    269 MB / ~85 MB, a ~45x win, decisive for an app the owner installs + updates.
+    (2) Idle GPU/RAM — Electron bundles its own Chromium (separate GPU process +
+    caches); Tauri shares the OS WebView2, so its resident footprint is lighter,
+    which directly serves the v4 core law (#118): the shell must leave VRAM free for
+    the local 9B in the collision window. (3) Cold-start 280 vs 469 ms. (4) Bloom
+    risk is low — WebView2 is Edge/Chromium, the same WebGL2 + float-framebuffer path
+    Electron uses. (5) Spec §3 leaned Tauri. **Accepted risk:** Tauri's 1%-low
+    (49.8) dips under 60 in a *no-load* spike vs Electron's 95.4; the V2 frame
+    governor + fixed-timestep + 60-cap are built to absorb exactly this, and the
+    thin-shell architecture (#119) makes a shell swap cheap (the frontend is
+    untouched) if WebView2 bloom disappoints once the real sphere lands in V3.
+    **Owner-deferred, non-blocking:** the real VRAM delta (needs the backend up) and
+    the bloom eyeball were not captured before the decision; both are re-checked
+    against the real 3D sphere in V3, where `ui.shell`/`ui.brain` rollback plus the
+    cheap shell-swap keep the choice reversible. The `spike/` folder is deleted; the
+    winner is scaffolded at `ui/shell/`.
+
+122. **v4 native shell parity — how it attaches, trays, and quits (V1).** The shell
+    is pure native chrome; V1 wires the Docker-Desktop lifecycle with zero product
+    logic and exactly one additive backend read.
+    - **Readiness = a reachable TCP :8765**, not an HTTP health check. uvicorn binds
+      only after `ready_check` loads the model (ui/server.py), so a connectable port
+      already means "model up" — the shell needs no `/stats` parsing and no health
+      endpoint (there is none; frozen ground stays intact).
+    - **Attach-or-spawn.** The shell probes :8765; if up it ATTACHES; else it SPAWNS
+      `pythonw run.py --all` (detached, no console) from `BABY_HOME` — the env var, or
+      the first ancestor of the exe that contains `run.py` + `.venv` (true in dev). An
+      installed shell with no repo shows a "start the backend" splash instead of
+      guessing. It records whether it was the spawner. In autostart native mode the "Baby Shell" task launches with `--attach-only`, so the shell WAITS for the always-on service to bind and never spawns a duplicate — the two logon tasks cannot race two backends and the service always persists.
+    - **Quit kills only what it spawned (#120).** "Quit Baby (app)" closes the window
+      and kills a shell-spawned backend; an attached always-on service is left
+      running. The window X hides to tray (close-to-tray); only the tray item quits.
+      No `POST /shutdown`, no remote HTTP shutdown of any kind.
+    - **Tray reconciliation.** When `ui.shell: native` the backend skips its pystray
+      tray (additive `_shell_owns_tray` read at ui/server.py) and the shell owns the
+      native tray. The shell folds the tray colour off **/ws/activity** (the socket
+      carrying confirm + task/tool/project, which /ws/state lacks): a pending
+      confirmation → red, any running tool/task/project → amber, else green. That
+      stream has no `turn_start`, so a no-tool chat reply does not flash amber — a
+      deliberate, negligible fidelity trade for a single-socket tray; the
+      safety-critical signal (a pending confirmation) surfaces as soon as it fires; a socket that connects mid-confirmation only catches up on the next event (/ws/activity does not replay state), and a reconnect re-syncs.
+    - **Autostart is two independent tasks in native mode.** `autostart.ps1` always
+      registers the always-on backend service ("Baby Assistant", `pythonw`); with
+      `-Shell native` it ALSO registers "Baby Shell" to open the window at logon
+      (which attaches). Keeping them separate is what makes "close the app ≠ stop the
+      service" true. `-Remove` drops both; stopping the service stays an explicit,
+      documented action, never an app menu item or an HTTP endpoint.
+
+123. **v4 frame governor: the 60 fps safety net, built before the 3D cliff (V2).**
+    Three pure, unit-tested TS modules under `ui/app/src/graph/governor/` form the
+    spine the V3 sphere + V4 motion ride on, and are testable now against the 2D
+    graph:
+    - **fixedTimestep** — a fixed-timestep accumulator: a frame advances real time,
+      runs as many FIXED sim steps as fit (clamped, so a backgrounded tab never
+      spirals trying to catch up), and exposes an interpolation alpha. This is the
+      30-vs-60 fps motion identity — the same sim rate regardless of paint rate.
+    - **tierMachine** — full3d → lite3d → 2d with hysteresis mirroring the router's
+      demote-fast / recover-slow shape: a short sustained pressure demotes (protect
+      the frame budget), promotion needs a long calm (no flapping). A lowered config
+      ceiling snaps down immediately; 2d is the floor.
+    - **vramWatchdog** — the collision-window enforcer of law #118: reads the VRAM
+      signal and fires when the local model is resident (used ≥ 80% of total, or free
+      ≤ 1.5 GB). Fail-open — no NVML → no pressure → the full experience.
+    `useGovernor` wires them to one rAF loop (frame pressure OR VRAM pressure → step
+    the tier machine → publish the tier), honoring the ⚡ performance opt-in as a
+    ceiling cap; a spurious multi-hundred-ms stall (tab resume) is ignored so it
+    cannot demote on a single spike. The ONLY backend touch is additive and squarely
+    inside spec §0.4: VRAM is pushed on **/ws/state**, QUANTIZED to 0.25 GB buckets so
+    the pump's exact-equality diff stays quiet at idle and fires only when usage
+    crosses a bucket (the 9B loading), plus a periodic tick on the pump so an
+    idle-time VRAM change still reaches the client. Additive `render.{target_fps,
+    tier, idle_full_on_desktop}` config, code-defaulted, exposed on /stats. A small
+    header tier chip surfaces a demote so it is observable in V2 — the 2D graph looks
+    the same at any tier, so the visible payoff is V3; V2 is the safety net that lands
+    first, on purpose.
+
+124. **v4 3D neural sphere: the same honest brain, in three dimensions (V3).** Behind
+    `ui.brain: 3d` (code-default `3d`; `2d` is the one-line rollback to the v3 canvas
+    graph), a react-three-fiber sphere renders the identical honest-data layer the 2D
+    `BrainGraph` reads — `pulseBus`, `edgeMap`, `/api/graph`, the store — so browser and
+    native shell show the same truth. Only the renderer differs.
+    - **Geometry.** Nodes land on deterministic sphere anchors by group region
+      (Fibonacci cap patches, `graph/sphere/sphereGeometry.ts`); edges are great-circle
+      arcs that bow outward, with origin edges drawn radial (`greatCircle.ts`).
+      Zero-signal edges stay dark — the honest-data law, unchanged from v3.
+    - **Firing = the real turn path.** `Pulses.tsx` subscribes the SAME `pulseBus`
+      feed the 2D graph does; a turn sends a sprite node→node along the visible arc, a
+      tool fires the real 2-hop through `safety_gate`, errors/confirms flash. No timer
+      fabricates motion; every sprite rides a real `PulseAction`.
+    - **Senses + mood.** `CoreGauge.tsx` is the central state gauge (idle breathe /
+      listening ripple / thinking orbit / speaking shimmer / executing sweep). The
+      ripple and shimmer ride REAL loudness — the ONLY backend touch this whole phase,
+      and strictly additive per spec §0.4: `mic_rms` (RMS-computed, quantized, and
+      throttled to ~15 Hz at the publish site, off the voice pipeline's existing
+      thread-safe hand-off) and `tts_rms` (RMS-computed per 100 ms audio chunk in
+      `audio_io.play` via a new optional `on_level` callback — ~10 Hz by the chunk
+      cadence, no extra throttle — then quantized at the publish site). Both are added
+      to `_ACTIVITY_KINDS`; router / provider / safety logic and `tests/test_safety.py`
+      are untouched.
+    - **Amplitude is a module singleton, not the store.** A 15 Hz `set()` would
+      re-render every subscriber, so `graph/amplitude.ts` holds the levels in a module
+      mutable (the `pulseBus` precedent); `foldAmplitude` intercepts `mic_rms`/`tts_rms`
+      in the activity socket BEFORE `pushEvent`, else the 500-cap event ring floods in
+      ~33 s. Node recolor rides router health (offline→red / degraded→amber on the
+      cloud brains), `activeBrain` highlights the answering brain, and game-mode ghosts
+      the local 9B.
+    - **The governor is the sole on/off seam.** `ui.brain` + `render.tier` fold into
+      one `renderCeiling`; the V2 tier machine's `renderTier` gates what draws
+      (`tierToRender`) — bloom + particles shed first on demote, and the 2D graph is the
+      floor. No new flag surface.
+    - **Context-loss floor + bounded backoff.** A dead WebGL context (often the local
+      9B holding VRAM for a whole offline turn) calls `preventDefault()` and falls to
+      the 2D graph via a `contextLost` flag + an `App.tsx` `SphereBoundary` error
+      boundary — never a black stage, never a hot lost-context loop. The retry backs
+      off on losses that keep recurring (60 s → 2 m → 5 m cap,
+      `graph/sphere/contextLossBackoff.ts`) to quiesce a dead GPU, and resets to the 60 s
+      fuse when a loss arrives only after a long clean gap. The recovery signal is the
+      **inter-loss gap**, not "did the remount survive a few seconds" — a flaky GPU whose
+      fresh context dies after ~10 s survives any short grace yet is still dead, so a
+      grace-based reset never climbs for it (adversarial review caught this and drove the
+      rewrite). A full remount IS the recovery path, so there is no
+      `webglcontextrestored` handler (it would race the fresh canvas).
+    - **`@react-three/drei` dropped** — `OrbitControls` comes straight from
+      `three/examples/jsm/controls` (saves ~150 KB + one pin). Deps pinned:
+      `three@0.169.0`, `@react-three/fiber@8.17.10`,
+      `@react-three/postprocessing@2.16.3`, `postprocessing@6.36.4`. The sphere is
+      lazy-loaded, so `ui.brain: 2d` / weak machines never fetch `three`.
+
+125. **v4 motion system: CSS-first, superseding the spec's framer-motion + lucide lock
+    (V4).** Spec §3 locked "Motion (framer-motion) + lucide" for the animated UI. Deferred
+    to build time, that lock lost to the repo's own shape, so v4 **reverses it** (recorded
+    here as a decision, not drift; owner-approved): the UI is 100 % global CSS + CSS-var
+    tokens (`styles/tokens.css` + `styles/app.css`) with motion tokens already present;
+    modals are **native `<dialog>`** (`showModal()/close()`), which framer's
+    `AnimatePresence` exit-animation fights; tests are **pure-logic only, no component/DOM
+    tests by design**, so framer JSX would be untestable in the repo norm; and a heavy
+    dep cuts against the thin-shell footprint (#119). So the motion system is plain CSS
+    driving off shared tokens — **zero new deps**.
+    - **One collapse lever, three triggers.** A pure `graph/motion.ts`
+      `motionLevel(reduced, performanceMode, tier) → full | lite | off` folds OS
+      reduced-motion, the performanceMode opt-in, and the governor's 2D floor into one
+      verdict; `useMotionFlag` publishes it to `<body data-motion>`. All enter/hover
+      motion uses the `--dur-*` durations, and reduced-motion / `data-motion="off"` both
+      zero those durations — so decorative motion collapses through the SAME mechanism
+      that already served prefers-reduced-motion. Continuous emoji loops (literal
+      durations) are gated off explicitly for reduced / off / lite.
+    - **#116 consolidated.** The three ad-hoc `matchMedia("(prefers-reduced-motion)")`
+      reads (Scene / CoreGauge / BrainGraph) collapse into one live `useReducedMotion`
+      hook — reduced-motion is now honored app-wide from a single source.
+    - **Cohesion via palette, not a new icon set.** `<body data-pstate>` drives
+      `--accent-live` so chrome accents (active-tab underline, omnibox focus ring) track
+      the live pipeline hue, matching the sphere gauge (`--accent` already equals the
+      sphere's `--state-thinking` blue). **Emoji icons stay** — a lucide swap is a
+      deliberate rebrand, parked, not a v4 polish item.
+    - **Safety.** The confirmation `<dialog>` gets ENTER animation only; Approve/Deny/Esc
+      keep firing `postConfirm` synchronously and the dialog closes instantly — **no user
+      action is ever gated behind an animation.** Pure frontend; no backend touch, so
+      frozen ground and `tests/test_safety.py` are untouched, and v4 adds **no config
+      flag** (reduced-motion is OS/CSS, performanceMode is the existing localStorage
+      opt-in).

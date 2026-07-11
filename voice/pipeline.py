@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 from core.intents import is_end_phrase
+from voice.amplitude import Throttle, quantize_level, rms_int16
 from voice.tts import split_sentences
 
 _PUNCT_RE = re.compile(r"[^\w\s]|[_।]", re.UNICODE)
@@ -136,6 +137,10 @@ class VoicePipeline:
         self._thread: threading.Thread | None = None
         self._bridge_future = None
         self._hotkey = None
+        # V3e honest amplitude: mic RMS during listening throttled to ~15 Hz (the
+        # bus has no rate-limit) → mic_rms on /ws/activity. TTS RMS rides the
+        # audio_io.play on_level callback (naturally ~10 Hz). Additive only.
+        self._mic_throttle = Throttle(hz=15.0)
 
     # -- lifecycle ------------------------------------------------------------
 
@@ -287,6 +292,11 @@ class VoicePipeline:
         self.loop.call_soon_threadsafe(
             functools.partial(self.bus.publish, kind, "voice", **payload)
         )
+
+    def _emit_tts_level(self, level: float) -> None:
+        """audio_io.play on_level callback (player thread) → honest tts_rms.
+        _publish is thread-safe, so publishing from the player thread is fine."""
+        self._publish("tts_rms", rms=quantize_level(level))
 
     def _submit(self, text: str):
         return asyncio.run_coroutine_threadsafe(self.agent.run_turn(text), self.loop)
@@ -465,6 +475,9 @@ class VoicePipeline:
             done = False
             while (chunk := frames.pop(_VAD_FRAME)) is not None:
                 recorded.append(chunk)
+                # Honest listening ripple: publish the real mic RMS (~15 Hz).
+                if self._mic_throttle.ready(time.monotonic()):
+                    self._publish("mic_rms", rms=quantize_level(rms_int16(chunk)))
                 if self.vad.utterance_done(chunk):
                     if not getattr(self.vad, "speech_started", False):
                         recorded.clear()  # was all pre-speech silence — keep waiting
@@ -640,6 +653,7 @@ class VoicePipeline:
                 player = threading.Thread(
                     target=self.audio.play,
                     args=(pcm, sample_rate, stop_playback),
+                    kwargs={"on_level": self._emit_tts_level},
                     daemon=True,
                 )
                 player.start()

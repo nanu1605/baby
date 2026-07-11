@@ -123,6 +123,22 @@ body {
   border-color: var(--state-executing);
 }
 
+/* V2 frame-governor tier chip — only rendered while demoted (lite3d / 2d). */
+.tier-chip {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  white-space: nowrap;
+}
+.tier-chip.tier-2d {
+  border-color: var(--red);
+  color: var(--red);
+}
+
 /* gauges */
 .gauges {
   display: flex;
@@ -1057,4 +1073,174 @@ dialog::backdrop {
     top: 56px;
     width: calc(100vw - 1.25rem);
   }
+}
+
+/* =========================================================================
+   V4 motion system — CSS-first (DECISIONS #125). Enter + hover motion rides the
+   shared --dur-* / --ease* tokens, so prefers-reduced-motion, performanceMode, and
+   the 2D floor all collapse it by zeroing the durations (tokens.css). Only the
+   continuous emoji loops use literal durations and are gated explicitly at the end.
+   The confirm modal keeps ENTER animation only — close/resolve stays instant so no
+   action is ever gated behind an animation.
+   ========================================================================= */
+
+/* -- overlay enter animations (duration = --dur-* → auto-collapse when motion off) -- */
+.confirm-dialog[open],
+.memory-dialog[open] {
+  animation: v4-dialog-in var(--dur-med) var(--ease-emphasized) backwards;
+}
+.confirm-dialog[open]::backdrop,
+.memory-dialog[open]::backdrop {
+  animation: v4-fade-in var(--dur-med) var(--ease) backwards;
+}
+.inspector {
+  animation: v4-slide-in-right var(--dur-med) var(--ease-emphasized) backwards;
+}
+.omni-results {
+  transform-origin: top center;
+  animation: v4-pop-in var(--dur-fast) var(--ease-out) backwards;
+}
+.toast {
+  animation: v4-toast-in var(--dur-med) var(--ease-spring) backwards;
+}
+.panel-backdrop {
+  animation: v4-fade-in var(--dur-fast) var(--ease) backwards;
+}
+@media (max-width: 720px) {
+  .side-panel {
+    animation: v4-slide-in-right var(--dur-med) var(--ease-emphasized) backwards;
+  }
+}
+
+@keyframes v4-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+}
+@keyframes v4-fade-in {
+  from { opacity: 0; }
+}
+@keyframes v4-slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+}
+@keyframes v4-pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+}
+@keyframes v4-toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+}
+
+/* -- micro-interactions: hover/press feedback on chrome controls (ride --dur-fast) -- */
+.game-btn,
+.mem-btn,
+.perf-btn,
+.kill-btn,
+.tabs button,
+.panel-collapse,
+.panel-expand,
+.boost-chip,
+.dialog-buttons button {
+  transition:
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease-spring);
+}
+.game-btn:active,
+.mem-btn:active,
+.perf-btn:active,
+.kill-btn:active,
+.tabs button:active,
+.dialog-buttons button:active {
+  transform: scale(0.94);
+}
+
+/* -- state feedback that eases instead of snapping -- */
+.router-state .dot {
+  transition: background var(--dur-med) var(--ease), box-shadow var(--dur-med) var(--ease);
+}
+.state-chip {
+  transition: background var(--dur-med) var(--ease), color var(--dur-med) var(--ease);
+}
+
+/* -- accent-live tracks the live pipeline state (cohesion with the sphere gauge).
+      useMotionFlag publishes <body data-pstate>; chrome accents that opt into
+      --accent-live breathe idle → listening → thinking → speaking → executing. -- */
+body[data-pstate="listening"] { --accent-live: var(--state-listening); }
+body[data-pstate="thinking"] { --accent-live: var(--state-thinking); }
+body[data-pstate="speaking"] { --accent-live: var(--state-speaking); }
+body[data-pstate="executing"] { --accent-live: var(--state-executing); }
+.tabs button.active {
+  /* inset shadow, not border-bottom — an accent underline with zero layout shift */
+  box-shadow: inset 0 -2px 0 var(--accent-live);
+  transition: box-shadow var(--dur-med) var(--ease);
+}
+.omni-input-wrap:focus-within {
+  border-color: var(--accent-live);
+}
+
+/* -- emoji micro-animation on ACTIVE REAL STATE — continuous loops (literal
+      durations), so they are gated for reduced-motion / off / lite below -- */
+.game-btn.on {
+  animation: v4-soft-pulse 2.4s var(--ease) infinite;
+}
+.boost-chip {
+  position: relative;
+}
+/* Composited glow: a static-shadow ::after whose OPACITY pulses. opacity is
+   compositor-only; animating box-shadow directly repaints the (wide) chip each frame. */
+.boost-chip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 10px 2px var(--node-brain-glow);
+  opacity: 0;
+  pointer-events: none;
+  animation: v4-glow-pulse 1.8s var(--ease) infinite;
+}
+.tier-chip .cog {
+  display: inline-block;
+  animation: v4-spin 3.2s linear infinite;
+}
+.conn-pill {
+  animation: v4-soft-pulse 1.6s var(--ease) infinite;
+}
+
+@keyframes v4-soft-pulse {
+  50% { opacity: 0.5; }
+}
+@keyframes v4-glow-pulse {
+  50% { opacity: 1; }
+}
+@keyframes v4-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* -- collapse the continuous loops when motion is off (reduced-motion / perf / 2D)
+      or lite (drop the flourish, keep enter+hover). Enter/hover motion above already
+      self-collapses via --dur = 0, so only these loops need an explicit gate. -- */
+@media (prefers-reduced-motion: reduce) {
+  .game-btn.on,
+  .boost-chip::after,
+  .tier-chip .cog,
+  .conn-pill {
+    animation: none;
+  }
+}
+body[data-motion="off"] .game-btn.on,
+body[data-motion="off"] .boost-chip::after,
+body[data-motion="off"] .tier-chip .cog,
+body[data-motion="off"] .conn-pill,
+body[data-motion="lite"] .game-btn.on,
+body[data-motion="lite"] .boost-chip::after,
+body[data-motion="lite"] .tier-chip .cog,
+body[data-motion="lite"] .conn-pill {
+  animation: none;
+}
+/* The B7 streaming caret is decorative too: its own @media(prefers-reduced-motion)
+   gate (up at the cursor rule) doesn't cover performanceMode / the 2D floor, so extend
+   the collapse to data-motion here — keep the static ▍ (opacity:1), just stop the blink. */
+body[data-motion="off"] .msg.assistant.streaming .md-plain::after,
+body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
+  animation: none;
+  opacity: 1;
 }

@@ -5,6 +5,7 @@ import { groupAnchors } from "../graph/layout";
 import { subscribePulses } from "../graph/pulseBus";
 import type { PulseClass } from "../graph/pulseBus";
 import { startRenderClock } from "../graph/renderClock";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useBrain } from "../store";
 import type { GraphData, GraphNode, PipelineState } from "../types";
 
@@ -82,14 +83,9 @@ export default function BrainGraph() {
   const perfRef = useRef(performanceMode); perfRef.current = performanceMode;
   const selRef = useRef(selected); selRef.current = selected;
 
-  const reducedRef = useRef(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    reducedRef.current = mq.matches;
-    const on = () => { reducedRef.current = mq.matches; };
-    mq.addEventListener?.("change", on);
-    return () => mq.removeEventListener?.("change", on);
-  }, []);
+  // Shared reduced-motion source (#116); mirrored into a ref for the draw closure.
+  const reduced = useReducedMotion();
+  const reducedRef = useRef(reduced); reducedRef.current = reduced;
 
   // pulse/flash runtime state
   const linkMap = useRef<Map<string, any>>(new Map());

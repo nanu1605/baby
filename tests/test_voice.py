@@ -158,11 +158,13 @@ class FakeAudio:
     def drain(self):
         pass
 
-    def play(self, samples, samplerate, stop):
+    def play(self, samples, samplerate, stop, on_level=None):
         self.play_calls += 1
         for _ in range(20):  # ~200ms of chunked playback
             if stop.is_set():
                 return False
+            if on_level is not None:
+                on_level(0.0)
             time.sleep(0.01)
         return True
 

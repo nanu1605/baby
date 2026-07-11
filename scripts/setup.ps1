@@ -265,6 +265,51 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
     Write-Host "Node unavailable - skipping v3 UI build. The classic UI works as before." -ForegroundColor Yellow
 }
 
+# --- 3h. v4 native shell build: Rust toolchain + Tauri shell (v4.0.0) ---------
+# ui/shell (Tauri) is thin native chrome over the FastAPI-served UI (DECISIONS
+# #119). It is a BUILD-time artifact only; the browser UI at 127.0.0.1:8765 is
+# untouched and stays the default (ui.shell: browser). Fail-soft: if Rust, the
+# MSVC linker, or the build itself is unavailable, setup continues and only the
+# native window is skipped - nothing about the assistant changes.
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing the Rust toolchain via winget (for the native shell)..." -ForegroundColor Yellow
+    try {
+        winget install --id Rustlang.Rustup -e `
+            --accept-package-agreements --accept-source-agreements
+        # rustup/cargo land in ~\.cargo\bin; refresh this session's PATH to see them.
+        $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                    [Environment]::GetEnvironmentVariable("Path", "User") + ";" +
+                    (Join-Path $env:USERPROFILE ".cargo\bin")
+    } catch {
+        Write-Host "Rust install skipped - the native shell won't build; the browser UI is unaffected." -ForegroundColor Yellow
+    }
+}
+if ((Get-Command cargo -ErrorAction SilentlyContinue) -and (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Building the v4 native shell (npm install + cargo build)..." -ForegroundColor Yellow
+    Write-Host "(Cargo needs VS Build Tools with the 'Desktop development with C++' workload to link.)" -ForegroundColor Cyan
+    Push-Location ui\shell
+    try {
+        npm install
+        if ($LASTEXITCODE -eq 0) {
+            Push-Location src-tauri
+            try {
+                cargo build
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "Native shell built. Enable with  ui.shell: native  in config.yaml (V1+)." -ForegroundColor Cyan
+                    Write-Host "Installer: npm --prefix ui/shell run build  (NSIS in src-tauri\target\release\bundle)." -ForegroundColor Cyan
+                    Write-Host "(rollback: ui.shell: browser; the 127.0.0.1:8765 UI always works)." -ForegroundColor Cyan
+                } else {
+                    Write-Host "cargo build failed - native shell not built; the browser UI is unaffected." -ForegroundColor Yellow
+                }
+            } finally { Pop-Location }
+        } else {
+            Write-Host "npm install failed in ui/shell - native shell not built; the browser UI is unaffected." -ForegroundColor Yellow
+        }
+    } finally { Pop-Location }
+} else {
+    Write-Host "Rust or Node unavailable - skipping the native shell build. The browser UI works as before." -ForegroundColor Yellow
+}
+
 # --- 4. Secrets template -----------------------------------------------------
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"

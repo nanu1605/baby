@@ -1,5 +1,52 @@
 # Changelog
 
+## v4.0.0 — native app + 3D neural brain (2026-07-11)
+
+The Brain grows a body and a third dimension: the same FastAPI-served UI gains a
+thin **Tauri** desktop shell, the living graph becomes a **3D neural sphere**, and a
+frame governor holds 60 fps under load. The router, provider and safety internals stay
+frozen ground — v4 adds only a native shell (loads the same `127.0.0.1:8765` build),
+additive read-only fields, and code-defaulted rollback flags. Both flags are
+non-bricking: `ui.shell: browser` keeps the browser UI, `ui.brain: 2d` keeps the v3
+canvas graph. Owner finalizes the date on tag; owner merges + tags.
+
+- V0: branch `feature/v4-native-3d-brain`; a byte-identical Tauri-vs-Electron spike
+  measured on the 5060 Ti → **Tauri** (thin chrome over the local backend, not a second
+  SPA copy). "Quit Baby (app)" closes the window; the always-on service persists — no
+  HTTP shutdown endpoint (DECISIONS #118–121).
+- V1: **native shell parity** — attach-or-spawn the backend, close-to-tray,
+  single-instance, a native tray folded off `/ws/activity`, autostart branch +
+  installer icon. The backend skips its pystray tray when `ui.shell: native`; full v3
+  parity renders inside the shell (DECISIONS #122).
+- V2: **frame governor + VRAM watchdog + fixed-timestep** — three pure, unit-tested TS
+  modules (tier machine with hysteresis, fixed-timestep accumulator, VRAM watchdog)
+  form the 60 fps spine the sphere rides. The only backend touch is an additive,
+  quantized `vram` field on `/ws/state`; `render.{target_fps,tier,idle_full_on_desktop}`
+  config is code-defaulted (DECISIONS #123).
+- V3: **the 3D neural sphere** (behind `ui.brain: 3d`). Nodes on deterministic sphere
+  regions, dark great-circle edges, glow + selective bloom shed by the governor. Honest
+  pulses fire the **real** turn path node→node; the central core is a state gauge whose
+  listening ripple / speaking shimmer ride REAL mic/TTS loudness (additive `mic_rms` /
+  `tts_rms` on `/ws/activity`, quantized + throttled at the source); brain nodes recolor
+  on router health, the answering brain highlights, game mode ghosts the local 9B. A
+  dead WebGL context falls to the 2D graph with a bounded-backoff retry. Backend touches
+  are additive-only; `tests/test_safety.py` untouched (DECISIONS #124).
+- V4: **motion system** — a coherent, CSS-first animation layer (no framer-motion,
+  no lucide; superseding the spec's locked stack, DECISIONS #125). Shared motion tokens
+  drive overlay enter animations (dialogs, inspector, omnibox, toasts, backdrop), control
+  micro-interactions, and emoji micro-animation on real state (game-mode pulse, boost
+  glow, tier-chip spin, reconnect-pill pulse). One `motionLevel` verdict published to
+  `<body data-motion>` collapses all decorative motion under reduced-motion /
+  performanceMode / the 2D floor (a single lever consolidating Decision #116 app-wide);
+  chrome accents track the live pipeline hue via `--accent-live` for cohesion with the
+  sphere. The safety-confirm dialog animates on enter only — its resolve stays
+  synchronous. Frontend-only; no backend touch, no new config flag.
+- V5: **release** — soak, perf gates across the three tiers (9B loaded/unloaded), the
+  disruptive `e2e_regression.py --with-project` battery + v2/v1.1 browser/TTS demos,
+  cold-start + long-session heap checks, and the release docs; the version is aligned to
+  **4.0.0** across the app and shell tracks. Owner-run acceptance via
+  `tests/manual/v5_release_checklist.md`; owner merges + tags.
+
 ## v3.0.0 — The Brain (2026-07-09)
 
 The vanilla web panel becomes **The Brain**: a React living-graph UI over the

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Baby shell - core defaults for the main window. Backend attach/spawn is Rust-side (std::process::Command in V1), so no shell-plugin capability is exposed to the webview. Widen only when a real seam needs it.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

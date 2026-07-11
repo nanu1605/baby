@@ -1,7 +1,7 @@
 {
   "name": "baby-brain-ui",
   "private": true,
-  "version": "3.0.0",
+  "version": "4.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,16 +11,21 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@react-three/fiber": "8.17.10",
+    "@react-three/postprocessing": "2.16.3",
     "dompurify": "3.4.11",
     "marked": "18.0.5",
+    "postprocessing": "6.36.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-force-graph-2d": "1.27.1",
+    "three": "0.169.0",
     "zustand": "5.0.2"
   },
   "devDependencies": {
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
+    "@types/three": "0.169.0",
     "@vitejs/plugin-react": "4.3.4",
     "jsdom": "29.1.1",
     "typescript": "5.6.3",

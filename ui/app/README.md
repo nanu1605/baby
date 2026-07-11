@@ -1,4 +1,4 @@
-# Baby — "The Brain" UI (v3)
+# Baby — "The Brain" UI (v4)
 
 React 18 + TypeScript + Vite frontend. Baby's mind rendered as a living graph.
 

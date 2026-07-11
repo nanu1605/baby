@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,7 +49,61 @@ _ACTIVITY_KINDS = {
     "task_done",
     "project_started",
     "project_done",
+    # V3e honest amplitude (additive) — the 3D core gauge's listening ripple /
+    # speaking shimmer. Throttled ~15/~10 Hz at the source; intercepted client-side
+    # by foldAmplitude BEFORE the event ring so they never pollute the feed.
+    "mic_rms",
+    "tts_rms",
 }
+
+# V2 frame governor: VRAM is pushed onto /ws/state so the client-side watchdog can
+# demote 3D when the local model loads (spec §0.4 additive field). Both knobs below
+# keep it cheap: sample pynvml at most every _VRAM_SAMPLE_S, and quantize so the
+# exact-equality diff on the pump (_state_pump) does not fire on every wiggle.
+_VRAM_SAMPLE_S = 1.5
+_STATE_TICK_S = 1.5
+_VRAM_BUCKET_GB = 0.25
+
+
+def _quantize_vram(used_gb: float, bucket: float = _VRAM_BUCKET_GB) -> float:
+    """Bucket VRAM to `bucket` GB so /ws/state's exact-equality diff stays quiet at
+    idle and only fires when usage crosses a bucket (e.g. the local 9B loading)."""
+    return round(round(used_gb / bucket) * bucket, 2)
+
+
+_DEFAULT_RENDER = {"target_fps": 60, "tier": "auto", "idle_full_on_desktop": True}
+
+
+def _render_config(config: dict) -> dict:
+    """Additive render.* config for the V2 frame governor, code-defaulted. Read the
+    same way as ui.frontend; never requires a config.yaml edit."""
+    raw = config.get("render") if isinstance(config, dict) else None
+    r = raw if isinstance(raw, dict) else {}
+
+    def _as_int(v, default: int) -> int:
+        # A malformed value (e.g. target_fps: "60fps") must degrade to the default,
+        # never 500 the whole /stats payload.
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "target_fps": _as_int(r.get("target_fps"), _DEFAULT_RENDER["target_fps"]),
+        "tier": str(r.get("tier", _DEFAULT_RENDER["tier"])),
+        "idle_full_on_desktop": bool(
+            r.get("idle_full_on_desktop", _DEFAULT_RENDER["idle_full_on_desktop"])
+        ),
+    }
+
+
+def _ui_brain(config: dict) -> str:
+    """Additive read of ui.brain for the V3 3D-sphere gate. Code-default "3d" (the
+    centerpiece; the frame governor auto-demotes to the 2D floor under pressure).
+    "2d" is the one-line rollback to the v3 canvas graph. Never requires a config edit."""
+    raw = config.get("ui", {}) if isinstance(config, dict) else {}
+    val = str(raw.get("brain", "3d")).strip().lower() if isinstance(raw, dict) else "3d"
+    return "2d" if val == "2d" else "3d"
 
 
 class _StateDeriver:
@@ -269,6 +324,8 @@ def create_app(ctx: UIContext) -> FastAPI:
         data = await asyncio.to_thread(snapshot)
         data["model"] = ctx.config.get("models", {}).get("daily", {}).get("model", "?")
         data["turn_running"] = ctx.turn_running()
+        data["render"] = _render_config(ctx.config)  # V2 governor knobs (code-defaulted)
+        data["ui"] = {"brain": _ui_brain(ctx.config)}  # V3 sphere gate (code-defaulted 3d)
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
@@ -278,6 +335,11 @@ def create_app(ctx: UIContext) -> FastAPI:
         game = getattr(ctx.agent.provider, "game_mode", None)
         if game is not None:
             data["game_mode"] = bool(game)
+        # V3 watchdog signal (additive §0.4 GPU-state): is the local model resident?
+        # Read from the shared sampler cache; omitted while unknown (fail-open UI).
+        _ensure_vram_sampler()
+        if _vram_cache["local_loaded"] is not None:
+            data["local_model_loaded"] = _vram_cache["local_loaded"]
         latency = getattr(ctx.agent.provider, "latency", None)
         if latency:
             def pct(samples, p):
@@ -528,6 +590,58 @@ def create_app(ctx: UIContext) -> FastAPI:
         finally:
             pump.cancel()
 
+    _vram_cache: dict = {"used": None, "total": None, "local_loaded": None, "task": None}
+
+    def _read_gpu():
+        try:
+            from tools.system_stats import _gpu
+
+            return _gpu()
+        except Exception:  # noqa: BLE001 — no GPU is not an error
+            return None
+
+    async def _read_local_loaded():
+        # V3 watchdog signal (additive §0.4): is the LOCAL daily model resident in
+        # VRAM right now? Reuses the provider's own read-only /api/ps helper —
+        # desktop-wide NVML "free" proved meaningless on Windows (apps overcommit),
+        # so the honest #118 demote trigger is model residency, not headroom.
+        # All provider shapes expose loaded_context_length at the TOP level (the
+        # router classes delegate to their daily Ollama; the bare local_primary
+        # rollback provider self-reports), so read it there — reaching through
+        # .daily missed the rollback shape (review-caught).
+        # Semantics: no helper on the provider → None (field omitted → UI fails
+        # open); helper answered → bool. Note the helper itself folds "ollama
+        # unreachable" into None==not-resident → False here; that reads as "lift
+        # the cap" during a wedged-daemon window, which the frame governor
+        # backstops — conservative enough, and usually simply true (daemon down
+        # means nothing is resident).
+        try:
+            fn = getattr(ctx.agent.provider, "loaded_context_length", None)
+            if fn is None:
+                return None
+            return (await fn()) is not None
+        except Exception:  # noqa: BLE001 — unknown beats a crashed sampler
+            return None
+
+    async def _vram_sampler() -> None:
+        # One shared, throttled sampler for all /ws/state clients. The pynvml read
+        # runs OFF the event loop (like /stats' snapshot) so a wedged NVIDIA driver
+        # can never stall the single loop; _state_snapshot only reads the cache.
+        while True:
+            gpu = await asyncio.to_thread(_read_gpu)
+            if gpu:
+                _vram_cache["used"] = _quantize_vram(gpu["vram_used_gb"])
+                _vram_cache["total"] = gpu["vram_total_gb"]
+            else:
+                _vram_cache["used"] = None
+                _vram_cache["total"] = None
+            _vram_cache["local_loaded"] = await _read_local_loaded()
+            await asyncio.sleep(_VRAM_SAMPLE_S)
+
+    def _ensure_vram_sampler() -> None:
+        if _vram_cache["task"] is None:
+            _vram_cache["task"] = asyncio.ensure_future(_vram_sampler())
+
     def _state_snapshot(deriver: _StateDeriver) -> dict:
         # Pipeline state comes from the event stream (deriver); router health +
         # game mode are read live off the provider each time (they change without
@@ -535,29 +649,47 @@ def create_app(ctx: UIContext) -> FastAPI:
         provider = ctx.agent.provider
         active = getattr(provider, "active", None) or {}
         router = active.get("state") if isinstance(active, dict) else None
-        return {
+        snap = {
             "type": "state",
             "state": deriver.state,
             "router": router or "unknown",
             "game_mode": bool(getattr(provider, "game_mode", False)),
         }
+        used = _vram_cache["used"]
+        if used is not None:
+            snap["vram_used_gb"] = used
+            snap["vram_total_gb"] = _vram_cache["total"]
+        if _vram_cache["local_loaded"] is not None:
+            snap["local_model_loaded"] = _vram_cache["local_loaded"]
+        return snap
 
     async def _state_pump(ws: WebSocket) -> None:
         """Synthesize + push pipeline state; send only on change (plus an initial
-        snapshot so a fresh client paints immediately)."""
+        snapshot so a fresh client paints immediately). A periodic tick re-evaluates
+        even without a bus event so a VRAM-bucket change still reaches the client
+        (the governor's watchdog needs it while the pipeline is otherwise idle)."""
+        _ensure_vram_sampler()  # shared, lazy-started on the first /ws/state client
         q = ctx.bus.subscribe()
         deriver = _StateDeriver()
         last = _state_snapshot(deriver)
+        get_task = asyncio.ensure_future(q.get())
         try:
             await ws.send_json(last)
             while True:
-                event = await q.get()
-                deriver.feed(event)
+                tick = asyncio.ensure_future(asyncio.sleep(_STATE_TICK_S))
+                done, _ = await asyncio.wait(
+                    {get_task, tick}, return_when=asyncio.FIRST_COMPLETED
+                )
+                tick.cancel()
+                if get_task in done:
+                    deriver.feed(get_task.result())
+                    get_task = asyncio.ensure_future(q.get())  # re-arm; never lose an event
                 snap = _state_snapshot(deriver)
                 if snap != last:
                     await ws.send_json(snap)
                     last = snap
         finally:
+            get_task.cancel()
             ctx.bus.unsubscribe(q)
 
     @app.websocket("/ws/state")
@@ -573,6 +705,18 @@ def create_app(ctx: UIContext) -> FastAPI:
             pump.cancel()
 
     return app
+
+
+def _shell_owns_tray(config: dict) -> bool:
+    """The backend skips its own pystray icon when the v4 desktop shell owns the system
+    tray, to avoid a double tray (V1 reconciliation). True when the shell spawned us —
+    it sets BABY_SHELL_TRAY=1, so launching baby-shell.exe suppresses the backend tray
+    even if ui.shell was never set — OR when ui.shell: native (the attached-service path,
+    where the env var is absent). Additive read — code-defaults to browser/off; changes
+    no product logic."""
+    if os.environ.get("BABY_SHELL_TRAY") == "1":
+        return True
+    return str(config.get("ui", {}).get("shell", "browser")).strip().lower() == "native"
 
 
 def _toast(title: str, message: str) -> None:
@@ -796,7 +940,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             print("telegram failed to start — continuing without it")
 
     tray = None
-    if config.get("tray", {}).get("enabled", True):
+    if config.get("tray", {}).get("enabled", True) and not _shell_owns_tray(config):
         from ui.tray import TrayIcon
 
         loop = asyncio.get_running_loop()

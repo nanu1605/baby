@@ -9,6 +9,7 @@ import { openSocket } from "../api/socket";
 import { nextEventSeq, useBrain } from "../store";
 import { emitActions } from "../graph/pulseBus";
 import { eventToActions } from "../graph/edgeMap";
+import { foldAmplitude } from "../graph/amplitude";
 import type { LiveEvent, WSFrame } from "../types";
 
 // Status lines worth a transient toast (avoid noisy voice "listening" spam).
@@ -31,6 +32,11 @@ function toLiveEvent(msg: WSFrame): LiveEvent {
 export function useActivitySocket(): void {
   useEffect(() => {
     const sock = openSocket("/ws/activity", (msg) => {
+      // Honest amplitude (V3e): high-rate mic_rms/tts_rms feed the 3D core gauge
+      // via a module ref, NOT the store or the event ring — intercept and return
+      // BEFORE pushEvent so ~15 Hz can't flood the 500-cap feed in ~33 s.
+      if (foldAmplitude(msg)) return;
+
       const b = useBrain.getState();
       b.pushEvent(toLiveEvent(msg));
 
