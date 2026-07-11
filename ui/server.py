@@ -861,7 +861,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     provider = build_provider(config, bus=bus, db=db)
 
     wait_s = int(config.get("startup", {}).get("wait_for_model_s", 120))
-    ok, notes = await ready_check(provider, db, wait_s=wait_s)
+    # v5: default to cloud (game) mode at boot — don't warm the local 9B, keep the
+    # GPU free, let cloud answer. Code-default True; startup.cloud_mode: false
+    # restores warm-at-boot. Safe-default read (never requires a config edit).
+    cloud_mode = bool(config.get("startup", {}).get("cloud_mode", True))
+    ok, notes = await ready_check(provider, db, wait_s=wait_s, cloud_mode=cloud_mode)
     for note in notes:
         print(note)
     if not ok:
@@ -872,6 +876,15 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     # Cloud-primary router runs a 45 s NIM health probe; needs the live loop.
     if hasattr(provider, "start"):
         provider.start()
+
+    # v5 default cloud mode: start with the local brain unloaded, all routing on
+    # cloud. Set the flag directly (NOT set_game_mode, which would try to unload a
+    # model that was never warmed + publish a spurious status). The ladder already
+    # branches on game_mode — this changes no routing logic. Privacy pins still
+    # force local on demand (they sit above the game-mode branch), and the existing
+    # toggle re-warms local + re-announces "Baby ready" when the owner turns it off.
+    if cloud_mode and hasattr(provider, "game_mode"):
+        provider.game_mode = True
 
     gamewatch = None
     if config.get("game_mode", {}).get("auto_detect") and hasattr(provider, "set_game_mode"):
@@ -1067,6 +1080,8 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             cue.play_degraded()
     else:
         ready_msg = f"Baby ready (text only) — http://{host}:{port}"
+    if cloud_mode:
+        ready_msg += " · cloud mode (local brain idle)"
     print(ready_msg)
     _toast("Baby ready", ready_msg)
     bus.publish("status", "ui", text=ready_msg)
