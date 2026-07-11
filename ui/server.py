@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -707,9 +708,14 @@ def create_app(ctx: UIContext) -> FastAPI:
 
 
 def _shell_owns_tray(config: dict) -> bool:
-    """When ui.shell: native, the v4 desktop shell owns the system tray, so the
-    backend skips its own pystray icon to avoid a double tray (V1 reconciliation).
-    Additive config read — code-defaults to "browser"; changes no product logic."""
+    """The backend skips its own pystray icon when the v4 desktop shell owns the system
+    tray, to avoid a double tray (V1 reconciliation). True when the shell spawned us —
+    it sets BABY_SHELL_TRAY=1, so launching baby-shell.exe suppresses the backend tray
+    even if ui.shell was never set — OR when ui.shell: native (the attached-service path,
+    where the env var is absent). Additive read — code-defaults to browser/off; changes
+    no product logic."""
+    if os.environ.get("BABY_SHELL_TRAY") == "1":
+        return True
     return str(config.get("ui", {}).get("shell", "browser")).strip().lower() == "native"
 
 

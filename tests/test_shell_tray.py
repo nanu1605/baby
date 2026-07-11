@@ -3,7 +3,15 @@ v4 native shell owns it (ui.shell: native). Pure config read — no pystray, no 
 
 from __future__ import annotations
 
+import pytest
+
 from ui.server import _shell_owns_tray
+
+
+@pytest.fixture(autouse=True)
+def _clear_shell_env(monkeypatch):
+    # The config-read tests must not be swayed by an ambient BABY_SHELL_TRAY.
+    monkeypatch.delenv("BABY_SHELL_TRAY", raising=False)
 
 
 def test_default_config_backend_owns_tray():
@@ -28,3 +36,17 @@ def test_native_is_case_and_space_insensitive():
 def test_unknown_value_backend_keeps_tray():
     # Any non-native value is treated as "not native" -> backend keeps its tray.
     assert _shell_owns_tray({"ui": {"shell": "electron"}}) is False
+
+
+def test_shell_spawned_env_owns_tray(monkeypatch):
+    # The native shell spawns the backend with BABY_SHELL_TRAY=1 -> backend skips its
+    # tray regardless of the config flag (fixes the double tray on a manual launch).
+    monkeypatch.setenv("BABY_SHELL_TRAY", "1")
+    assert _shell_owns_tray({}) is True
+    assert _shell_owns_tray({"ui": {"shell": "browser"}}) is True
+
+
+def test_shell_env_other_value_ignored(monkeypatch):
+    # Only "1" counts; a stray value doesn't suppress the tray.
+    monkeypatch.setenv("BABY_SHELL_TRAY", "0")
+    assert _shell_owns_tray({"ui": {"shell": "browser"}}) is False

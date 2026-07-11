@@ -155,6 +155,10 @@ fn spawn_backend(app: &AppHandle, home: &Path) {
     cmd.arg("run.py")
         .arg("--all")
         .current_dir(home)
+        // Tell the backend the native shell owns the tray, so it skips its pystray icon
+        // even when ui.shell isn't set to native (avoids a double tray). Only affects a
+        // backend WE spawn; an attached always-on service relies on ui.shell instead.
+        .env("BABY_SHELL_TRAY", "1")
         .creation_flags(CREATE_NO_WINDOW);
     match cmd.spawn() {
         Ok(child) => {
