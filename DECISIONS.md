@@ -1129,3 +1129,52 @@ Running log of non-obvious choices made during the build. Newest last.
       (`startup.cloud_mode: false` or a cloud key; the v6 installer wizard handles key
       entry for end users). Rollbacks: `ui.history: off`, `startup.cloud_mode: false` —
       both code-defaulted, never written to `config.yaml`.
+
+## v6 — Public Windows Installer (2026-07-11)
+
+127. **v6 W0 packaging spike — the crux is shipping Python, not the NSIS wizard.**
+     v6 turns Baby from a one-user dev checkout into a downloadable Windows app.
+     Before any installer code, four unknowns were spiked (throwaway `spike/`,
+     deleted in W1); every dev-box-provable piece is green, and the two clean-VM
+     proofs are flagged owner-run.
+     - **Backend delivery = bundled `uv` + first-run `uv sync` (owner-chosen).** The
+       `.exe` bundles a tiny `uv.exe` + pinned `pyproject.toml` + `uv.lock`; first-run
+       does `uv python install` (managed CPython — no system Python) then `uv sync`
+       into `%LOCALAPPDATA%\baby\.venv`, reusing the exact `.venv` contract the shell
+       already spawns (`resolve_baby_home` is already `BABY_HOME`-aware). Freeze
+       (PyInstaller) was off the table: the tree pulls `torch` (via
+       `sentence-transformers` + `silero-vad`) plus ctranslate2/onnxruntime/sherpa/
+       sqlite-vec/kokoro/playwright native wheels — freezing that is fragile; the venv
+       is ~1–1.5 GB of prebuilt wheels instead.
+     - **A green `uv sync` is not proof — a post-sync FUNCTIONAL probe is.** A native
+       wheel can install yet fail to load (missing VC++ redist, bad ABI). The spike's
+       `health_probe.py` imports each wheel and does a real op (loads the .pyd);
+       proven all-green on the dev box incl. a live Chromium launch, and it ports
+       verbatim into W3's health check. Failure UX was proven against **real** `uv`
+       stderr and caught a real classifier bug — a DNS failure was mis-labeled a proxy
+       problem because uv's `client error (Connect)` chain matched a naive `CONNECT`
+       regex; tightened so a no-internet error never sends a user to configure a proxy.
+     - **Offline-first-install is OUT of scope.** The web-installer requires first-run
+       network by design (`uv sync` pulls wheels from PyPI; models from the Ollama
+       registry). This keeps the release tiny and installs current-by-default.
+     - **Model pull = Ollama `/api/pull` stream, resumable by construction.** Real
+       byte/%/speed/ETA rendering proven; a re-issued pull completes from cached
+       content-addressed blobs (the resume mechanism). The mid-pull NIC-kill is the
+       one owner clean-VM check.
+     - **Engine = NSIS, unchanged.** `tauri-cli 2.1.0` + the existing
+       `bundle.targets:["nsis"]` already emit a ~1.6 MB unsigned `*_x64-setup.exe` —
+       toolchain works, tiny size confirms the web-installer premise. NSIS covers the
+       wizard needs (license/EULA page, per-user `installMode`, post-install hooks,
+       native uninstaller). **Finding:** NSIS has no MSI-style Repair/Modify ARP
+       dialog, so v6 does **repair + mode-switch (cloud-only ↔ full) in-app** (W5),
+       leaving clean uninstall to NSIS — no WiX/MSI detour.
+     - **Signing = unsigned now + hook wired.** Owner publishes free, so the build
+       ships unsigned + a SmartScreen "More info → Run anyway" walkthrough + `.exe`
+       checksums. The hook is a single-key drop-in later (`bundle.windows.signCommand`
+       or `certificateThumbprint`+`timestampUrl`). The only free *trusted* path for a
+       public OSS repo is **SignPath.io Foundation (free OSS signing)** — a parallel
+       owner enrollment track, not a blocker.
+     - **Boundary finalized.** `.exe` carries only shell + wizard + `uv.exe` +
+       `pyproject`/`uv.lock` + `config.default.yaml` + `EULA.txt`; first-run fetches
+       the managed Python, the deps, [Full] Ollama + 9B, and the voice/embedder
+       assets. STOP for owner ratification before W1.
