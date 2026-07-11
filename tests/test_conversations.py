@@ -328,3 +328,34 @@ def test_delete_409_when_active_turn_running(tmp_path):
         assert asyncio.run(db.get_conversation_meta(conv)) is not None  # not deleted
     finally:
         asyncio.run(db.close())
+
+
+def test_db_delete_twin_purges_orphaned_message_vectors(tmp_path):
+    # The memory-OFF Database.delete_conversation twin must still purge
+    # message_vectors rows left by an earlier memory-ON run (embedder-warmup
+    # failed → memory=None, but the vec table persists in baby.db). Otherwise a
+    # reused message rowid inherits a stale embedding (messages.id has no
+    # AUTOINCREMENT). Guarded so an absent table is a no-op.
+    db = Database(tmp_path / "vecpurge.db")
+
+    async def run():
+        await db.connect()
+        conv = await db.create_conversation("ui")
+        mid = await db.add_message(conv, "user", "vector me", turn_id=1)
+        # simulate a leftover vector row from a prior memory-on run
+        await db.conn.execute(
+            "CREATE TABLE message_vectors (message_id INTEGER PRIMARY KEY, embedding BLOB)"
+        )
+        await db.conn.execute(
+            "INSERT INTO message_vectors (message_id, embedding) VALUES (?, ?)", (mid, b"x")
+        )
+        await db.conn.commit()
+
+        result = await db.delete_conversation(conv)
+        assert result["deleted"] == conv
+        cur = await db.conn.execute("SELECT COUNT(*) AS n FROM message_vectors")
+        n = (await cur.fetchone())["n"]
+        await db.close()
+        return n
+
+    assert asyncio.run(run()) == 0  # the orphaned vector row is gone

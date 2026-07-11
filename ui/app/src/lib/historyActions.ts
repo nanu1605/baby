@@ -42,9 +42,15 @@ export async function returnToLive(): Promise<void> {
   b.setTranscript(rows);
 }
 
-/** Start a fresh conversation; the previous one drops into history. */
+/**
+ * Start a fresh conversation; the previous one drops into history. Returns the
+ * new id, or null if the backend refused (409 turn-in-progress) — in which case
+ * the transcript is left untouched (blanking it mid-turn would corrupt the live
+ * stream), mirroring resume/delete.
+ */
 export async function startNewChat(): Promise<number | null> {
   const r = await newConversation();
+  if (!r.ok) return null;
   const data = (await r.json().catch(() => ({}))) as { conversation_id?: number };
   const b = useBrain.getState();
   b.setViewing(null);
@@ -82,9 +88,16 @@ export async function deleteConversationFlow(id: number): Promise<boolean> {
   const data = (await r.json().catch(() => ({}))) as { new_conversation_id?: number };
   const b = useBrain.getState();
   if (typeof data.new_conversation_id === "number") {
-    b.setViewing(null);
+    // The deleted conversation was the LIVE one; the backend rolled to a fresh
+    // one. Adopt it as active, but reset the PANEL only if it was actually
+    // showing the deleted conversation (the live transcript = viewing null, or
+    // explicitly viewing that id). If we're viewing a DIFFERENT past chat, leave
+    // it in place — it wasn't deleted (don't eject the user from where they are).
     b.setActiveConversationId(data.new_conversation_id);
-    b.setTranscript([]);
+    if (b.viewingConversationId === null || b.viewingConversationId === id) {
+      b.setViewing(null);
+      b.setTranscript([]);
+    }
   } else if (b.viewingConversationId === id) {
     await returnToLive();
   }

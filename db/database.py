@@ -287,18 +287,31 @@ class Database:
 
     async def delete_conversation(self, conversation_id: int) -> dict:
         """Base-table delete for the memory-disabled path (v5): messages (the
-        messages_ad trigger self-purges FTS), usage_log, and the conversation
-        row. No vector tables exist when memory is off, so there are none to
-        purge — MemoryStore.delete_conversation is the full RAG-purging version."""
+        messages_ad trigger self-purges FTS), any message-vector rows, usage_log,
+        and the conversation row. The vector tables are normally purged by
+        MemoryStore.delete_conversation, but a run whose embedder failed to warm
+        degrades to memory-off while message_vectors from an EARLIER run still
+        holds rows in baby.db — so purge them best-effort here too (guarded: the
+        table may be absent), closing the rowid-reuse mis-embedding hazard on
+        this path as well (messages.id has no AUTOINCREMENT)."""
         async with self.lock:
             cur = await self.conn.execute(
-                "SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?",
-                (conversation_id,),
+                "SELECT id FROM messages WHERE conversation_id = ?", (conversation_id,)
             )
-            n = (await cur.fetchone())["n"]
+            ids = [r["id"] for r in await cur.fetchall()]
             await self.conn.execute(
                 "DELETE FROM messages WHERE conversation_id = ?", (conversation_id,)
             )
+            if ids:
+                placeholders = ",".join("?" * len(ids))
+                for table in ("message_vectors", "message_embeddings"):
+                    try:
+                        await self.conn.execute(
+                            f"DELETE FROM {table} WHERE message_id IN ({placeholders})",
+                            ids,
+                        )
+                    except aiosqlite.OperationalError:
+                        pass  # table absent (memory never initialized) — nothing to purge
             await self.conn.execute(
                 "DELETE FROM usage_log WHERE conversation_id = ?", (conversation_id,)
             )
@@ -306,7 +319,7 @@ class Database:
                 "DELETE FROM conversations WHERE id = ?", (conversation_id,)
             )
             await self.conn.commit()
-        return {"deleted": conversation_id, "messages": n}
+        return {"deleted": conversation_id, "messages": len(ids)}
 
     # -- audit ---------------------------------------------------------------
 

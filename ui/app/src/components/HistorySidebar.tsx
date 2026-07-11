@@ -49,7 +49,11 @@ export default function HistorySidebar() {
 
   const onNew = async () => {
     try {
-      await startNewChat();
+      const id = await startNewChat();
+      if (id === null) {
+        pushToast("Can't start a new chat while a turn is running.", "error");
+        return;
+      }
       await refresh();
     } catch {
       pushToast("Couldn't start a new chat.", "error");
