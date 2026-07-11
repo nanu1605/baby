@@ -5,8 +5,9 @@ A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
 default, but privacy-pinned turns never leave the PC, and the warm local 9B
 keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **v3.0.0 — "The Brain"** ✅ — a living-graph UI over the real
-> router/voice/memory/tool paths, plus speaker verification v2.
+> Status: **v4.0.0 — native app + 3D neural brain** ✅ — a thin Tauri desktop shell,
+> the living graph reborn as a 3D neural sphere, and a coherent motion system, all held
+> to 60 fps by a frame governor. The browser UI and the v3 2D graph stay one flag away.
 > Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
 > change spec: [NIM_MIGRATION_PLAN.md](NIM_MIGRATION_PLAN.md)
 
@@ -180,7 +181,7 @@ and `/classic` is always available regardless of the flag — the daily-driver
 parity target lives on. The React app is built on setup (`ui/app/dist`, not
 committed).
 
-### Native app + 3D brain (v4 — in progress)
+### Native app + 3D brain (v4.0.0)
 
 v4 (branch `feature/v4-native-3d-brain`) wraps the **same** FastAPI-served UI in a
 thin **Tauri** desktop shell (native window, tray, single-instance, close-to-tray,
@@ -226,13 +227,13 @@ scripts\autostart.ps1 -Shell native    # open the window (attaching) at logon to
 
 ## Config
 
-`config.yaml` is the reference (richly commented). The v3 knobs:
+`config.yaml` is the reference (richly commented). The v3 + v4 knobs:
 
 ```yaml
 ui:
   frontend: v3          # v3 = "The Brain" React app; classic = vanilla rollback
                         # /classic is always served regardless of this flag
-  # --- v4 (in progress): both code-defaulted; no effect until their phase ships ---
+  # --- v4: both code-defaulted, non-bricking rollback flags ---
   shell: browser        # browser (default) = open the UI in a browser; native =
                         # launch the Tauri desktop shell (wired in V1). Rollback =
                         # shell: browser; the 127.0.0.1:8765 UI is untouched.
@@ -313,3 +314,4 @@ Unit tests never touch the network — the agent loop is tested against a script
 | v1.1.1 ✅ | Hotfix: sensor tool contract (#6) + DB poison hygiene (#7) |
 | v2.0.0 ✅ | Conversation mode + proceed/cancel (#2, #4), memory v2 — budgeted context + cross-session RAG + clear/wipe (#3, #5), token telemetry (#8) |
 | v3.0.0 ✅ | **The Brain** — living-graph UI (honest pulses, status gauge, node inspectors, "Search the brain…" omnibox) over a read-only graph data spine; speaker verification v2 (multi-centroid, session-trust, ships OFF); responsive + reconnect-resilient |
+| v4.0.0 ✅ | **Native app + 3D neural brain** — a thin Tauri desktop shell over the same FastAPI-served UI (attach-or-spawn, close-to-tray, single-instance, native tray); the living graph reborn as a 3D neural sphere (honest firing, mic/TTS amplitude gauge, router recolor, game-mode ghost); a 60 fps frame governor + VRAM watchdog; a CSS-first motion system; both rollback flags non-bricking (`ui.shell: browser`, `ui.brain: 2d`) |

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v4.0.0 native app + 3D neural brain (feature/v4-native-3d-brain)
+## v4.0.0 — native app + 3D neural brain (2026-07-11)
 
 The Brain grows a body and a third dimension: the same FastAPI-served UI gains a
 thin **Tauri** desktop shell, the living graph becomes a **3D neural sphere**, and a
@@ -41,7 +41,11 @@ canvas graph. Owner finalizes the date on tag; owner merges + tags.
   chrome accents track the live pipeline hue via `--accent-live` for cohesion with the
   sphere. The safety-confirm dialog animates on enter only — its resolve stays
   synchronous. Frontend-only; no backend touch, no new config flag.
-- V5 (soak + perf gates + release) still pending.
+- V5: **release** — soak, perf gates across the three tiers (9B loaded/unloaded), the
+  disruptive `e2e_regression.py --with-project` battery + v2/v1.1 browser/TTS demos,
+  cold-start + long-session heap checks, and the release docs; the version is aligned to
+  **4.0.0** across the app and shell tracks. Owner-run acceptance via
+  `tests/manual/v5_release_checklist.md`; owner merges + tags.
 
 ## v3.0.0 — The Brain (2026-07-09)
 

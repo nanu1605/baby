@@ -1,7 +1,7 @@
 {
   "name": "baby-shell",
   "private": true,
-  "version": "0.1.0",
+  "version": "4.0.0",
   "description": "Baby - native desktop shell (thin Tauri chrome over the FastAPI-served UI). See DECISIONS #119-#121.",
   "scripts": {
     "tauri": "tauri",

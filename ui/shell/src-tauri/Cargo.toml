@@ -1,6 +1,6 @@
 [package]
 name = "baby-shell"
-version = "0.1.0"
+version = "4.0.0"
 description = "Baby - native desktop shell (thin Tauri chrome over the FastAPI-served UI)"
 edition = "2021"
 
