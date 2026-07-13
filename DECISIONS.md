@@ -1234,3 +1234,47 @@ Running log of non-obvious choices made during the build. Newest last.
      - **Owner gap surfaced:** the repo has **no LICENSE** (currently all-rights-reserved).
        A public release needs one, and SignPath-OSS free signing requires an OSI-approved
        license (MIT/Apache-2.0) -- an owner prerequisite before W6.
+
+129. **v6 W2 -- GPU pre-check and the install-mode fork (first-run wizard, backend
+     + front-end).**
+     - **Wizard state lives in a separate `setup.json`, never in `config.yaml`.**
+       `core/paths.py` gained `read/write/apply/is_setup_complete` over
+       `BABY_HOME/setup.json`. The wizard's choices are overlaid onto a freshly loaded
+       config non-destructively (`apply_setup` only stamps `router_mode` today), so the
+       shipped template's comments survive and a missing `setup.json` is a no-op -- a dev
+       boot stays byte-identical. Keys never go here; they land in `.env` (W4).
+     - **The wizard only shows in an installed build.** The naive gate
+       (`setup.complete === false`) would fire in every dev checkout, since `setup.json`
+       is absent there and `complete` reads false forever. So `/stats` now reports
+       `setup.installed` from `paths.is_installed()` (`"BABY_HOME" in os.environ` -- the
+       shell exports it only for a split installed layout), and the front-end gate is
+       `installed && !complete && !dismissed`. A repo checkout reports `installed:false`
+       and never renders the wizard.
+     - **GPU informs, never walls (cloud-primary since the NIM migration).**
+       `GET /api/setup/gpu` reuses `tools/system_stats._gpu` (pynvml) off-thread and
+       returns detected VRAM + a recommendation against an 8 GB Full-mode bar
+       (`_FULL_MODE_MIN_VRAM_GB`); no NVIDIA / NVML-unavailable fails soft to cloud-only.
+       The wizard shows the number and the recommendation but the user makes the final
+       call -- a capable GPU can still pick cloud-only, a weak GPU can force Full with a
+       plain warning.
+     - **Mode gates the download, keys set the router mode -- kept apart on purpose.**
+       `POST /api/setup/mode` writes only `install_mode` (Full | cloud_only), which gates
+       the first-run 9B pull in W3. It deliberately does NOT touch `router.mode`, so a
+       keyless boot stays on the safe `local_primary` default; W4's key wizard is what
+       upgrades `local_primary -> cloud_primary`, and only after a cloud key validates.
+       This is the joint mode/key correctness core that keeps a fresh install from the
+       `cloud_primary`-keyless boot crash (#128).
+     - **The wizard front-end is a resumable multi-step shell, not a one-shot.** The
+       mode-fork is step 1 of an N-step flow (W3 deps, W4 keys, W5 disclosure ack, which
+       finally stamps `setup_complete`). Because that flow isn't finished, the terminal
+       panel only dismisses the wizard for the current session (`dismissWizard`, in-store)
+       -- it never fakes completion, so it honestly re-prompts next launch until W5 lands,
+       but never traps a session. Pure gate/summary/recommendation logic lives in
+       `ui/app/src/lib/setup.ts` with vitest coverage; the React shell is thin glue over
+       it. Additive only -- no router/safety/provider logic touched.
+     - **Verification boundary.** The wizard is gated OFF in dev by design, so a dev
+       preview can't render it without faking an installed layout -- proven instead by
+       vitest (gate + GPU-summary + recommendation), the tsc+vite build (component in the
+       bundle), and pytest (`is_installed`, the GPU endpoint, the mode endpoint, and the
+       `installed` flag on `/stats`). Live wizard render belongs to the owner's W6
+       clean-VM matrix.
