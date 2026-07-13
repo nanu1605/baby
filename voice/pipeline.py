@@ -176,10 +176,12 @@ class VoicePipeline:
 
     def _load_wake(self) -> str:
         if self.wake is None:
+            from core import paths
             from voice.wakeword import WakeWord
 
+            model_path = paths.resolve_model(self.cfg.get("wakeword_model", "models/jarvis.onnx"))
             self.wake = WakeWord(
-                model_path=self.cfg.get("wakeword_model", "models/jarvis.onnx"),
+                model_path=str(model_path),
                 threshold=float(self.cfg.get("wakeword_threshold", 0.55)),
                 builtin_fallback=self.cfg.get("wakeword_builtin_fallback", "hey_jarvis"),
                 extra_models=self.cfg.get("wakeword_models", []),
@@ -215,12 +217,15 @@ class VoicePipeline:
 
     def _load_tts(self) -> str:
         if self.tts is None:
+            from core import paths
             from voice.tts import TextToSpeech
 
             tts_cfg = self.cfg.get("tts", {})
+            model_path = paths.resolve_model(tts_cfg.get("model", "models/kokoro-v1.0.onnx"))
+            voices_path = paths.resolve_model(tts_cfg.get("voices", "models/voices-v1.0.bin"))
             self.tts = TextToSpeech(
-                model_path=tts_cfg.get("model", "models/kokoro-v1.0.onnx"),
-                voices_path=tts_cfg.get("voices", "models/voices-v1.0.bin"),
+                model_path=str(model_path),
+                voices_path=str(voices_path),
                 voice_en=tts_cfg.get("voice_en", "af_heart"),
                 voice_hi=tts_cfg.get("voice_hi", "hf_beta"),
                 speed=float(tts_cfg.get("speed", 1.05)),
@@ -232,13 +237,18 @@ class VoicePipeline:
         sv_cfg = self.cfg.get("speaker_verify", {})
         if not sv_cfg.get("enabled", True):
             return "disabled in config"
-        model = sv_cfg.get("model", "models/wespeaker_en_voxceleb_CAM++.onnx")
+        from core import paths
+
+        model = str(
+            paths.resolve_model(sv_cfg.get("model", "models/wespeaker_en_voxceleb_CAM++.onnx"))
+        )
+        profile = paths.resolve_model(sv_cfg.get("profile", "models/owner_voice.json"))
         if self.verifier is None:
             from voice.speaker import SpeakerVerifier
 
             self.verifier = SpeakerVerifier(
                 model_path=model,
-                profile_path=sv_cfg.get("profile", "models/owner_voice.json"),
+                profile_path=str(profile),
                 threshold=float(sv_cfg.get("threshold", 0.5)),
                 centroids=self._load_db_centroids(model),
             )

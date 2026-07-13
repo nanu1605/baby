@@ -51,6 +51,29 @@ def db_path() -> Path:
     return baby_home() / "baby.db"
 
 
+def models_dir() -> Path:
+    """Where downloadable model FILES live (kokoro onnx+voices, the CAM++ speaker
+    onnx, the owner voice profile). Under BABY_HOME so an installed build keeps the
+    ~340 MB of weights in the per-user writable dir -- the read-mostly install dir
+    can't hold them. Dev (BABY_HOME unset) resolves to cwd/models, unchanged.
+
+    Note: whisper + e5 do NOT live here -- they auto-download into the per-user HF
+    hub cache; openWakeWord lands in the venv site-packages. This dir is only for
+    the assets first-run must fetch explicitly and the app loads by path.
+    """
+    return baby_home() / "models"
+
+
+def resolve_model(path: str | Path) -> Path:
+    """Rebase a relative model-file path onto BABY_HOME; an absolute path (an
+    explicit config override) is returned unchanged. So an installed build reads
+    model files from the per-user writable dir while a dev checkout -- where
+    baby_home() is cwd -- resolves 'models/x' exactly as before (byte-identical).
+    """
+    p = Path(path)
+    return p if p.is_absolute() else baby_home() / p
+
+
 def ensure_config(template: Path | None = None) -> Path:
     """Seed `BABY_HOME/config.yaml` from the conservative template on first run,
     only if it does not already exist (never clobber a returning user's config).
