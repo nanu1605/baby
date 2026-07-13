@@ -628,6 +628,24 @@ def create_app(ctx: UIContext) -> FastAPI:
             "progress": getattr(app.state, "setup_progress", {}),
         }
 
+    @app.get("/api/setup/health")
+    async def api_setup_health():
+        """Re-runnable FUNCTIONAL health check: imports + a real op per wheel, then
+        each model load (whisper/kokoro/e5/wake; +9B in Full). Returns a plain-language
+        readiness report that names any broken dep + its fix. Feeds the post-install
+        report and a later repair flow (W5). Off-thread -- the model loads are heavy."""
+        from dataclasses import asdict
+
+        from core import health
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        results = await asyncio.to_thread(health.run_all, mode, "full", False)
+        return {
+            "ok": health.overall_ok(results),
+            "summary": health.readiness_summary(results),
+            "results": [asdict(r) for r in results],
+        }
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:

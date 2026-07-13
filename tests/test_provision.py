@@ -251,6 +251,23 @@ def test_provision_endpoint_needs_a_mode(tmp_path, monkeypatch):
         asyncio.run(db.close())
 
 
+def test_health_endpoint(tmp_path, monkeypatch):
+    from core import health
+
+    monkeypatch.setattr(
+        health, "run_all",
+        lambda mode, level, browser: [health.Result("torch", True, True, "pass", "ok")],
+    )
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        paths.write_setup({"install_mode": "cloud_only"})
+        r = client.get("/api/setup/health").json()
+        assert r["ok"] is True and "ready" in r["summary"].lower()
+        assert r["results"][0]["name"] == "torch"
+    finally:
+        asyncio.run(db.close())
+
+
 def test_plan_endpoint(tmp_path, monkeypatch):
     client, db = _client(tmp_path, monkeypatch)
     try:

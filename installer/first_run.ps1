@@ -85,6 +85,49 @@ function Invoke-Uv([string[]]$uvArgs, [string]$errFile) {
     }
 }
 
+# The MSVC 2015-2022 x64 runtime that every native wheel dlopens (vcruntime140.dll /
+# vcruntime140_1.dll / msvcp140.dll). A clean image may lack it, and without it the
+# wheels probe fails with an opaque "DLL load failed". Detect via the load-relevant
+# System32 DLLs (matches core.health check_vcredist).
+function Test-VCRedist {
+    $sys32 = Join-Path $env:SystemRoot "System32"
+    foreach ($d in "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll") {
+        if (-not (Test-Path (Join-Path $sys32 $d))) { return $false }
+    }
+    return $true
+}
+
+# Install the redist if missing. This is the ONE step of an otherwise no-admin
+# per-user install that needs elevation, so it triggers a UAC prompt; a declined
+# prompt is reported legibly, not as a raw trace.
+function Install-VCRedist {
+    if (Test-VCRedist) { Write-Step "Visual C++ runtime present" ; return $true }
+    Write-Step "Installing the Visual C++ runtime (Windows will ask for permission)"
+    # Unique name so two first-run invocations can't race the same download/exec.
+    $exe = Join-Path $env:TEMP ("baby_vc_redist_{0}.exe" -f [guid]::NewGuid())
+    try {
+        Invoke-WebRequest "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $exe -TimeoutSec 300
+    } catch {
+        Write-Fail (Resolve-SyncError $_.Exception.Message)
+        return $false
+    }
+    try {
+        $p = Start-Process $exe -ArgumentList "/install", "/quiet", "/norestart" -Verb RunAs -Wait -PassThru
+    } catch {
+        Remove-Item $exe -ErrorAction SilentlyContinue
+        Write-Fail "The Visual C++ runtime is required but the permission prompt was declined. Reopen Baby to try again, or install aka.ms/vs/17/release/vc_redist.x64.exe yourself."
+        return $false
+    }
+    Remove-Item $exe -ErrorAction SilentlyContinue
+    # 0 = installed, 3010 = installed (reboot needed), 1638/1641 = newer present / reboot.
+    if (($p.ExitCode -in 0, 3010, 1638, 1641) -and (Test-VCRedist)) {
+        Write-Step "Visual C++ runtime installed"
+        return $true
+    }
+    Write-Fail "Couldn't install the Visual C++ runtime (exit $($p.ExitCode)). Install aka.ms/vs/17/release/vc_redist.x64.exe manually and reopen Baby."
+    return $false
+}
+
 if (-not $ProbeOnly) {
     if (-not (Test-Path $BabyHome)) { New-Item -ItemType Directory -Force -Path $BabyHome | Out-Null }
 
@@ -116,6 +159,10 @@ if (-not $ProbeOnly) {
         Start-Sleep -Seconds $backoff
     }
     Write-Step "Environment ready at $VenvDir"
+
+    # The native wheels can't load without the MSVC runtime, so ensure it before the
+    # probe (a no-op when already present, e.g. every dev box and most Win11 images).
+    if (-not (Install-VCRedist)) { exit 1 }
 }
 
 if (-not (Test-Path $VenvPy)) {

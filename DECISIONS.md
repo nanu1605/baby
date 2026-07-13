@@ -1278,3 +1278,70 @@ Running log of non-obvious choices made during the build. Newest last.
        bundle), and pytest (`is_installed`, the GPU endpoint, the mode endpoint, and the
        `installed` flag on `/stats`). Live wizard render belongs to the owner's W6
        clean-VM matrix.
+
+130. **v6 W3 -- first-run dependency orchestration (the hardest phase): a functional
+     dep manifest + probes, a resumable provisioning orchestrator, the wizard's
+     install step, and a first-launch venv bootstrap.**
+     - **A declarative dependency manifest is the single source of truth.**
+       `core/manifest.py` lists every first-run dependency with the two facts that
+       decide a correct install: whether the library auto-downloads the asset (the HF
+       hub cache for whisper/e5; the wheel for espeak-ng/sqlite-vec) or first-run must
+       fetch it explicitly (kokoro, the 9B, openWakeWord, Chromium, the CAM++ model),
+       and where it lands. Anything the app loads BY PATH (kokoro, CAM++) relocates to
+       a per-user `models/` dir (`core/paths.py:models_dir`/`resolve_model`) so an
+       installed build reads writable state, never the read-mostly install dir; a dev
+       checkout stays byte-identical. The orchestrator, the wizard checklist, and the
+       first-run harness all read this one list.
+     - **The health check is FUNCTIONAL, at two levels.** `core/health.py` ports the W0
+       spike and adds the model-LOAD probes it deferred: it imports each native wheel
+       AND does a real op (torch sum, onnxruntime providers, sqlite-vec vec_version),
+       then loads each model and exercises it (whisper transcribes a synthetic buffer,
+       kokoro synthesizes a word, e5 encodes to dim 384, openWakeWord predicts, CAM++
+       embeds, Ollama answers a 1-token warm-ping). Two levels: `wheels` runs right
+       after `uv sync` (before any model exists); `full` runs after the downloads.
+       Mode-aware -- the Ollama checks only exist for a Full install. A green `uv sync`
+       is not proof; this probe is. It also preloads the venv's onnxruntime.dll before
+       anything imports sherpa-onnx, or sherpa binds System32's stale ORT 1.17 and
+       segfaults the process (a real bug the dev-box probe caught). Run on the dev box:
+       all 16 checks pass.
+     - **The provisioning orchestrator is resumable and streams honest progress.**
+       `core/provision.py` walks the manifest for the chosen mode: a low-disk pre-check
+       (`disk_footprint_mb`), detect the VC++ runtime, download kokoro, fetch the
+       wake-word models, trigger the whisper+e5 HF downloads, the optional CAM++ model
+       (best-effort), then in Full mode pull the 9B if the daemon is up -- and finally a
+       functional re-verify that marks `provisioned` only when everything works.
+       Downloads resume where they stopped (HTTP Range for files; Ollama's
+       content-addressed blobs for the model pull), and every failure is classified into
+       a legible, retryable message (proxy / no-network / disk / corrupt) rather than a
+       raw trace. It reports through a plain callback the endpoint publishes on the bus
+       (`POST /api/setup/provision`, `GET /api/setup/status`); the wizard renders a
+       per-dependency checklist with byte/percent progress bars off `GET /api/setup/plan`.
+     - **The venv is built on first LAUNCH, not by a silent installer hook.** The
+       backend can't run until its venv exists, so the shell (`main.rs:ensure_venv`)
+       runs `installer/first_run.ps1` the first time an installed build launches without
+       a ready venv: the bundled uv.exe installs a managed CPython and `uv sync`s the
+       per-user venv, then a `wheels`-level probe gates it. This deliberately does NOT
+       run inside a silent NSIS `installerHooks`: a ~1.5 GB `uv sync` there would freeze
+       the installer with no progress and leave a half-install on failure. On launch it
+       is resumable (uv sync continues from its cache), shows a splash, classifies
+       failures, and a relaunch retries. Completion is gated on a `.baby-ready` sentinel
+       written only after the wheels probe passes -- NOT on `pythonw.exe`, which `uv
+       sync` creates before installing the deps, so an interrupted first sync would
+       otherwise look "done" and never resume (both bugs caught by adversarial review).
+     - **The Visual C++ runtime is the one elevated step.** Every native wheel dlopens
+       the MSVC 2015-2022 x64 runtime; a clean image may lack it, and without it the
+       wheels probe fails with an opaque "DLL load failed". `first_run.ps1` detects the
+       System32 DLLs and, if absent, downloads `vc_redist.x64.exe` and installs it
+       elevated (a UAC prompt -- the sole admin step of an otherwise no-admin per-user
+       install), then re-verifies. A declined prompt is reported legibly, not as a trace.
+     - **PowerShell 5.1 stderr-redirect footgun.** `& native.exe ... 2> file` under
+       `$ErrorActionPreference=Stop` throws a terminating NativeCommandError on the FIRST
+       stderr line -- and uv writes progress to stderr on SUCCESS -- so the redirect used
+       to capture uv's stderr for classification aborted the happy path for every user.
+       Fixed by capturing under `EAP=Continue` (we read `$LASTEXITCODE` explicitly).
+       Verified against a real `uv sync`. Recorded so it isn't reintroduced.
+     - **Owner-only remains:** the real installed first-run (clean-VM matrix: no-VC++,
+       no-admin decline, antivirus, non-English, low-disk, network-drop) -- the dev box
+       can't validate a stranger's first launch. Deferred: relocate the voice-enrollment
+       WRITE path through BABY_HOME when an installed enrollment flow is built (dormant
+       OOTB; speaker verify is off until enrollment).
