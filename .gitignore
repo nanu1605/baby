@@ -43,3 +43,6 @@ ui/shell/**/node_modules/
 ui/shell/**/target/
 ui/shell/**/dist/
 ui/shell/**/gen/
+
+# v6 installer: staged backend payload (built by scripts/stage_payload.ps1, bundled as a resource)
+ui/shell/src-tauri/payload/

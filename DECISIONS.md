@@ -1212,11 +1212,20 @@ Running log of non-obvious choices made during the build. Newest last.
        Python. `bundle.windows.nsis.installMode: currentUser` (no admin) +
        `bundle.licenseFile` = the EULA license page; `nsis.installerHooks` is the
        post-install first-run trigger wired in W3.
-     - **Deferred to a build-integration pass (W1c tail / W3):** the full resource
-       manifest that stages the filtered Python source tree (+ bundled `uv.exe`) next to
-       the exe so `installer/config.default.yaml` lands where `paths._TEMPLATE` expects.
-       It needs iterating against a real `tauri build` and is coupled to first-run
-       provisioning, so it is done deliberately, not guessed blind.
+     - **Source-staging (W1e) -- done, verified against a real build.** A new
+       `scripts/stage_payload.ps1` assembles an ALLOWLISTED runtime payload (2.5 MB:
+       run.py + the Python packages + `assets/` + `installer/` + `ui/{server,tray,
+       gamewatch}.py` + `ui/web` + the built `ui/app/dist` + pyproject/uv.lock; never
+       config.yaml/.env/baby.db/__pycache__/ui-shell/ui-app-src -- an allowlist so a
+       public build can't leak a secret). `tauri.conf` `beforeBuildCommand` runs it
+       (build-only, not the `tauri dev` loop -- and it must be `beforeBuildCommand`, not
+       `beforeBundleCommand`, because the `resources` glob is validated at build.rs time,
+       before bundling), and `bundle.resources: ["payload/**/*"]` ships it. The shell
+       finds it via `app.path().resource_dir().join("payload")` -- Tauri's own API, not
+       an exe-relative guess -- which `resolve_layout` uses. A real `tauri build`
+       confirmed it: `target/release/payload/run.py` lands exactly where the shell looks,
+       and the NSIS installer grew 1.6 -> 2.2 MB. `.venv` + models are still first-run;
+       `uv.exe` is dropped in at release build (`-UvExe`).
      - **Owner gap surfaced:** the repo has **no LICENSE** (currently all-rights-reserved).
        A public release needs one, and SignPath-OSS free signing requires an OSI-approved
        license (MIT/Apache-2.0) -- an owner prerequisite before W6.

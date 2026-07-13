@@ -147,10 +147,10 @@ fn localappdata_baby() -> Option<PathBuf> {
 }
 
 /// Resolve the code + data layout. Dev (repo, run.py + .venv co-located) is
-/// detected first and behaves exactly as before. An installed shell finds run.py
-/// next to the exe and points the venv/state at `%LOCALAPPDATA%\baby`. Returns
-/// None only when no run.py can be found at all.
-fn resolve_layout() -> Option<Layout> {
+/// detected first and behaves exactly as before. An installed shell finds the
+/// staged backend under the Tauri resource dir (`payload/`) and points the
+/// venv/state at `%LOCALAPPDATA%\baby`. Returns None only when no run.py exists.
+fn resolve_layout(app: &AppHandle) -> Option<Layout> {
     // Explicit override: BABY_HOME pointing at a co-located run.py (advanced/dev).
     if let Ok(home) = std::env::var("BABY_HOME") {
         let p = PathBuf::from(home);
@@ -171,14 +171,18 @@ fn resolve_layout() -> Option<Layout> {
             });
         }
     }
-    // Installed: run.py ships next to the exe; state lives in %LOCALAPPDATA%\baby.
-    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    if exe_dir.join("run.py").is_file() {
-        let data_home = localappdata_baby()?;
-        return Some(Layout {
-            code_dir: exe_dir,
-            data_home,
-        });
+    // Installed: the backend is staged under the bundle's resource dir (payload/,
+    // shipped via tauri.conf bundle.resources). Tauri tells us where that is, so we
+    // never guess exe-relative paths. State lives in %LOCALAPPDATA%\baby.
+    if let Ok(res) = app.path().resource_dir() {
+        let code = res.join("payload");
+        if code.join("run.py").is_file() {
+            let data_home = localappdata_baby()?;
+            return Some(Layout {
+                code_dir: code,
+                data_home,
+            });
+        }
     }
     None
 }
@@ -270,7 +274,7 @@ fn attach_or_spawn(app: AppHandle) {
         return;
     }
     // Manual/dev launch with nothing listening → spawn our own backend.
-    match resolve_layout() {
+    match resolve_layout(&app) {
         Some(layout) => spawn_backend(&app, &layout),
         None => {
             show_splash_message(
