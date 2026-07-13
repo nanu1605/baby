@@ -1196,11 +1196,16 @@ Running log of non-obvious choices made during the build. Newest last.
        is confirmed, blank owner PII, `game_mode.auto_detect: false`, localhost UI). The
        code defaults were already conservative (`core/safety.py:36-42`,
        `clients/cli.py:23-30`); the risk was only the owner's populated `config.yaml`, so
-       the fix is a distinct template, never a commit to `config.yaml`. `router.mode` and
-       `startup.cloud_mode` are left for the W2/W4 wizard to stamp from the chosen mode +
-       validated keys (a keyless-Full install must land `local_primary` or boot crashes,
-       `core/router.py:1010-1017`). A `tests/test_fresh_install_defaults.py` gate builds
-       the **real** `SafetyGate` from the template and asserts enforce + empty allowlist.
+       the fix is a distinct template, never a commit to `config.yaml`. **The template
+       ships `router.mode: local_primary`** (an adversarial-review fix -- an earlier
+       `cloud_primary` default hard-crashed a keyless install at boot, since
+       `build_provider` raises when the primary slot is unbuilt, `core/router.py:1010-1017`,
+       and no fallback catches it before uvicorn binds). local_primary boots keyless
+       (bare Ollama daily, degrades gracefully); the W2/W4 wizard UPGRADES to
+       `cloud_primary` only after a cloud key validates. `tests/test_fresh_install_defaults.py`
+       builds the **real** `SafetyGate` from the template (enforce + empty allowlist) AND
+       asserts the template **boots keyless** (`build_provider` doesn't raise with no keys)
+       -- the regression guard for that crash.
      - **The installed shell splits code from state.** In dev, run.py + `.venv` are
        co-located and the shell's `resolve_layout()` (was `resolve_baby_home`) returns
        that one dir -- unchanged. Installed, run.py + the Python source ship next to the

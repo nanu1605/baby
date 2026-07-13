@@ -83,11 +83,14 @@ if ($UvExe -and (Test-Path $UvExe)) {
     Write-Host "  (uv.exe not bundled -- pass -UvExe to include it)" -ForegroundColor Yellow
 }
 
-# Safety net: assert none of the never-ship files slipped in.
-foreach ($forbidden in "config.yaml", ".env", "baby.db") {
-    $hit = Get-ChildItem -Recurse -Force -File $Dest -Filter $forbidden -ErrorAction SilentlyContinue
-    if ($hit) { throw "FORBIDDEN file staged: $($hit.FullName)" }
-}
+# Safety net: no secret-shaped file may ever reach a PUBLIC installer. Broad
+# patterns, not just three literal names -- also the WAL/SHM db sidecars, any db,
+# the owner voiceprint, and key/credential/token shapes (robocopy /E copies the
+# working tree, incl. gitignored files, so this backstop matters).
+$forbidden = @("config.yaml", "*.env", ".env*", "*.db", "*.db-*", "owner_voice*.json",
+    "*.key", "*.pem", "*credential*", "*token*.json")
+$hits = Get-ChildItem -Path $Dest -Recurse -Force -File -Include $forbidden -ErrorAction SilentlyContinue
+if ($hits) { throw "FORBIDDEN file staged (secret-shaped): $($hits[0].FullName)" }
 
 $size = (Get-ChildItem -Recurse -File $Dest | Measure-Object -Property Length -Sum).Sum / 1MB
 Write-Host ("OK: payload staged ({0:N1} MB, .venv + models fetched first-run)." -f $size) -ForegroundColor Green

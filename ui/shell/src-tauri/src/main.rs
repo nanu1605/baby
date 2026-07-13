@@ -171,17 +171,23 @@ fn resolve_layout(app: &AppHandle) -> Option<Layout> {
             });
         }
     }
-    // Installed: the backend is staged under the bundle's resource dir (payload/,
-    // shipped via tauri.conf bundle.resources). Tauri tells us where that is, so we
-    // never guess exe-relative paths. State lives in %LOCALAPPDATA%\baby.
-    if let Ok(res) = app.path().resource_dir() {
-        let code = res.join("payload");
-        if code.join("run.py").is_file() {
-            let data_home = localappdata_baby()?;
-            return Some(Layout {
-                code_dir: code,
-                data_home,
-            });
+    // Installed (release builds only): the backend is staged under the bundle's
+    // resource dir (payload/, via tauri.conf bundle.resources). Tauri tells us where
+    // that is, so we never guess exe-relative paths; state lives in %LOCALAPPDATA%\baby.
+    // Gated out of debug builds: in `tauri dev` the resource dir also holds a staged
+    // payload/, so without this a contributor whose interpreter isn't a repo-root
+    // .venv would fall through here and get the installed layout (misleading splash,
+    // or cross-wiring an installed venv) instead of the honest dev "not found" message.
+    if !cfg!(debug_assertions) {
+        if let Ok(res) = app.path().resource_dir() {
+            let code = res.join("payload");
+            if code.join("run.py").is_file() {
+                let data_home = localappdata_baby()?;
+                return Some(Layout {
+                    code_dir: code,
+                    data_home,
+                });
+            }
         }
     }
     None

@@ -43,7 +43,7 @@ models:
   embedder: intfloat/multilingual-e5-small
 
 router:
-  mode: cloud_primary                   # STAMPED by wizard: cloud_primary if a cloud key is set, else local_primary (Full)
+  mode: local_primary                   # boots keyless WITHOUT crashing (cloud_primary raises at boot with no key); wizard UPGRADES to cloud_primary after a cloud key validates (W2/W4)
   default: daily
   escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
   escalation_order: [heavy, cloud]

@@ -50,3 +50,15 @@ def test_real_gate_from_template_is_conservative():
     gate = build_gate(_load(), EventBus())
     assert gate.dry_run is False  # enforce, never dry_run in a shipped build
     assert gate.cfg.auto_allow_app_close == ()  # nothing auto-allowed
+
+
+def test_template_boots_without_cloud_keys(monkeypatch):
+    # The shipped default MUST boot on a keyless fresh install (before the wizard
+    # stamps a key). cloud_primary would raise at boot with no OPENROUTER key
+    # (core/router.py build_provider fails loud); local_primary builds the Ollama
+    # daily provider and never raises. This guards the W2 mode-stamping contract.
+    from core.router import build_provider
+
+    for k in ("OPENROUTER_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    build_provider(_load())  # must not raise
