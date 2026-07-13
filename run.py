@@ -53,6 +53,7 @@ def main() -> None:
 
         with open(paths.ensure_config(), encoding="utf-8") as f:
             config = yaml.safe_load(f)
+        config = paths.apply_setup(config)  # overlay first-run wizard choices (v6)
         try:
             # --voice boots the UI stack too (same process, spec section 16);
             # voice attaches on top and fails soft back to text-only.

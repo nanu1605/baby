@@ -18,7 +18,7 @@ from db.database import Database
 
 def load_config(config_path: str | None = None) -> dict:
     with open(config_path or paths.ensure_config(), encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return paths.apply_setup(yaml.safe_load(f))
 
 
 def build_gate(config: dict, bus: EventBus) -> SafetyGate:

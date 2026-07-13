@@ -180,6 +180,40 @@ class UIContext:
         return bool(voice_running and voice_running())
 
 
+# v6 W2: the local-model bar for "Full" install mode. The daily 9B (q4) needs
+# ~6.6 GB resident + headroom; below this we recommend cloud-only (still runs,
+# just no local fallback). The user always makes the final call.
+_FULL_MODE_MIN_VRAM_GB = 8.0
+
+
+def _gpu_recommendation() -> dict:
+    """GPU/VRAM snapshot + a Full-vs-cloud-only recommendation for the first-run
+    wizard. Fail-soft: no NVIDIA GPU (or NVML unavailable) => cloud-only."""
+    from tools.system_stats import _gpu
+
+    gpu = _gpu()
+    if gpu is None:
+        return {
+            "has_nvidia": False,
+            "gpu_name": None,
+            "vram_total_gb": None,
+            "meets_full_bar": False,
+            "recommend": "cloud_only",
+            "full_bar_gb": _FULL_MODE_MIN_VRAM_GB,
+        }
+    total = gpu["vram_total_gb"]
+    meets = total >= _FULL_MODE_MIN_VRAM_GB
+    return {
+        "has_nvidia": True,
+        "gpu_name": gpu["name"],
+        "vram_total_gb": total,
+        "vram_used_gb": gpu["vram_used_gb"],
+        "meets_full_bar": meets,
+        "recommend": "full" if meets else "cloud_only",
+        "full_bar_gb": _FULL_MODE_MIN_VRAM_GB,
+    }
+
+
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
     # Vanilla UI assets — always mounted so /classic keeps working regardless of
@@ -338,6 +372,11 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["ui"] = {
             "brain": _ui_brain(ctx.config),  # V3 sphere gate (code-defaulted 3d)
             "history": _ui_history(ctx.config),  # v5 history sidebar (code-defaulted on)
+        }
+        _setup = paths.read_setup()  # v6 first-run wizard state ({} until installed)
+        data["setup"] = {
+            "complete": bool(_setup.get("setup_complete")),
+            "install_mode": _setup.get("install_mode"),
         }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
@@ -509,6 +548,25 @@ def create_app(ctx: UIContext) -> FastAPI:
             result["new_conversation_id"] = ctx.agent.conversation_id
         ctx.bus.publish("status", "ui", text="conversation deleted")
         return result
+
+    @app.get("/api/setup/gpu")
+    async def api_setup_gpu():
+        """First-run GPU pre-check: detected VRAM + a Full/cloud-only recommendation.
+        Pure read; NVML runs off-thread so a slow driver can't stall the loop."""
+        return await asyncio.to_thread(_gpu_recommendation)
+
+    @app.post("/api/setup/mode")
+    async def api_setup_mode(body: dict):
+        """Record the chosen install mode (Full local+cloud, or cloud-only). Gates
+        the first-run 9B download (W3). Does NOT set router.mode -- keys do that in
+        W4 -- so a keyless boot stays on the safe local_primary default."""
+        mode = body.get("mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse(
+                {"error": "mode must be 'full' or 'cloud_only'"}, status_code=400
+            )
+        state = paths.write_setup({"install_mode": mode})
+        return {"install_mode": state.get("install_mode")}
 
     @app.get("/memory")
     async def memory_view(limit: int = 200):
