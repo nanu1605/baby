@@ -26,6 +26,9 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 if (-not $Dest) { $Dest = Join-Path $Root "ui\shell\src-tauri\payload" }
+# tauri.conf's beforeBuildCommand auto-stages without -UvExe; let a release build set
+# BABY_UV_EXE so uv.exe still gets bundled through that automatic staging pass.
+if (-not $UvExe) { $UvExe = $env:BABY_UV_EXE }
 
 function Write-Step($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 

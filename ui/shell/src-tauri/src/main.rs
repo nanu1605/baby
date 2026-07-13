@@ -22,6 +22,7 @@
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -40,6 +41,9 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// an attached always-on service is left running (DECISIONS #120).
 struct AppState {
     spawned: Mutex<Option<Child>>,
+    /// True while attach-or-spawn (incl. the minutes-long first-run venv build) is in
+    /// flight, so a relaunch that re-triggers setup can't start a second concurrent run.
+    starting: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
@@ -193,6 +197,76 @@ fn resolve_layout(app: &AppHandle) -> Option<Layout> {
     None
 }
 
+/// The last `ERROR:`-tagged line from the first-run script, for the splash. The
+/// bootstrap prints one classified line on failure (never a raw trace).
+fn last_error_line(stdout: &[u8], stderr: &[u8]) -> String {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(stdout),
+        String::from_utf8_lossy(stderr)
+    );
+    text.lines()
+        .rev()
+        .find(|l| l.trim_start().starts_with("ERROR:"))
+        .map(|l| l.trim_start().trim_start_matches("ERROR:").trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "setup did not complete".to_string())
+}
+
+/// First launch of an INSTALLED build has no venv yet (the installer stays small;
+/// the backend is stood up here). Run the bundled-uv bootstrap (installer/
+/// first_run.ps1): managed CPython + `uv sync` into the per-user venv + a functional
+/// wheels probe. Blocking on this (attach-or-spawn) thread while a splash shows;
+/// resumable on the next launch. Returns true when a runnable venv exists.
+fn ensure_venv(app: &AppHandle, layout: &Layout) -> bool {
+    // Gate on the completion sentinel first_run.ps1 writes AFTER its wheels probe --
+    // NOT on pythonw.exe, which `uv sync` creates before installing the ~1.5 GB of
+    // deps. Keying on pythonw would leave an interrupted first sync looking "done"
+    // and never resume it. Sentinel absent → (re-)run the bootstrap; it's resumable.
+    let ready = layout.data_home.join(".venv").join(".baby-ready");
+    if ready.is_file() {
+        return true; // a prior first-run completed and passed the wheels probe
+    }
+    if !layout.installed() {
+        return true; // dev: a repo without a venv is handled by spawn_backend's fallback
+    }
+    let script = layout.code_dir.join("installer").join("first_run.ps1");
+    let uv = layout.code_dir.join("uv.exe");
+    // A release built without the bundled uv.exe (BABY_UV_EXE unset) can't bootstrap;
+    // say so plainly rather than letting first_run.ps1 fail on a missing `uv`.
+    if !script.is_file() || !uv.is_file() {
+        show_splash_message(app, "First-run setup files are missing. Please reinstall Baby.");
+        return false;
+    }
+    show_splash_message(
+        app,
+        "Setting up Baby - installing the local engine. This runs once and can take a few minutes...",
+    );
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&script)
+        .arg("-UvExe")
+        .arg(&uv)
+        .arg("-SourceDir")
+        .arg(&layout.code_dir)
+        .arg("-BabyHome")
+        .arg(&layout.data_home)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    match output {
+        Ok(out) if out.status.success() => true,
+        Ok(out) => {
+            let msg = last_error_line(&out.stdout, &out.stderr);
+            show_splash_message(app, &format!("Baby couldn't finish setup: {msg}"));
+            false
+        }
+        Err(e) => {
+            show_splash_message(app, &format!("Baby couldn't run first-run setup: {e}"));
+            false
+        }
+    }
+}
+
 /// Spawn `pythonw run.py --all` detached (no console window), recording the child so
 /// quit can kill it. Python comes from the data-home venv; the script + cwd come from
 /// the code dir; an installed layout also exports BABY_HOME so the backend resolves
@@ -258,10 +332,22 @@ fn reveal(app: &AppHandle) {
     }
 }
 
+/// Guarded entry: a relaunch can re-trigger setup (single-instance callback), but the
+/// first-run venv build takes minutes — never run two concurrently. The `starting`
+/// flag serializes it; a second entry just focuses the window.
 fn attach_or_spawn(app: AppHandle) {
+    if app.state::<AppState>().starting.swap(true, Ordering::SeqCst) {
+        show_main(&app);
+        return;
+    }
+    attach_or_spawn_inner(&app);
+    app.state::<AppState>().starting.store(false, Ordering::SeqCst);
+}
+
+fn attach_or_spawn_inner(app: &AppHandle) {
     // Already up (an autostart/manual service is running) → just attach.
     if backend_up() {
-        reveal(&app);
+        reveal(app);
         return;
     }
     // Launched by autostart next to the always-on service: the service binds :8765
@@ -270,31 +356,37 @@ fn attach_or_spawn(app: AppHandle) {
     // real service. This is what keeps #120's "the service persists" guarantee true.
     if attach_only() {
         if wait_ready(READY_TIMEOUT) {
-            reveal(&app);
+            reveal(app);
         } else {
             show_splash_message(
-                &app,
+                app,
                 "Baby service did not come up. Check %LOCALAPPDATA%\\baby\\logs\\baby.log",
             );
         }
         return;
     }
-    // Manual/dev launch with nothing listening → spawn our own backend.
-    match resolve_layout(&app) {
-        Some(layout) => spawn_backend(&app, &layout),
+    // Manual/dev launch with nothing listening → build the venv on first run if
+    // needed, then spawn our own backend.
+    match resolve_layout(app) {
+        Some(layout) => {
+            if !ensure_venv(app, &layout) {
+                return; // first-run setup failed; the splash carries the reason
+            }
+            spawn_backend(app, &layout)
+        }
         None => {
             show_splash_message(
-                &app,
+                app,
                 "Baby backend not found. Start it in the repo: uv run python run.py --all",
             );
             return;
         }
     }
     if wait_ready(READY_TIMEOUT) {
-        reveal(&app);
+        reveal(app);
     } else {
         show_splash_message(
-            &app,
+            app,
             "Baby backend did not become ready. Start it: uv run python run.py --all",
         );
     }
@@ -430,10 +522,20 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main(app);
+            // Reopening while first-run setup hasn't finished RESUMES it — the
+            // failed-setup splash tells the user to reopen Baby, so honor that (the
+            // starting-guard keeps it from racing an in-flight run). Backend already
+            // up → just focus.
+            if backend_up() {
+                show_main(app);
+            } else {
+                let h = app.clone();
+                std::thread::spawn(move || attach_or_spawn(h));
+            }
         }))
         .manage(AppState {
             spawned: Mutex::new(None),
+            starting: AtomicBool::new(false),
         })
         .setup(|app| {
             build_tray(app)?;
