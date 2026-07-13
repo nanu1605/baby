@@ -380,6 +380,9 @@ def create_app(ctx: UIContext) -> FastAPI:
             # The wizard only shows in an installed build -- never in a dev checkout,
             # where setup.json is absent and `complete` would read false forever.
             "installed": paths.is_installed(),
+            # W3: dependencies fetched + functionally verified (skips the dep step on
+            # a re-entry after a completed provision).
+            "provisioned": bool(_setup.get("provisioned")),
         }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
@@ -604,6 +607,17 @@ def create_app(ctx: UIContext) -> FastAPI:
         # mid-run, silently halting the multi-GB provisioning.
         app.state.provision_task = asyncio.create_task(_run())
         return {"status": "started", "mode": mode}
+
+    @app.get("/api/setup/plan")
+    async def api_setup_plan():
+        """The ordered provisioning checklist for the chosen mode -- so the wizard can
+        show every step (incl. not-yet-started ones) upfront, not just live events."""
+        from core import provision
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        return {"mode": mode, "steps": provision.plan(mode)}
 
     @app.get("/api/setup/status")
     async def api_setup_status():

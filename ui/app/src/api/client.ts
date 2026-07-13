@@ -12,6 +12,8 @@ import type {
   NodeStats,
   SearchResponse,
   SetupGpu,
+  SetupPlan,
+  SetupStatus,
   Stats,
 } from "../types";
 
@@ -47,6 +49,15 @@ export const getSetupGpu = () => getJSON<SetupGpu>("/api/setup/gpu");
 /** Record the chosen install mode. Gates the first-run 9B download (W3). */
 export const postSetupMode = (mode: "full" | "cloud_only") =>
   postJSON("/api/setup/mode", { mode });
+
+/** The ordered provisioning checklist for the chosen mode (W3). */
+export const getSetupPlan = () => getJSON<SetupPlan>("/api/setup/plan");
+
+/** Kick off first-run dependency provisioning (background task on the server). */
+export const postSetupProvision = () => postJSON("/api/setup/provision");
+
+/** Latest per-dependency provisioning snapshot (poll while it runs). */
+export const getSetupStatus = () => getJSON<SetupStatus>("/api/setup/status");
 
 export const getGraph = () => getJSON<GraphData>("/api/graph");
 

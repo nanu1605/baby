@@ -1,16 +1,28 @@
 import { useEffect, useRef, useState } from "react";
-import { getSetupGpu, postSetupMode } from "../api/client";
+import {
+  getSetupGpu,
+  getSetupPlan,
+  getSetupStatus,
+  postSetupMode,
+  postSetupProvision,
+} from "../api/client";
 import { useBrain } from "../store";
 import {
+  firstError,
+  formatSize,
   gpuSummaryLine,
   initialStep,
   isCounterRecommended,
   modeTradeoff,
+  provisionOutcome,
   recommendedMode,
+  rowBar,
+  rowStatus,
+  stepGlyph,
   type InstallMode,
   type WizardStep,
 } from "../lib/setup";
-import type { SetupGpu } from "../types";
+import type { SetupGpu, SetupStatus, SetupStep } from "../types";
 
 /**
  * v6 first-run wizard — W2 slice: GPU pre-check + install-mode fork. A full-screen
@@ -22,7 +34,8 @@ import type { SetupGpu } from "../types";
  */
 export default function FirstRunWizard() {
   const installMode = useBrain((s) => s.stats?.setup?.install_mode ?? null);
-  const [step, setStep] = useState<WizardStep>(() => initialStep(installMode));
+  const provisioned = useBrain((s) => s.stats?.setup?.provisioned ?? false);
+  const [step, setStep] = useState<WizardStep>(() => initialStep(installMode, provisioned));
   const [gpu, setGpu] = useState<SetupGpu | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState<InstallMode | null>(null);
@@ -52,7 +65,7 @@ export default function FirstRunWizard() {
       if (!alive.current) return;
       if (!r.ok) throw new Error(String(r.status));
       setChosen(mode);
-      setStep("done");
+      setStep("provision");
     } catch {
       if (alive.current) setPostError(true);
     } finally {
@@ -106,6 +119,8 @@ export default function FirstRunWizard() {
               </p>
             )}
           </>
+        ) : step === "provision" ? (
+          <ProvisionStep onDone={() => setStep("done")} />
         ) : (
           <DoneStep
             mode={chosen ?? (installMode as InstallMode | null)}
@@ -114,6 +129,110 @@ export default function FirstRunWizard() {
         )}
       </div>
     </div>
+  );
+}
+
+function ProvisionStep({ onDone }: { onDone: () => void }) {
+  const [plan, setPlan] = useState<SetupStep[]>([]);
+  const [status, setStatus] = useState<SetupStatus | null>(null);
+  const [postError, setPostError] = useState(false);
+  const alive = useRef(true);
+  const started = useRef(false);
+
+  const kickoff = async () => {
+    if (!alive.current) return;
+    setPostError(false);
+    started.current = true;
+    const r = await postSetupProvision();
+    if (alive.current && !r.ok) setPostError(true);
+  };
+
+  useEffect(() => {
+    alive.current = true;
+    getSetupPlan()
+      .then((p) => alive.current && setPlan(p.steps))
+      .catch(() => {});
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // Poll status; kick off the run once if nothing is going yet (a re-entry mid-run
+  // just resumes polling without re-POSTing).
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const s = await getSetupStatus();
+        if (!alive.current) return;
+        setStatus(s);
+        if (!started.current && !s.provisioning && provisionOutcome(s) === "idle") {
+          await kickoff();
+        }
+      } catch {
+        /* transient — next tick retries */
+      }
+    };
+    poll();
+    const id = setInterval(poll, 1200);
+    return () => clearInterval(id);
+  }, []);
+
+  const outcome = provisionOutcome(status);
+  useEffect(() => {
+    if (outcome === "done") onDone();
+  }, [outcome, onDone]);
+
+  const progress = status?.progress ?? {};
+  return (
+    <>
+      <h2>Setting up Baby</h2>
+      <p className="wizard-sub">
+        Downloading and checking everything Baby needs. The first run can take a
+        while — you can leave this open.
+      </p>
+
+      <ul className="wizard-steps">
+        {plan.map((s) => {
+          const st = rowStatus(s.key, progress);
+          const bar = rowBar(progress[s.key]);
+          const size = formatSize(s.size_mb);
+          return (
+            <li key={s.key} className={`wizard-step-row status-${st}`}>
+              <span className="wizard-step-icon">{stepGlyph(st)}</span>
+              <span className="wizard-step-label">
+                {s.label}
+                {size && <span className="wizard-step-size"> · {size}</span>}
+                {!s.required && <span className="wizard-step-size"> · optional</span>}
+              </span>
+              {bar ? (
+                <span className="wizard-step-bar">
+                  <span className="wizard-step-fill" style={{ width: `${bar.pct}%` }} />
+                  <span className="wizard-step-pct">{bar.label}</span>
+                </span>
+              ) : (
+                <span className="wizard-step-state">{st === "pending" ? "" : st}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {outcome === "error" && (
+        <>
+          <p className="wizard-err">
+            Something didn't finish. {firstError(progress)}
+          </p>
+          <div className="wizard-actions">
+            <button type="button" className="wizard-primary" onClick={kickoff}>
+              Retry
+            </button>
+          </div>
+        </>
+      )}
+      {postError && (
+        <p className="wizard-err">Couldn't start setup. Check your connection and try again.</p>
+      )}
+    </>
   );
 }
 
@@ -168,13 +287,14 @@ function DoneStep({
   const label = mode === "cloud_only" ? "Cloud only" : "Full (local + cloud)";
   return (
     <>
-      <h2>Mode selected</h2>
+      <h2>Baby is ready</h2>
       <p className="wizard-sub">
-        Baby will run in <strong>{label}</strong> mode.
+        Everything Baby needs is installed and verified. Running in{" "}
+        <strong>{label}</strong> mode.
       </p>
       <p className="wizard-note">
-        Downloading models and adding API keys come next — those steps aren't wired
-        up in this build yet. For now you can start using Baby.
+        Adding API keys comes next — that step isn't wired up in this build yet. For
+        now you can start using Baby.
       </p>
       <div className="wizard-actions">
         <button type="button" className="wizard-primary" onClick={onContinue}>

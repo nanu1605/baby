@@ -63,6 +63,21 @@ def test_pull_progress_only_emits_on_byte_lines():
     assert provision._pull_progress({"status": "verifying sha256"}, starts, now=11.0) is None
 
 
+def test_plan_matches_mode_and_walk_order():
+    cloud = [s["key"] for s in provision.plan("cloud_only")]
+    full = [s["key"] for s in provision.plan("full")]
+    # Both bookended by disk + verify; Full inserts the local-brain steps before verify.
+    assert cloud[0] == "disk" and cloud[-1] == "verify"
+    assert "ollama-model" not in cloud
+    assert full.index("ollama-model") < full.index("verify")
+    assert full.index("ollama-daemon") < full.index("ollama-model")
+    # Speaker is the one optional step; sizes come through for the byte-heavy models.
+    speaker = next(s for s in provision.plan("cloud_only") if s["key"] == "speaker")
+    assert speaker["required"] is False
+    whisper = next(s for s in provision.plan("cloud_only") if s["key"] == "whisper")
+    assert whisper["size_mb"] > 0
+
+
 def test_dest_name_decodes_percent_encoding():
     # The CAM++ asset url encodes '+' as %2B; on disk it must be the literal '++'.
     url = "https://x/wespeaker_en_voxceleb_CAM%2B%2B.onnx"
@@ -232,6 +247,19 @@ def test_provision_endpoint_needs_a_mode(tmp_path, monkeypatch):
     try:
         r = client.post("/api/setup/provision")  # no mode chosen yet
         assert r.status_code == 400
+    finally:
+        asyncio.run(db.close())
+
+
+def test_plan_endpoint(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        assert client.get("/api/setup/plan").status_code == 400  # no mode yet
+        paths.write_setup({"install_mode": "cloud_only"})
+        body = client.get("/api/setup/plan").json()
+        assert body["mode"] == "cloud_only"
+        keys = [s["key"] for s in body["steps"]]
+        assert keys[0] == "disk" and keys[-1] == "verify" and "ollama-model" not in keys
     finally:
         asyncio.run(db.close())
 

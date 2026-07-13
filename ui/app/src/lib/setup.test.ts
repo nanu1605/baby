@@ -1,18 +1,25 @@
 import { describe, expect, it } from "vitest";
-import type { SetupGpu, SetupState } from "../types";
+import type { SetupGpu, SetupState, SetupStatus } from "../types";
 import {
+  firstError,
+  formatSize,
   gpuSummaryLine,
   initialStep,
   isCounterRecommended,
   modeTradeoff,
+  provisionOutcome,
   recommendedMode,
+  rowBar,
+  rowStatus,
   shouldShowWizard,
+  stepGlyph,
 } from "./setup";
 
 const setup = (o: Partial<SetupState>): SetupState => ({
   complete: false,
   install_mode: null,
   installed: true,
+  provisioned: false,
   ...o,
 });
 
@@ -49,8 +56,12 @@ describe("initialStep", () => {
     expect(initialStep(null)).toBe("mode");
     expect(initialStep(undefined)).toBe("mode");
   });
-  it("skips the mode fork when a mode was already recorded", () => {
-    expect(initialStep("cloud_only")).toBe("done");
+  it("resumes provisioning when a mode is chosen but deps aren't installed", () => {
+    expect(initialStep("cloud_only")).toBe("provision");
+    expect(initialStep("cloud_only", false)).toBe("provision");
+  });
+  it("goes straight to done once provisioned", () => {
+    expect(initialStep("cloud_only", true)).toBe("done");
   });
 });
 
@@ -84,5 +95,74 @@ describe("modeTradeoff", () => {
   it("distinguishes the two modes", () => {
     expect(modeTradeoff("full")).toMatch(/offline/i);
     expect(modeTradeoff("cloud_only")).toMatch(/cloud only/i);
+  });
+});
+
+// -- W3 provisioning helpers -------------------------------------------------
+
+const status = (o: Partial<SetupStatus>): SetupStatus => ({
+  provisioning: false,
+  progress: {},
+  ...o,
+});
+
+describe("formatSize", () => {
+  it("shows GB above 1024 MB, MB below, nothing for 0", () => {
+    expect(formatSize(1600)).toBe("1.6 GB");
+    expect(formatSize(310)).toBe("310 MB");
+    expect(formatSize(0)).toBe("");
+  });
+});
+
+describe("provisionOutcome", () => {
+  it("is idle with no status or an empty snapshot", () => {
+    expect(provisionOutcome(null)).toBe("idle");
+    expect(provisionOutcome(status({}))).toBe("idle");
+  });
+  it("is running while the flag is set", () => {
+    expect(provisionOutcome(status({ provisioning: true }))).toBe("running");
+  });
+  it("is done only when verify passed", () => {
+    const s = status({ progress: { verify: { dep: "verify", phase: "verify", status: "pass" } } });
+    expect(provisionOutcome(s)).toBe("done");
+  });
+  it("is error when any step failed (but not for needs_install)", () => {
+    const bad = status({ progress: { kokoro: { dep: "kokoro", phase: "error", status: "error" } } });
+    expect(provisionOutcome(bad)).toBe("error");
+    const soft = status({
+      progress: { vcredist: { dep: "vcredist", phase: "check", status: "needs_install" } },
+    });
+    expect(provisionOutcome(soft)).not.toBe("error");
+  });
+});
+
+describe("row helpers", () => {
+  it("rowStatus falls back to pending until an event lands", () => {
+    expect(rowStatus("kokoro", {})).toBe("pending");
+    expect(rowStatus("kokoro", { kokoro: { dep: "kokoro", phase: "download", status: "done" } })).toBe(
+      "done",
+    );
+  });
+  it("rowBar only renders for an active download with a pct", () => {
+    expect(rowBar(undefined)).toBeNull();
+    expect(rowBar({ dep: "k", phase: "download", status: "done" })).toBeNull();
+    expect(
+      rowBar({ dep: "k", phase: "download", status: "working", pct: 42, human: "42MB/100MB" }),
+    ).toEqual({ pct: 42, label: "42MB/100MB" });
+  });
+  it("stepGlyph maps each status class", () => {
+    expect(stepGlyph("done")).toBe("✓");
+    expect(stepGlyph("error")).toBe("✕");
+    expect(stepGlyph("working")).toBe("↓");
+    expect(stepGlyph("pending")).toBe("○");
+  });
+});
+
+describe("firstError", () => {
+  it("returns the first failing step's message, else empty", () => {
+    expect(firstError({})).toBe("");
+    expect(
+      firstError({ kokoro: { dep: "kokoro", phase: "error", status: "error", message: "net down" } }),
+    ).toBe("net down");
   });
 });

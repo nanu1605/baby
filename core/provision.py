@@ -306,6 +306,38 @@ def _download_openwakeword() -> None:
     openwakeword.utils.download_models()
 
 
+# --- the plan (what the wizard checklist shows, in walk order) --------------
+
+
+def plan(mode: str) -> list[dict]:
+    """The ordered steps provision() will emit, for the wizard's upfront checklist.
+    Mirrors the walk exactly so no live event lands on a row the checklist lacks.
+    Labels/sizes come from the manifest (single source)."""
+
+    def step(key: str, label: str, *, required: bool = True, size_mb: int = 0) -> dict:
+        return {"key": key, "label": label, "required": required, "size_mb": size_mb}
+
+    def mb(dep_key: str) -> int:
+        return sum(a.approx_mb for a in manifest.get(dep_key).assets)
+
+    steps = [
+        step("disk", "Checking disk space"),
+        step("vcredist", manifest.get("vcredist").label),
+        step("kokoro", manifest.get("kokoro").label, size_mb=mb("kokoro")),
+        step("wakeword", manifest.get("wakeword").label, size_mb=mb("wakeword")),
+        step("whisper", manifest.get("whisper").label, size_mb=mb("whisper")),
+        step("embedder", manifest.get("embedder").label, size_mb=mb("embedder")),
+        step("speaker", manifest.get("speaker").label, required=False, size_mb=mb("speaker")),
+    ]
+    if mode == "full":
+        steps.append(step("ollama-daemon", manifest.get("ollama-daemon").label))
+        steps.append(
+            step("ollama-model", manifest.get("ollama-model").label, size_mb=mb("ollama-model"))
+        )
+    steps.append(step("verify", "Verifying everything works"))
+    return steps
+
+
 # --- the orchestrator -------------------------------------------------------
 
 

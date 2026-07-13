@@ -12,6 +12,7 @@ __pycache__/
 baby.db
 baby.db-wal
 baby.db-shm
+setup.json
 backups/
 logs/
 

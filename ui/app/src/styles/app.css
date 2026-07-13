@@ -1623,3 +1623,76 @@ body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
 .wizard-primary:active {
   transform: scale(0.96);
 }
+
+/* -- W3 provisioning checklist -- */
+.wizard-steps {
+  list-style: none;
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.wizard-step-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.wizard-step-icon {
+  flex: 0 0 1.2em;
+  text-align: center;
+  color: var(--faint);
+}
+.wizard-step-row.status-done .wizard-step-icon,
+.wizard-step-row.status-present .wizard-step-icon,
+.wizard-step-row.status-pass .wizard-step-icon {
+  color: var(--green);
+}
+.wizard-step-row.status-working .wizard-step-icon {
+  color: var(--accent);
+}
+.wizard-step-row.status-error .wizard-step-icon,
+.wizard-step-row.status-fail .wizard-step-icon {
+  color: var(--red);
+}
+.wizard-step-row.status-done .wizard-step-label,
+.wizard-step-row.status-present .wizard-step-label {
+  color: var(--text);
+}
+.wizard-step-label {
+  flex: 1 1 auto;
+}
+.wizard-step-size {
+  color: var(--faint);
+}
+.wizard-step-state {
+  color: var(--faint);
+  font-size: var(--fs-xs);
+}
+.wizard-step-bar {
+  position: relative;
+  flex: 0 0 160px;
+  height: 14px;
+  background: var(--panel-2);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.wizard-step-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  border-radius: var(--r-pill);
+  transition: width var(--dur-med) var(--ease);
+}
+.wizard-step-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  mix-blend-mode: difference;
+}
