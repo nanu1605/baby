@@ -1,0 +1,29 @@
+Baby - End User License Agreement
+
+By installing and using Baby ("the Software"), you agree to the following.
+
+1. WHAT BABY DOES. Baby is a personal AI assistant that runs on this PC. It can
+   run shell commands, control applications, read and write files, browse the
+   web, and use cloud AI services you configure. It acts on your instructions.
+
+2. YOU ARE IN CONTROL. Every state-changing action - running a command, closing
+   an app, sending a message, changing a file - asks for your confirmation before
+   it runs, unless you explicitly relax that in settings. You can review every
+   action Baby takes in its activity log. You are responsible for the commands
+   and actions you approve.
+
+3. CLOUD SERVICES AND KEYS. If you enable cloud AI providers, your prompts and
+   related data are sent to those providers under their own terms. API keys you
+   enter are stored locally on this PC and are never sent anywhere except the
+   provider they belong to. Baby never transmits your keys to its authors.
+
+4. NO WARRANTY. The Software is provided "AS IS", without warranty of any kind,
+   express or implied. To the maximum extent permitted by law, the authors are
+   not liable for any damages arising from its use, including actions you approve
+   it to perform on your system.
+
+5. YOUR DATA STAYS LOCAL. Baby stores its conversation history, memory, and
+   settings on this PC. Uninstalling with the "remove my data" option deletes
+   them.
+
+If you do not agree, do not install or use the Software.

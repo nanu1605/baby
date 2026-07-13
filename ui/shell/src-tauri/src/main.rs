@@ -20,8 +20,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -40,6 +41,9 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// an attached always-on service is left running (DECISIONS #120).
 struct AppState {
     spawned: Mutex<Option<Child>>,
+    /// True while attach-or-spawn (incl. the minutes-long first-run venv build) is in
+    /// flight, so a relaunch that re-triggers setup can't start a second concurrent run.
+    starting: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
@@ -122,44 +126,185 @@ fn wait_ready(timeout: Duration) -> bool {
     backend_up()
 }
 
-/// Find the repo so the shell can spawn `run.py`. BABY_HOME wins; otherwise walk up
-/// from the exe looking for run.py + .venv (true in dev, where the exe lives under
-/// ui/shell/src-tauri/target/). An installed shell with no repo returns None and the
-/// shell shows a "start the backend" message instead of guessing.
-fn resolve_baby_home() -> Option<PathBuf> {
+/// Where the backend's code and writable state live. In dev these are the same
+/// repo dir (run.py + .venv co-located). An installed build (v6) SPLITS them:
+/// run.py + the Python source ship next to the exe (read-mostly install dir),
+/// while the venv + config.yaml/.env/baby.db live in a per-user writable data
+/// home (`%LOCALAPPDATA%\baby`, matched by the backend's own `core/paths.py`).
+struct Layout {
+    /// Holds run.py + the Python source + shipped assets; the process cwd.
+    code_dir: PathBuf,
+    /// BABY_HOME: the venv + config/db. Equals code_dir in dev.
+    data_home: PathBuf,
+}
+
+impl Layout {
+    fn installed(&self) -> bool {
+        self.code_dir != self.data_home
+    }
+}
+
+fn localappdata_baby() -> Option<PathBuf> {
+    std::env::var("LOCALAPPDATA")
+        .ok()
+        .map(|p| PathBuf::from(p).join("baby"))
+}
+
+/// Resolve the code + data layout. Dev (repo, run.py + .venv co-located) is
+/// detected first and behaves exactly as before. An installed shell finds the
+/// staged backend under the Tauri resource dir (`payload/`) and points the
+/// venv/state at `%LOCALAPPDATA%\baby`. Returns None only when no run.py exists.
+fn resolve_layout(app: &AppHandle) -> Option<Layout> {
+    // Explicit override: BABY_HOME pointing at a co-located run.py (advanced/dev).
     if let Ok(home) = std::env::var("BABY_HOME") {
         let p = PathBuf::from(home);
         if p.join("run.py").is_file() {
-            return Some(p);
+            return Some(Layout {
+                code_dir: p.clone(),
+                data_home: p,
+            });
         }
     }
+    // Dev: walk up from the exe for a dir with run.py + .venv co-located.
     let mut dir = std::env::current_exe().ok()?;
     while dir.pop() {
         if dir.join("run.py").is_file() && dir.join(".venv").is_dir() {
-            return Some(dir);
+            return Some(Layout {
+                code_dir: dir.clone(),
+                data_home: dir,
+            });
+        }
+    }
+    // Installed (release builds only): the backend is staged under the bundle's
+    // resource dir (payload/, via tauri.conf bundle.resources). Tauri tells us where
+    // that is, so we never guess exe-relative paths; state lives in %LOCALAPPDATA%\baby.
+    // Gated out of debug builds: in `tauri dev` the resource dir also holds a staged
+    // payload/, so without this a contributor whose interpreter isn't a repo-root
+    // .venv would fall through here and get the installed layout (misleading splash,
+    // or cross-wiring an installed venv) instead of the honest dev "not found" message.
+    if !cfg!(debug_assertions) {
+        if let Ok(res) = app.path().resource_dir() {
+            let code = res.join("payload");
+            if code.join("run.py").is_file() {
+                let data_home = localappdata_baby()?;
+                return Some(Layout {
+                    code_dir: code,
+                    data_home,
+                });
+            }
         }
     }
     None
 }
 
+/// The last `ERROR:`-tagged line from the first-run script, for the splash. The
+/// bootstrap prints one classified line on failure (never a raw trace).
+fn last_error_line(stdout: &[u8], stderr: &[u8]) -> String {
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(stdout),
+        String::from_utf8_lossy(stderr)
+    );
+    text.lines()
+        .rev()
+        .find(|l| l.trim_start().starts_with("ERROR:"))
+        .map(|l| l.trim_start().trim_start_matches("ERROR:").trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "setup did not complete".to_string())
+}
+
+/// First launch of an INSTALLED build has no venv yet (the installer stays small;
+/// the backend is stood up here). Run the bundled-uv bootstrap (installer/
+/// first_run.ps1): managed CPython + `uv sync` into the per-user venv + a functional
+/// wheels probe. Blocking on this (attach-or-spawn) thread while a splash shows;
+/// resumable on the next launch. Returns true when a runnable venv exists.
+fn ensure_venv(app: &AppHandle, layout: &Layout) -> bool {
+    // Gate on the completion sentinel first_run.ps1 writes AFTER its wheels probe --
+    // NOT on pythonw.exe, which `uv sync` creates before installing the ~1.5 GB of
+    // deps. Keying on pythonw would leave an interrupted first sync looking "done"
+    // and never resume it. Sentinel absent → (re-)run the bootstrap; it's resumable.
+    let ready = layout.data_home.join(".venv").join(".baby-ready");
+    if ready.is_file() {
+        return true; // a prior first-run completed and passed the wheels probe
+    }
+    if !layout.installed() {
+        return true; // dev: a repo without a venv is handled by spawn_backend's fallback
+    }
+    let script = layout.code_dir.join("installer").join("first_run.ps1");
+    let uv = layout.code_dir.join("uv.exe");
+    // A release built without the bundled uv.exe (BABY_UV_EXE unset) can't bootstrap;
+    // say so plainly rather than letting first_run.ps1 fail on a missing `uv`.
+    if !script.is_file() || !uv.is_file() {
+        show_splash_message(app, "First-run setup files are missing. Please reinstall Baby.");
+        return false;
+    }
+    show_splash_message(
+        app,
+        "Setting up Baby - installing the local engine. This runs once and can take a few minutes...",
+    );
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+        .arg(&script)
+        .arg("-UvExe")
+        .arg(&uv)
+        .arg("-SourceDir")
+        .arg(&layout.code_dir)
+        .arg("-BabyHome")
+        .arg(&layout.data_home)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+    match output {
+        Ok(out) if out.status.success() => true,
+        Ok(out) => {
+            let msg = last_error_line(&out.stdout, &out.stderr);
+            show_splash_message(app, &format!("Baby couldn't finish setup: {msg}"));
+            false
+        }
+        Err(e) => {
+            show_splash_message(app, &format!("Baby couldn't run first-run setup: {e}"));
+            false
+        }
+    }
+}
+
 /// Spawn `pythonw run.py --all` detached (no console window), recording the child so
-/// quit can kill it. Prefers the repo venv's pythonw, falls back to PATH.
-fn spawn_backend(app: &AppHandle, home: &Path) {
-    let venv_pythonw = home.join(".venv").join("Scripts").join("pythonw.exe");
+/// quit can kill it. Python comes from the data-home venv; the script + cwd come from
+/// the code dir; an installed layout also exports BABY_HOME so the backend resolves
+/// config/db into the per-user data home.
+fn spawn_backend(app: &AppHandle, layout: &Layout) {
+    let venv_pythonw = layout
+        .data_home
+        .join(".venv")
+        .join("Scripts")
+        .join("pythonw.exe");
     let exe = if venv_pythonw.is_file() {
         venv_pythonw
+    } else if layout.installed() {
+        // Installed but the venv isn't built yet: first-run setup (W3) hasn't
+        // finished. Don't fall back to a system python that lacks Baby's deps.
+        show_splash_message(
+            app,
+            "Baby is still finishing first-run setup. Reopen it once setup completes.",
+        );
+        return;
     } else {
-        PathBuf::from("pythonw")
+        PathBuf::from("pythonw") // dev fallback: repo without a local venv
     };
     let mut cmd = Command::new(exe);
     cmd.arg("run.py")
         .arg("--all")
-        .current_dir(home)
+        .current_dir(&layout.code_dir)
         // Tell the backend the native shell owns the tray, so it skips its pystray icon
         // even when ui.shell isn't set to native (avoids a double tray). Only affects a
         // backend WE spawn; an attached always-on service relies on ui.shell instead.
         .env("BABY_SHELL_TRAY", "1")
         .creation_flags(CREATE_NO_WINDOW);
+    // Only export BABY_HOME when the layout actually splits (installed). In dev the
+    // two dirs are identical, so leaving it unset keeps the cwd-relative behavior
+    // byte-identical to before.
+    if layout.installed() {
+        cmd.env("BABY_HOME", &layout.data_home);
+    }
     match cmd.spawn() {
         Ok(child) => {
             *app.state::<AppState>().spawned.lock().unwrap() = Some(child);
@@ -187,10 +332,22 @@ fn reveal(app: &AppHandle) {
     }
 }
 
+/// Guarded entry: a relaunch can re-trigger setup (single-instance callback), but the
+/// first-run venv build takes minutes — never run two concurrently. The `starting`
+/// flag serializes it; a second entry just focuses the window.
 fn attach_or_spawn(app: AppHandle) {
+    if app.state::<AppState>().starting.swap(true, Ordering::SeqCst) {
+        show_main(&app);
+        return;
+    }
+    attach_or_spawn_inner(&app);
+    app.state::<AppState>().starting.store(false, Ordering::SeqCst);
+}
+
+fn attach_or_spawn_inner(app: &AppHandle) {
     // Already up (an autostart/manual service is running) → just attach.
     if backend_up() {
-        reveal(&app);
+        reveal(app);
         return;
     }
     // Launched by autostart next to the always-on service: the service binds :8765
@@ -199,31 +356,37 @@ fn attach_or_spawn(app: AppHandle) {
     // real service. This is what keeps #120's "the service persists" guarantee true.
     if attach_only() {
         if wait_ready(READY_TIMEOUT) {
-            reveal(&app);
+            reveal(app);
         } else {
             show_splash_message(
-                &app,
+                app,
                 "Baby service did not come up. Check %LOCALAPPDATA%\\baby\\logs\\baby.log",
             );
         }
         return;
     }
-    // Manual/dev launch with nothing listening → spawn our own backend.
-    match resolve_baby_home() {
-        Some(home) => spawn_backend(&app, &home),
+    // Manual/dev launch with nothing listening → build the venv on first run if
+    // needed, then spawn our own backend.
+    match resolve_layout(app) {
+        Some(layout) => {
+            if !ensure_venv(app, &layout) {
+                return; // first-run setup failed; the splash carries the reason
+            }
+            spawn_backend(app, &layout)
+        }
         None => {
             show_splash_message(
-                &app,
+                app,
                 "Baby backend not found. Start it in the repo: uv run python run.py --all",
             );
             return;
         }
     }
     if wait_ready(READY_TIMEOUT) {
-        reveal(&app);
+        reveal(app);
     } else {
         show_splash_message(
-            &app,
+            app,
             "Baby backend did not become ready. Start it: uv run python run.py --all",
         );
     }
@@ -359,10 +522,20 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main(app);
+            // Reopening while first-run setup hasn't finished RESUMES it — the
+            // failed-setup splash tells the user to reopen Baby, so honor that (the
+            // starting-guard keeps it from racing an in-flight run). Backend already
+            // up → just focus.
+            if backend_up() {
+                show_main(app);
+            } else {
+                let h = app.clone();
+                std::thread::spawn(move || attach_or_spawn(h));
+            }
         }))
         .manage(AppState {
             spawned: Mutex::new(None),
+            starting: AtomicBool::new(false),
         })
         .setup(|app| {
             build_tray(app)?;

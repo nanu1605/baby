@@ -1,0 +1,188 @@
+# Baby -- default config shipped in the public installer.
+#
+# The first-run wizard seeds this into %LOCALAPPDATA%\baby\config.yaml (only if
+# absent -- a returning user's config is never overwritten). It is deliberately
+# the MOST CONSERVATIVE posture for a stranger's machine (see DECISIONS #128):
+#   - safety.mode: enforce (never dry_run in a shipped build)
+#   - auto_allow_app_close: [] (empty -- every app-close asks first)
+#   - owner details blank (the user fills them in)
+# The safety gate itself is unchanged frozen ground; this only sets defaults
+# around it. router.mode and startup.cloud_mode are STAMPED by the wizard from
+# the chosen install mode + validated keys (W2/W4).
+
+owner:
+  name: ""
+  city: ""
+  languages: [en]
+
+models:
+  daily:
+    provider: ollama
+    model: qwen3.5:9b-q4_K_M            # Full-mode local brain (pulled first-run); skipped in cloud-only
+    num_ctx: 8192
+    max_history_tokens: 6000
+    temperature: 0.7
+    keep_alive: 24h
+  cloud:
+    provider: gemini
+    model: gemini-flash-latest          # optional backstop; needs GEMINI_API_KEY
+    max_history_tokens: 28000
+  nim_primary:
+    provider: nvidia                    # generic OpenAI-compatible client
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    model: openai/gpt-4o-mini           # primary cloud brain; needs OPENROUTER_API_KEY
+    max_history_tokens: 28000
+    temperature: 0.7
+  nim_heavy:
+    provider: nvidia
+    base_url: https://integrate.api.nvidia.com/v1
+    model: z-ai/glm-5.2                 # optional heavy planning brain; needs NVIDIA_API_KEY
+    max_history_tokens: 28000
+    temperature: 0.5
+  embedder: intfloat/multilingual-e5-small
+
+router:
+  mode: local_primary                   # boots keyless WITHOUT crashing (cloud_primary raises at boot with no key); wizard UPGRADES to cloud_primary after a cloud key validates (W2/W4)
+  default: daily
+  escalate_on: [explicit_request, planning_task, retry_after_failure, long_context]
+  escalation_order: [heavy, cloud]
+  long_context_tokens: 4096
+  primary: nim_primary
+  heavy: nim_heavy
+  offline_fallback: daily
+  backstop: cloud
+  local_keep_warm: true
+  first_token_timeout_s: {voice: 3.5, text: 8}
+  health: {probe_s: 45, recover_after: 3, cooldown_429_s: 90}
+  rate_limit: {rpm: 36, background_share: 0.5}
+  privacy_pins: [read_file, run_shell]
+  language_pin: {enabled: true, devanagari_ratio: 0.3, target: daily}
+
+game_mode:
+  enabled: true                         # allows unload-local-and-route-cloud
+  auto_detect: false                    # conservative default: no automatic fullscreen toggling until the user opts in
+
+voice:
+  enabled: true                         # voice is required out-of-the-box (v6 owner decision)
+  wakeword_model: models/jarvis.onnx    # custom wake word (optional); builtin fallback always on
+  wakeword_models: []
+  wakeword_builtin_fallback: hey_jarvis
+  wakeword_threshold: 0.55
+  push_to_talk_hotkey: ctrl+alt+b
+  kill_phrases: ["baby stop"]
+  max_utterance_s: 30
+  listen_grace_s: 10
+  stt:
+    model: large-v3-turbo
+    device: cpu                         # GPU is owned by the local LLM
+    compute_type: int8
+    cpu_threads: 8
+    beam_size: 1
+    hotwords: "Baby, Ollama, Chromium, Telegram, Gemini, qwen, Spotify, WhatsApp, YouTube"
+  tts:
+    engine: kokoro-onnx
+    model: models/kokoro-v1.0.onnx
+    voices: models/voices-v1.0.bin
+    voice_en: af_heart
+    voice_hi: hf_beta
+    speed: 1.05
+  vad_silence_ms: 400
+  vad_speech_wait_ms: 5000
+  speaker_verify:
+    enabled: false                      # off by default; a fresh user has no enrolled profile
+    model: models/wespeaker_en_voxceleb_CAM++.onnx
+    profile: models/owner_voice.json
+    threshold: 0.68
+    mode: chat_only
+    accept_threshold: 0.62
+    reject_threshold: 0.45
+    smoothing_window: 5
+    demote_after: 2
+  barge_in: true
+  barge_in_threshold: 0.6
+  ready_announce:
+    enabled: true
+    phrase: "Baby ready"
+    sound_file: assets/baby_ready.wav
+    min_interval_s: 60
+
+ui:
+  host: 127.0.0.1                        # localhost only -- never bind public
+  port: 8765
+  frontend: v3
+
+startup:
+  wait_for_model_s: 120
+  # cloud_mode (boot idle-local) is written by the first-run wizard (W2/W3).
+
+search:
+  engine: ddg
+  max_results: 6
+
+memory:
+  engine: v2
+  k: 5
+  min_similarity: 0.80
+  dedup_similarity: 0.90
+  summarize_every: 10
+  extract_every: 20
+  keep_recent: 10
+  rag_k: 4
+  rag_nightly_cron: "0 3 * * *"
+
+telemetry:
+  emit_usage: true
+
+persona:
+  suggest_next_step: true
+
+conversation:
+  enabled: true
+  window_s: 60
+  cue: true
+  end_phrases:
+    - baby stop listening
+    - stop listening
+
+files:
+  everything_dll: ""
+  index_ttl_hours: 24
+
+safety:
+  mode: enforce                         # enforce | dry_run -- NEVER dry_run in a shipped build
+  auto_allow_app_close: []              # empty: a fresh public install confirms every app-close (conservative)
+  confirm_timeout_s: 60                 # unanswered confirmation = NO
+
+workers:
+  size: 2
+  max_iterations: 15
+
+multi_agent:
+  enabled: true
+  max_subtasks: 4
+  project_timeout_s: 1800
+  plan_max_tokens: 1500
+
+screen:
+  enabled: true
+  model: ""
+  all_screens: false
+  max_side: 1280
+  jpeg_quality: 80
+  allow_cloud_fallback: true
+
+browser:
+  headless: false
+  profile_dir: ""
+
+telegram:
+  enabled: false
+
+tray:
+  enabled: true
+
+briefing:
+  enabled: true
+  cron: "0 8 * * *"
+  include: [date, weather, pending_tasks, headlines, system_health]

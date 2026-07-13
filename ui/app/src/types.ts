@@ -145,6 +145,8 @@ export interface Stats {
   /** V3 sphere gate — ui.brain (code-defaulted "3d"; "2d" = v3 canvas rollback).
    *  v5 adds ui.history ("on"/"off") — the chat-history sidebar rollback flag. */
   ui?: { brain: string; history?: string };
+  /** v6 first-run wizard state (core/paths.py setup.json + is_installed). */
+  setup?: SetupState;
   /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
   local_model_loaded?: boolean;
   tokens?: {
@@ -161,6 +163,56 @@ export interface Stats {
       by_brain?: Record<string, number>;
     };
   };
+}
+
+/** v6 first-run wizard state off /stats. `installed` is the dev-vs-installed gate
+ *  (false in a checkout → the wizard never shows); `complete` flips only when the
+ *  whole wizard finishes (W5); `provisioned` (W3) = deps fetched + verified. */
+export interface SetupState {
+  complete: boolean;
+  install_mode: string | null;
+  installed: boolean;
+  provisioned: boolean;
+}
+
+/** GET /api/setup/plan — the ordered provisioning checklist for the chosen mode. */
+export interface SetupStep {
+  key: string;
+  label: string;
+  required: boolean;
+  size_mb: number;
+}
+export interface SetupPlan {
+  mode: string;
+  steps: SetupStep[];
+}
+
+/** One provisioning progress event (bus `setup_progress` / GET /api/setup/status). */
+export interface SetupProgressEvent {
+  dep: string;
+  phase: string;
+  status: string; // working|done|present|skip|pass|fail|error|needs_install
+  detail?: string;
+  message?: string;
+  pct?: number;
+  human?: string;
+  bytes_done?: number;
+  bytes_total?: number;
+}
+export interface SetupStatus {
+  provisioning: boolean;
+  progress: Record<string, SetupProgressEvent>;
+}
+
+/** GET /api/setup/gpu — VRAM snapshot + the Full-vs-cloud-only recommendation. */
+export interface SetupGpu {
+  has_nvidia: boolean;
+  gpu_name: string | null;
+  vram_total_gb: number | null;
+  vram_used_gb?: number;
+  meets_full_bar: boolean;
+  recommend: "full" | "cloud_only";
+  full_bar_gb: number;
 }
 
 export interface TaskRow {

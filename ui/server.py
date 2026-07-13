@@ -18,6 +18,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from core import paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.safety import SafetyGate
@@ -179,6 +180,40 @@ class UIContext:
         return bool(voice_running and voice_running())
 
 
+# v6 W2: the local-model bar for "Full" install mode. The daily 9B (q4) needs
+# ~6.6 GB resident + headroom; below this we recommend cloud-only (still runs,
+# just no local fallback). The user always makes the final call.
+_FULL_MODE_MIN_VRAM_GB = 8.0
+
+
+def _gpu_recommendation() -> dict:
+    """GPU/VRAM snapshot + a Full-vs-cloud-only recommendation for the first-run
+    wizard. Fail-soft: no NVIDIA GPU (or NVML unavailable) => cloud-only."""
+    from tools.system_stats import _gpu
+
+    gpu = _gpu()
+    if gpu is None:
+        return {
+            "has_nvidia": False,
+            "gpu_name": None,
+            "vram_total_gb": None,
+            "meets_full_bar": False,
+            "recommend": "cloud_only",
+            "full_bar_gb": _FULL_MODE_MIN_VRAM_GB,
+        }
+    total = gpu["vram_total_gb"]
+    meets = total >= _FULL_MODE_MIN_VRAM_GB
+    return {
+        "has_nvidia": True,
+        "gpu_name": gpu["name"],
+        "vram_total_gb": total,
+        "vram_used_gb": gpu["vram_used_gb"],
+        "meets_full_bar": meets,
+        "recommend": "full" if meets else "cloud_only",
+        "full_bar_gb": _FULL_MODE_MIN_VRAM_GB,
+    }
+
+
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
     # Vanilla UI assets — always mounted so /classic keeps working regardless of
@@ -337,6 +372,17 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["ui"] = {
             "brain": _ui_brain(ctx.config),  # V3 sphere gate (code-defaulted 3d)
             "history": _ui_history(ctx.config),  # v5 history sidebar (code-defaulted on)
+        }
+        _setup = paths.read_setup()  # v6 first-run wizard state ({} until installed)
+        data["setup"] = {
+            "complete": bool(_setup.get("setup_complete")),
+            "install_mode": _setup.get("install_mode"),
+            # The wizard only shows in an installed build -- never in a dev checkout,
+            # where setup.json is absent and `complete` would read false forever.
+            "installed": paths.is_installed(),
+            # W3: dependencies fetched + functionally verified (skips the dep step on
+            # a re-entry after a completed provision).
+            "provisioned": bool(_setup.get("provisioned")),
         }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
@@ -508,6 +554,97 @@ def create_app(ctx: UIContext) -> FastAPI:
             result["new_conversation_id"] = ctx.agent.conversation_id
         ctx.bus.publish("status", "ui", text="conversation deleted")
         return result
+
+    @app.get("/api/setup/gpu")
+    async def api_setup_gpu():
+        """First-run GPU pre-check: detected VRAM + a Full/cloud-only recommendation.
+        Pure read; NVML runs off-thread so a slow driver can't stall the loop."""
+        return await asyncio.to_thread(_gpu_recommendation)
+
+    @app.post("/api/setup/mode")
+    async def api_setup_mode(body: dict):
+        """Record the chosen install mode (Full local+cloud, or cloud-only). Gates
+        the first-run 9B download (W3). Does NOT set router.mode -- keys do that in
+        W4 -- so a keyless boot stays on the safe local_primary default."""
+        mode = body.get("mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse(
+                {"error": "mode must be 'full' or 'cloud_only'"}, status_code=400
+            )
+        state = paths.write_setup({"install_mode": mode})
+        return {"install_mode": state.get("install_mode")}
+
+    @app.post("/api/setup/provision")
+    async def api_setup_provision():
+        """Kick off first-run dependency provisioning for the chosen mode (W3). Runs
+        as a background task; progress streams on the bus (kind=setup_progress,
+        channel=setup) and a per-dep snapshot is kept for a reconnecting wizard."""
+        from core import provision
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        if getattr(app.state, "provisioning", False):
+            return {"status": "already running"}
+        app.state.provisioning = True
+        app.state.setup_progress = {}
+
+        def on_event(ev: dict) -> None:
+            app.state.setup_progress[ev.get("dep", "?")] = ev
+            ctx.bus.publish("setup_progress", "setup", **ev)
+
+        async def _run() -> None:
+            try:
+                await provision.provision(mode, on_event=on_event)
+            except Exception as exc:  # noqa: BLE001 -- surface, never crash the server
+                on_event({"dep": "provision", "phase": "error", "status": "error",
+                          "detail": str(exc)[:200]})
+            finally:
+                app.state.provisioning = False
+                app.state.provision_task = None
+
+        # Hold a strong reference: a bare create_task can be GC'd at an await point
+        # mid-run, silently halting the multi-GB provisioning.
+        app.state.provision_task = asyncio.create_task(_run())
+        return {"status": "started", "mode": mode}
+
+    @app.get("/api/setup/plan")
+    async def api_setup_plan():
+        """The ordered provisioning checklist for the chosen mode -- so the wizard can
+        show every step (incl. not-yet-started ones) upfront, not just live events."""
+        from core import provision
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        return {"mode": mode, "steps": provision.plan(mode)}
+
+    @app.get("/api/setup/status")
+    async def api_setup_status():
+        """Latest per-dependency provisioning snapshot (for a wizard that reconnects
+        mid-run and missed the live bus events)."""
+        return {
+            "provisioning": getattr(app.state, "provisioning", False),
+            "progress": getattr(app.state, "setup_progress", {}),
+        }
+
+    @app.get("/api/setup/health")
+    async def api_setup_health():
+        """Re-runnable FUNCTIONAL health check: imports + a real op per wheel, then
+        each model load (whisper/kokoro/e5/wake; +9B in Full). Returns a plain-language
+        readiness report that names any broken dep + its fix. Feeds the post-install
+        report and a later repair flow (W5). Off-thread -- the model loads are heavy."""
+        from dataclasses import asdict
+
+        from core import health
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        results = await asyncio.to_thread(health.run_all, mode, "full", False)
+        return {
+            "ok": health.overall_ok(results),
+            "summary": health.readiness_summary(results),
+            "results": [asdict(r) for r in results],
+        }
 
     @app.get("/memory")
     async def memory_view(limit: int = 200):
@@ -854,7 +991,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import files as files_tools
     from tools import web as web_tools
 
-    db = Database("baby.db")
+    db = Database(paths.db_path())
     asyncio.get_running_loop().set_exception_handler(_quiet_playwright_teardown)
     await db.connect()
     bus = EventBus()

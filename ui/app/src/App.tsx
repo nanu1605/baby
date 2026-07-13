@@ -43,6 +43,8 @@ import MemoryDialog from "./components/MemoryDialog";
 import InspectorDrawer from "./components/InspectorDrawer";
 import Omnibox from "./components/Omnibox";
 import Toasts from "./components/Toasts";
+import FirstRunWizard from "./components/FirstRunWizard";
+import { shouldShowWizard } from "./lib/setup";
 
 /**
  * B2 app shell — daily-driver parity with /classic, over the living-graph layout:
@@ -65,6 +67,11 @@ export default function App() {
   // v5 history sidebar: shown unless ui.history is explicitly "off" (code-default
   // "on"). Undefined before the first /stats resolves → shown, matching the default.
   const historyOn = useBrain((s) => s.stats?.ui?.history) !== "off";
+  // v6 first-run wizard: installed build + setup unfinished + not dismissed this
+  // session. Dev checkouts report installed:false, so this is always false there.
+  const setup = useBrain((s) => s.stats?.setup);
+  const wizardDismissed = useBrain((s) => s.wizardDismissed);
+  const showWizard = shouldShowWizard(setup, wizardDismissed);
 
   return (
     <div className="app-shell">
@@ -131,6 +138,7 @@ export default function App() {
       <ConfirmModal />
       <MemoryDialog />
       <Toasts />
+      {showWizard && <FirstRunWizard />}
     </div>
   );
 }

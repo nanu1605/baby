@@ -1129,3 +1129,219 @@ Running log of non-obvious choices made during the build. Newest last.
       (`startup.cloud_mode: false` or a cloud key; the v6 installer wizard handles key
       entry for end users). Rollbacks: `ui.history: off`, `startup.cloud_mode: false` —
       both code-defaulted, never written to `config.yaml`.
+
+## v6 — Public Windows Installer (2026-07-11)
+
+127. **v6 W0 packaging spike — the crux is shipping Python, not the NSIS wizard.**
+     v6 turns Baby from a one-user dev checkout into a downloadable Windows app.
+     Before any installer code, four unknowns were spiked (throwaway `spike/`,
+     deleted in W1); every dev-box-provable piece is green, and the two clean-VM
+     proofs are flagged owner-run.
+     - **Backend delivery = bundled `uv` + first-run `uv sync` (owner-chosen).** The
+       `.exe` bundles a tiny `uv.exe` + pinned `pyproject.toml` + `uv.lock`; first-run
+       does `uv python install` (managed CPython — no system Python) then `uv sync`
+       into `%LOCALAPPDATA%\baby\.venv`, reusing the exact `.venv` contract the shell
+       already spawns (`resolve_baby_home` is already `BABY_HOME`-aware). Freeze
+       (PyInstaller) was off the table: the tree pulls `torch` (via
+       `sentence-transformers` + `silero-vad`) plus ctranslate2/onnxruntime/sherpa/
+       sqlite-vec/kokoro/playwright native wheels — freezing that is fragile; the venv
+       is ~1–1.5 GB of prebuilt wheels instead.
+     - **A green `uv sync` is not proof — a post-sync FUNCTIONAL probe is.** A native
+       wheel can install yet fail to load (missing VC++ redist, bad ABI). The spike's
+       `health_probe.py` imports each wheel and does a real op (loads the .pyd);
+       proven all-green on the dev box incl. a live Chromium launch, and it ports
+       verbatim into W3's health check. Failure UX was proven against **real** `uv`
+       stderr and caught a real classifier bug — a DNS failure was mis-labeled a proxy
+       problem because uv's `client error (Connect)` chain matched a naive `CONNECT`
+       regex; tightened so a no-internet error never sends a user to configure a proxy.
+     - **Offline-first-install is OUT of scope.** The web-installer requires first-run
+       network by design (`uv sync` pulls wheels from PyPI; models from the Ollama
+       registry). This keeps the release tiny and installs current-by-default.
+     - **Model pull = Ollama `/api/pull` stream, resumable by construction.** Real
+       byte/%/speed/ETA rendering proven; a re-issued pull completes from cached
+       content-addressed blobs (the resume mechanism). The mid-pull NIC-kill is the
+       one owner clean-VM check.
+     - **Engine = NSIS, unchanged.** `tauri-cli 2.1.0` + the existing
+       `bundle.targets:["nsis"]` already emit a ~1.6 MB unsigned `*_x64-setup.exe` —
+       toolchain works, tiny size confirms the web-installer premise. NSIS covers the
+       wizard needs (license/EULA page, per-user `installMode`, post-install hooks,
+       native uninstaller). **Finding:** NSIS has no MSI-style Repair/Modify ARP
+       dialog, so v6 does **repair + mode-switch (cloud-only ↔ full) in-app** (W5),
+       leaving clean uninstall to NSIS — no WiX/MSI detour.
+     - **Signing = unsigned now + hook wired.** Owner publishes free, so the build
+       ships unsigned + a SmartScreen "More info → Run anyway" walkthrough + `.exe`
+       checksums. The hook is a single-key drop-in later (`bundle.windows.signCommand`
+       or `certificateThumbprint`+`timestampUrl`). The only free *trusted* path for a
+       public OSS repo is **SignPath.io Foundation (free OSS signing)** — a parallel
+       owner enrollment track, not a blocker.
+     - **Boundary finalized.** `.exe` carries only shell + wizard + `uv.exe` +
+       `pyproject`/`uv.lock` + `config.default.yaml` + `EULA.txt`; first-run fetches
+       the managed Python, the deps, [Full] Ollama + 9B, and the voice/embedder
+       assets. STOP for owner ratification before W1.
+
+128. **v6 W1 -- per-user state relocation, a conservative shipped config, and the
+     installed shell layout (owner ratified W0's four decisions 2026-07-11).**
+     - **State relocation is opt-in, so dev stays byte-identical.** New `core/paths.py`
+       resolves `config.yaml` / `.env` / `baby.db` under `BABY_HOME` when that env is
+       set (an installed build), else the current dir (a repo checkout, unchanged).
+       Nothing moves unless `BABY_HOME` is set. Wired the three cwd-relative runtime
+       load sites (`run.py`, `clients/cli.py`, `ui/server.py`); scripts that take
+       explicit paths are left alone. `ensure_config()` seeds the shipped template into
+       `BABY_HOME` on first run **only if absent** -- a returning user's config is never
+       clobbered (in dev the target already exists, so it is a no-op). The safety gate
+       itself is untouched frozen ground; this only relocates where its config is read.
+     - **The shipped config is a separate, conservative file -- not the owner's.** New
+       tracked `installer/config.default.yaml` carries the most conservative posture for
+       a stranger (`safety.mode: enforce`, `auto_allow_app_close: []` so every app-close
+       is confirmed, blank owner PII, `game_mode.auto_detect: false`, localhost UI). The
+       code defaults were already conservative (`core/safety.py:36-42`,
+       `clients/cli.py:23-30`); the risk was only the owner's populated `config.yaml`, so
+       the fix is a distinct template, never a commit to `config.yaml`. **The template
+       ships `router.mode: local_primary`** (an adversarial-review fix -- an earlier
+       `cloud_primary` default hard-crashed a keyless install at boot, since
+       `build_provider` raises when the primary slot is unbuilt, `core/router.py:1010-1017`,
+       and no fallback catches it before uvicorn binds). local_primary boots keyless
+       (bare Ollama daily, degrades gracefully); the W2/W4 wizard UPGRADES to
+       `cloud_primary` only after a cloud key validates. `tests/test_fresh_install_defaults.py`
+       builds the **real** `SafetyGate` from the template (enforce + empty allowlist) AND
+       asserts the template **boots keyless** (`build_provider` doesn't raise with no keys)
+       -- the regression guard for that crash.
+     - **The installed shell splits code from state.** In dev, run.py + `.venv` are
+       co-located and the shell's `resolve_layout()` (was `resolve_baby_home`) returns
+       that one dir -- unchanged. Installed, run.py + the Python source ship next to the
+       exe (a read-mostly install dir) while the venv + config/db live in
+       `%LOCALAPPDATA%\baby`; the shell runs the data-home venv's `pythonw`, sets cwd to
+       the code dir, and exports `BABY_HOME` **only when the layout actually splits** (so
+       dev never gets a spurious `BABY_HOME`). If the installed venv is missing (first-run
+       not finished, W3), the shell says so rather than falling back to a depless system
+       Python. `bundle.windows.nsis.installMode: currentUser` (no admin) +
+       `bundle.licenseFile` = the EULA license page; `nsis.installerHooks` is the
+       post-install first-run trigger wired in W3.
+     - **Source-staging (W1e) -- done, verified against a real build.** A new
+       `scripts/stage_payload.ps1` assembles an ALLOWLISTED runtime payload (2.5 MB:
+       run.py + the Python packages + `assets/` + `installer/` + `ui/{server,tray,
+       gamewatch}.py` + `ui/web` + the built `ui/app/dist` + pyproject/uv.lock; never
+       config.yaml/.env/baby.db/__pycache__/ui-shell/ui-app-src -- an allowlist so a
+       public build can't leak a secret). `tauri.conf` `beforeBuildCommand` runs it
+       (build-only, not the `tauri dev` loop -- and it must be `beforeBuildCommand`, not
+       `beforeBundleCommand`, because the `resources` glob is validated at build.rs time,
+       before bundling), and `bundle.resources: ["payload/**/*"]` ships it. The shell
+       finds it via `app.path().resource_dir().join("payload")` -- Tauri's own API, not
+       an exe-relative guess -- which `resolve_layout` uses. A real `tauri build`
+       confirmed it: `target/release/payload/run.py` lands exactly where the shell looks,
+       and the NSIS installer grew 1.6 -> 2.2 MB. `.venv` + models are still first-run;
+       `uv.exe` is dropped in at release build (`-UvExe`).
+     - **Owner gap surfaced:** the repo has **no LICENSE** (currently all-rights-reserved).
+       A public release needs one, and SignPath-OSS free signing requires an OSI-approved
+       license (MIT/Apache-2.0) -- an owner prerequisite before W6.
+
+129. **v6 W2 -- GPU pre-check and the install-mode fork (first-run wizard, backend
+     + front-end).**
+     - **Wizard state lives in a separate `setup.json`, never in `config.yaml`.**
+       `core/paths.py` gained `read/write/apply/is_setup_complete` over
+       `BABY_HOME/setup.json`. The wizard's choices are overlaid onto a freshly loaded
+       config non-destructively (`apply_setup` only stamps `router_mode` today), so the
+       shipped template's comments survive and a missing `setup.json` is a no-op -- a dev
+       boot stays byte-identical. Keys never go here; they land in `.env` (W4).
+     - **The wizard only shows in an installed build.** The naive gate
+       (`setup.complete === false`) would fire in every dev checkout, since `setup.json`
+       is absent there and `complete` reads false forever. So `/stats` now reports
+       `setup.installed` from `paths.is_installed()` (`"BABY_HOME" in os.environ` -- the
+       shell exports it only for a split installed layout), and the front-end gate is
+       `installed && !complete && !dismissed`. A repo checkout reports `installed:false`
+       and never renders the wizard.
+     - **GPU informs, never walls (cloud-primary since the NIM migration).**
+       `GET /api/setup/gpu` reuses `tools/system_stats._gpu` (pynvml) off-thread and
+       returns detected VRAM + a recommendation against an 8 GB Full-mode bar
+       (`_FULL_MODE_MIN_VRAM_GB`); no NVIDIA / NVML-unavailable fails soft to cloud-only.
+       The wizard shows the number and the recommendation but the user makes the final
+       call -- a capable GPU can still pick cloud-only, a weak GPU can force Full with a
+       plain warning.
+     - **Mode gates the download, keys set the router mode -- kept apart on purpose.**
+       `POST /api/setup/mode` writes only `install_mode` (Full | cloud_only), which gates
+       the first-run 9B pull in W3. It deliberately does NOT touch `router.mode`, so a
+       keyless boot stays on the safe `local_primary` default; W4's key wizard is what
+       upgrades `local_primary -> cloud_primary`, and only after a cloud key validates.
+       This is the joint mode/key correctness core that keeps a fresh install from the
+       `cloud_primary`-keyless boot crash (#128).
+     - **The wizard front-end is a resumable multi-step shell, not a one-shot.** The
+       mode-fork is step 1 of an N-step flow (W3 deps, W4 keys, W5 disclosure ack, which
+       finally stamps `setup_complete`). Because that flow isn't finished, the terminal
+       panel only dismisses the wizard for the current session (`dismissWizard`, in-store)
+       -- it never fakes completion, so it honestly re-prompts next launch until W5 lands,
+       but never traps a session. Pure gate/summary/recommendation logic lives in
+       `ui/app/src/lib/setup.ts` with vitest coverage; the React shell is thin glue over
+       it. Additive only -- no router/safety/provider logic touched.
+     - **Verification boundary.** The wizard is gated OFF in dev by design, so a dev
+       preview can't render it without faking an installed layout -- proven instead by
+       vitest (gate + GPU-summary + recommendation), the tsc+vite build (component in the
+       bundle), and pytest (`is_installed`, the GPU endpoint, the mode endpoint, and the
+       `installed` flag on `/stats`). Live wizard render belongs to the owner's W6
+       clean-VM matrix.
+
+130. **v6 W3 -- first-run dependency orchestration (the hardest phase): a functional
+     dep manifest + probes, a resumable provisioning orchestrator, the wizard's
+     install step, and a first-launch venv bootstrap.**
+     - **A declarative dependency manifest is the single source of truth.**
+       `core/manifest.py` lists every first-run dependency with the two facts that
+       decide a correct install: whether the library auto-downloads the asset (the HF
+       hub cache for whisper/e5; the wheel for espeak-ng/sqlite-vec) or first-run must
+       fetch it explicitly (kokoro, the 9B, openWakeWord, Chromium, the CAM++ model),
+       and where it lands. Anything the app loads BY PATH (kokoro, CAM++) relocates to
+       a per-user `models/` dir (`core/paths.py:models_dir`/`resolve_model`) so an
+       installed build reads writable state, never the read-mostly install dir; a dev
+       checkout stays byte-identical. The orchestrator, the wizard checklist, and the
+       first-run harness all read this one list.
+     - **The health check is FUNCTIONAL, at two levels.** `core/health.py` ports the W0
+       spike and adds the model-LOAD probes it deferred: it imports each native wheel
+       AND does a real op (torch sum, onnxruntime providers, sqlite-vec vec_version),
+       then loads each model and exercises it (whisper transcribes a synthetic buffer,
+       kokoro synthesizes a word, e5 encodes to dim 384, openWakeWord predicts, CAM++
+       embeds, Ollama answers a 1-token warm-ping). Two levels: `wheels` runs right
+       after `uv sync` (before any model exists); `full` runs after the downloads.
+       Mode-aware -- the Ollama checks only exist for a Full install. A green `uv sync`
+       is not proof; this probe is. It also preloads the venv's onnxruntime.dll before
+       anything imports sherpa-onnx, or sherpa binds System32's stale ORT 1.17 and
+       segfaults the process (a real bug the dev-box probe caught). Run on the dev box:
+       all 16 checks pass.
+     - **The provisioning orchestrator is resumable and streams honest progress.**
+       `core/provision.py` walks the manifest for the chosen mode: a low-disk pre-check
+       (`disk_footprint_mb`), detect the VC++ runtime, download kokoro, fetch the
+       wake-word models, trigger the whisper+e5 HF downloads, the optional CAM++ model
+       (best-effort), then in Full mode pull the 9B if the daemon is up -- and finally a
+       functional re-verify that marks `provisioned` only when everything works.
+       Downloads resume where they stopped (HTTP Range for files; Ollama's
+       content-addressed blobs for the model pull), and every failure is classified into
+       a legible, retryable message (proxy / no-network / disk / corrupt) rather than a
+       raw trace. It reports through a plain callback the endpoint publishes on the bus
+       (`POST /api/setup/provision`, `GET /api/setup/status`); the wizard renders a
+       per-dependency checklist with byte/percent progress bars off `GET /api/setup/plan`.
+     - **The venv is built on first LAUNCH, not by a silent installer hook.** The
+       backend can't run until its venv exists, so the shell (`main.rs:ensure_venv`)
+       runs `installer/first_run.ps1` the first time an installed build launches without
+       a ready venv: the bundled uv.exe installs a managed CPython and `uv sync`s the
+       per-user venv, then a `wheels`-level probe gates it. This deliberately does NOT
+       run inside a silent NSIS `installerHooks`: a ~1.5 GB `uv sync` there would freeze
+       the installer with no progress and leave a half-install on failure. On launch it
+       is resumable (uv sync continues from its cache), shows a splash, classifies
+       failures, and a relaunch retries. Completion is gated on a `.baby-ready` sentinel
+       written only after the wheels probe passes -- NOT on `pythonw.exe`, which `uv
+       sync` creates before installing the deps, so an interrupted first sync would
+       otherwise look "done" and never resume (both bugs caught by adversarial review).
+     - **The Visual C++ runtime is the one elevated step.** Every native wheel dlopens
+       the MSVC 2015-2022 x64 runtime; a clean image may lack it, and without it the
+       wheels probe fails with an opaque "DLL load failed". `first_run.ps1` detects the
+       System32 DLLs and, if absent, downloads `vc_redist.x64.exe` and installs it
+       elevated (a UAC prompt -- the sole admin step of an otherwise no-admin per-user
+       install), then re-verifies. A declined prompt is reported legibly, not as a trace.
+     - **PowerShell 5.1 stderr-redirect footgun.** `& native.exe ... 2> file` under
+       `$ErrorActionPreference=Stop` throws a terminating NativeCommandError on the FIRST
+       stderr line -- and uv writes progress to stderr on SUCCESS -- so the redirect used
+       to capture uv's stderr for classification aborted the happy path for every user.
+       Fixed by capturing under `EAP=Continue` (we read `$LASTEXITCODE` explicitly).
+       Verified against a real `uv sync`. Recorded so it isn't reintroduced.
+     - **Owner-only remains:** the real installed first-run (clean-VM matrix: no-VC++,
+       no-admin decline, antivirus, non-English, low-disk, network-drop) -- the dev box
+       can't validate a stranger's first launch. Deferred: relocate the voice-enrollment
+       WRITE path through BABY_HOME when an installed enrollment flow is built (dormant
+       OOTB; speaker verify is off until enrollment).

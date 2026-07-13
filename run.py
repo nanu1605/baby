@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import sys
 
+from core import paths
 from tools import register_all
 
 # Under pythonw.exe (autostart, hidden) stdout/stderr are None — Task
@@ -33,7 +34,7 @@ for _name in ("stdin", "stdout", "stderr"):
 def main() -> None:
     from dotenv import load_dotenv
 
-    load_dotenv()  # GEMINI_API_KEY / TELEGRAM_* from .env (never committed)
+    load_dotenv(paths.env_path())  # keys from .env (BABY_HOME when installed, else cwd)
     register_all()
     parser = argparse.ArgumentParser(prog="baby", description="Baby — personal AI assistant")
     parser.add_argument("--cli", action="store_true", help="interactive REPL")
@@ -50,8 +51,9 @@ def main() -> None:
 
         from ui.server import run_ui
 
-        with open("config.yaml", encoding="utf-8") as f:
+        with open(paths.ensure_config(), encoding="utf-8") as f:
             config = yaml.safe_load(f)
+        config = paths.apply_setup(config)  # overlay first-run wizard choices (v6)
         try:
             # --voice boots the UI stack too (same process, spec section 16);
             # voice attaches on top and fails soft back to text-only.

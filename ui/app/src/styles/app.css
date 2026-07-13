@@ -1481,3 +1481,218 @@ body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
   animation: none;
   opacity: 1;
 }
+
+/* =========================================================================
+   v6 first-run wizard (W2) — full-screen blocking overlay, above everything
+   (toasts sit at z-index 50). Shown only in an installed build; a dev checkout
+   reports installed:false so this never mounts.
+   ========================================================================= */
+.wizard-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(2px);
+  animation: v4-fade-in var(--dur-med) var(--ease) backwards;
+}
+.wizard-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+  padding: var(--sp-6);
+  animation: v4-dialog-in var(--dur-med) var(--ease-emphasized) backwards;
+}
+.wizard-card h2 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xl);
+}
+.wizard-sub {
+  color: var(--muted);
+  margin: 0 0 var(--sp-4);
+}
+.wizard-gpu {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2) var(--sp-3);
+  margin: 0 0 var(--sp-4);
+}
+.wizard-modes {
+  display: grid;
+  gap: var(--sp-3);
+}
+.wizard-mode {
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease-spring);
+}
+.wizard-mode:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--panel-3);
+}
+.wizard-mode:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.wizard-mode:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.wizard-mode.recommended {
+  border-color: var(--accent);
+}
+.wizard-mode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.wizard-mode-title {
+  font-weight: 600;
+  font-size: var(--fs-md);
+}
+.wizard-pill {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: #06130a;
+  background: var(--accent);
+  border-radius: var(--r-pill);
+  padding: 2px 10px;
+}
+.wizard-mode-blurb {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.wizard-warn {
+  margin: var(--sp-2) 0 0;
+  color: var(--amber);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+.wizard-busy {
+  display: inline-block;
+  margin-top: var(--sp-2);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+}
+.wizard-err {
+  margin: var(--sp-4) 0 0;
+  color: var(--red);
+  font-size: var(--fs-sm);
+}
+.wizard-note {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  margin: 0 0 var(--sp-5);
+}
+.wizard-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.wizard-primary {
+  border: 0;
+  border-radius: var(--r-sm);
+  padding: 10px 22px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: #06130a;
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+.wizard-primary:active {
+  transform: scale(0.96);
+}
+
+/* -- W3 provisioning checklist -- */
+.wizard-steps {
+  list-style: none;
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.wizard-step-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.wizard-step-icon {
+  flex: 0 0 1.2em;
+  text-align: center;
+  color: var(--faint);
+}
+.wizard-step-row.status-done .wizard-step-icon,
+.wizard-step-row.status-present .wizard-step-icon,
+.wizard-step-row.status-pass .wizard-step-icon {
+  color: var(--green);
+}
+.wizard-step-row.status-working .wizard-step-icon {
+  color: var(--accent);
+}
+.wizard-step-row.status-error .wizard-step-icon,
+.wizard-step-row.status-fail .wizard-step-icon {
+  color: var(--red);
+}
+.wizard-step-row.status-done .wizard-step-label,
+.wizard-step-row.status-present .wizard-step-label {
+  color: var(--text);
+}
+.wizard-step-label {
+  flex: 1 1 auto;
+}
+.wizard-step-size {
+  color: var(--faint);
+}
+.wizard-step-state {
+  color: var(--faint);
+  font-size: var(--fs-xs);
+}
+.wizard-step-bar {
+  position: relative;
+  flex: 0 0 160px;
+  height: 14px;
+  background: var(--panel-2);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.wizard-step-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  border-radius: var(--r-pill);
+  transition: width var(--dur-med) var(--ease);
+}
+.wizard-step-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  color: var(--text);
+  mix-blend-mode: difference;
+}
