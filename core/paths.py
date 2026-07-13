@@ -30,6 +30,15 @@ def baby_home() -> Path:
     return Path(home) if home else Path.cwd()
 
 
+def is_installed() -> bool:
+    """True when running from an installed build. The shell exports `BABY_HOME`
+    only for an installed layout (main.rs resolve_layout), so its presence is the
+    honest install signal. A dev `python run.py` never sets it -- so the first-run
+    wizard, which gates on this, never shows up in a checkout.
+    """
+    return "BABY_HOME" in os.environ
+
+
 def config_path() -> Path:
     return baby_home() / "config.yaml"
 

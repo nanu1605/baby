@@ -377,6 +377,9 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["setup"] = {
             "complete": bool(_setup.get("setup_complete")),
             "install_mode": _setup.get("install_mode"),
+            # The wizard only shows in an installed build -- never in a dev checkout,
+            # where setup.json is absent and `complete` would read false forever.
+            "installed": paths.is_installed(),
         }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:

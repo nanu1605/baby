@@ -63,6 +63,13 @@ def test_read_setup_corrupt_never_raises(monkeypatch, tmp_path):
     assert paths.read_setup() == {}
 
 
+def test_is_installed_tracks_baby_home(monkeypatch, tmp_path):
+    monkeypatch.delenv("BABY_HOME", raising=False)
+    assert paths.is_installed() is False  # dev checkout: wizard never shows
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    assert paths.is_installed() is True
+
+
 # --- GPU recommendation (ui/server.py) ----------------------------------------
 
 
@@ -149,5 +156,7 @@ def test_stats_exposes_setup_state(tmp_path, monkeypatch):
         stats = client.get("/stats").json()
         assert stats["setup"]["install_mode"] == "full"
         assert stats["setup"]["complete"] is False
+        # _client sets BABY_HOME (installed layout) -> the wizard-gate signal is true.
+        assert stats["setup"]["installed"] is True
     finally:
         asyncio.run(db.close())

@@ -11,6 +11,7 @@ import type {
   MemoryFact,
   NodeStats,
   SearchResponse,
+  SetupGpu,
   Stats,
 } from "../types";
 
@@ -37,6 +38,15 @@ async function patchJSON(url: string, body: unknown): Promise<Response> {
 }
 
 export const getStats = () => getJSON<Stats>("/stats");
+
+// -- v6 first-run wizard -----------------------------------------------------
+
+/** GPU pre-check: detected VRAM + Full/cloud-only recommendation. */
+export const getSetupGpu = () => getJSON<SetupGpu>("/api/setup/gpu");
+
+/** Record the chosen install mode. Gates the first-run 9B download (W3). */
+export const postSetupMode = (mode: "full" | "cloud_only") =>
+  postJSON("/api/setup/mode", { mode });
 
 export const getGraph = () => getJSON<GraphData>("/api/graph");
 
