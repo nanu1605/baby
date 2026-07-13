@@ -571,6 +571,49 @@ def create_app(ctx: UIContext) -> FastAPI:
         state = paths.write_setup({"install_mode": mode})
         return {"install_mode": state.get("install_mode")}
 
+    @app.post("/api/setup/provision")
+    async def api_setup_provision():
+        """Kick off first-run dependency provisioning for the chosen mode (W3). Runs
+        as a background task; progress streams on the bus (kind=setup_progress,
+        channel=setup) and a per-dep snapshot is kept for a reconnecting wizard."""
+        from core import provision
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        if getattr(app.state, "provisioning", False):
+            return {"status": "already running"}
+        app.state.provisioning = True
+        app.state.setup_progress = {}
+
+        def on_event(ev: dict) -> None:
+            app.state.setup_progress[ev.get("dep", "?")] = ev
+            ctx.bus.publish("setup_progress", "setup", **ev)
+
+        async def _run() -> None:
+            try:
+                await provision.provision(mode, on_event=on_event)
+            except Exception as exc:  # noqa: BLE001 -- surface, never crash the server
+                on_event({"dep": "provision", "phase": "error", "status": "error",
+                          "detail": str(exc)[:200]})
+            finally:
+                app.state.provisioning = False
+                app.state.provision_task = None
+
+        # Hold a strong reference: a bare create_task can be GC'd at an await point
+        # mid-run, silently halting the multi-GB provisioning.
+        app.state.provision_task = asyncio.create_task(_run())
+        return {"status": "started", "mode": mode}
+
+    @app.get("/api/setup/status")
+    async def api_setup_status():
+        """Latest per-dependency provisioning snapshot (for a wizard that reconnects
+        mid-run and missed the live bus events)."""
+        return {
+            "provisioning": getattr(app.state, "provisioning", False),
+            "progress": getattr(app.state, "setup_progress", {}),
+        }
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:
