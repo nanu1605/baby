@@ -809,6 +809,25 @@ def create_app(ctx: UIContext) -> FastAPI:
             "restart_recommended": bool(state.get("router_mode") == "cloud_primary"),
         }
 
+    @app.get("/api/diagnostics")
+    async def api_diagnostics(save: bool = False):
+        """A report the user can paste into a public issue.
+
+        Everything textual is scrubbed on the way out -- known .env values first,
+        then key-shaped strings (an old key still sitting in a log line), then the
+        Windows username and the owner's name/city. Key VALUES never appear, not
+        even masked: the last four characters are still key material once a report
+        is public. `save=true` also writes it next to the logs.
+        """
+        from core import diagnostics
+
+        report = await asyncio.to_thread(diagnostics.collect, None)
+        text = diagnostics.render(report)
+        saved = None
+        if save:
+            saved = str(await asyncio.to_thread(diagnostics.write_report, text))
+        return {"report": report, "text": text, "saved_to": saved}
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:
