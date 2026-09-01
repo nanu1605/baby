@@ -646,6 +646,87 @@ def create_app(ctx: UIContext) -> FastAPI:
             "results": [asdict(r) for r in results],
         }
 
+    # --- API keys (W4) ------------------------------------------------------
+    # These three handlers are the only place a raw key crosses the wire, so they
+    # are deliberately narrow: a key arrives in a POST body (never a query string,
+    # never a path), is proved against the vendor before it is trusted, and is
+    # written only to .env. Nothing here returns, logs, or stores a raw key --
+    # every response goes through keys.mask().
+
+    @app.get("/api/setup/keys")
+    async def api_setup_keys():
+        """Which keys Baby can use, which are already set (masked), and whether the
+        wizard is allowed to finish. Pure read -- no network, no key material."""
+        from core import keys as keymod
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        return {
+            "mode": mode,
+            "keys": keymod.key_status(mode),
+            "can_finish": keymod.can_finish(mode),
+        }
+
+    @app.post("/api/setup/keys/validate")
+    async def api_setup_keys_validate(body: dict):
+        """Test a key against its vendor WITHOUT saving it.
+
+        Lets the wizard show a red/green result while the user is still typing,
+        so a bad paste never reaches disk. The response carries a classification
+        and a plain message -- never the key, and never a raw exception string.
+        """
+        from core import keys as keymod
+
+        env = body.get("env")
+        if keymod.spec(env) is None:
+            return JSONResponse({"error": "unknown key"}, status_code=400)
+        result = await keymod.validate_key(env, body.get("key") or "")
+        return {"env": env, **result}
+
+    @app.post("/api/setup/keys")
+    async def api_setup_keys_save(body: dict):
+        """Validate a key and, only if it works, persist it to BABY_HOME/.env.
+
+        Then re-stamp router.mode from the resulting key state: with the primary
+        key present the wizard upgrades to cloud_primary; without it the mode
+        stays local_primary, which boots keyless instead of raising (the crash
+        this whole step exists to prevent). An empty key clears that entry.
+        """
+        from core import keys as keymod
+
+        env = body.get("env")
+        if keymod.spec(env) is None:
+            return JSONResponse({"error": "unknown key"}, status_code=400)
+        raw = (body.get("key") or "").strip()
+
+        if raw:
+            result = await keymod.validate_key(env, raw)
+            if not result.get("ok"):
+                # Rejected keys are never written -- the wizard shows why instead.
+                return JSONResponse(
+                    {"env": env, "saved": False, **result}, status_code=400
+                )
+        else:
+            result = {"ok": True, "kind": "cleared", "message": "Key removed."}
+
+        receipt = await asyncio.to_thread(keymod.write_keys, {env: raw})
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        router_mode = keymod.router_mode_for(mode)
+        paths.write_setup({"router_mode": router_mode})
+        ctx.bus.publish(
+            "status", "setup", text=f"{keymod.spec(env).label} key saved"
+        )
+        return {
+            "env": env,
+            "saved": True,
+            "kind": result.get("kind"),
+            "message": result.get("message"),
+            "secured": receipt["secured"],
+            "router_mode": router_mode,
+            "restart_required": True,
+            "keys": keymod.key_status(mode),
+            "can_finish": keymod.can_finish(mode),
+        }
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:
