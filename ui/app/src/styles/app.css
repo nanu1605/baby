@@ -1825,3 +1825,107 @@ body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
   color: var(--text);
   cursor: pointer;
 }
+
+/* -- W5 setup & repair panel ------------------------------------------------ */
+.repair-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: var(--sp-4);
+}
+.repair-card {
+  width: min(720px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--panel, var(--bg));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg, 12px);
+  padding: var(--sp-4);
+}
+.repair-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+.repair-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: var(--fs-md);
+  cursor: pointer;
+}
+.repair-section {
+  border-top: 1px solid var(--line);
+  padding-top: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+.repair-section h3 {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.repair-note {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.5;
+}
+.repair-emphasis {
+  color: var(--accent);
+}
+.repair-actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.repair-btn {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.repair-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.repair-list {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.repair-ok {
+  color: var(--green);
+  font-size: var(--fs-xs);
+  margin: var(--sp-2) 0 0;
+}
+.repair-bad {
+  color: var(--red);
+  font-size: var(--fs-xs);
+  margin: var(--sp-2) 0 0;
+}
+.repair-report {
+  margin-top: var(--sp-2);
+  max-height: 240px;
+  overflow: auto;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

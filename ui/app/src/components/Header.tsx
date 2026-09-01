@@ -86,6 +86,15 @@ export default function Header() {
       <button className="mem-btn" onClick={() => useBrain.getState().openMemory()}>
         🧠
       </button>
+      {stats?.setup?.installed && (
+        <button
+          className="mem-btn"
+          onClick={() => useBrain.getState().openRepair()}
+          title="setup & repair — re-check, re-download, switch mode, report a problem"
+        >
+          🛠
+        </button>
+      )}
       <button
         className={"perf-btn" + (performanceMode ? " on" : "")}
         onClick={() => useBrain.getState().togglePerformanceMode()}

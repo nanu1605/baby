@@ -26,6 +26,7 @@ import {
   restartHint,
   provisionOutcome,
   recommendedMode,
+  savedFileName,
   rowBar,
   rowStatus,
   shouldShowWizard,
@@ -337,5 +338,19 @@ describe("restartHint", () => {
   it("says nothing when no restart is needed", () => {
     expect(restartHint({ complete: true, install_mode: "full" })).toBe("");
     expect(restartHint(null)).toBe("");
+  });
+});
+
+describe("savedFileName", () => {
+  it("keeps only the filename, never the path", () => {
+    // The repair panel gets screenshotted for help requests; a Windows path
+    // carries the user's username.
+    const p = String.raw`C:\Users\tanishq\AppData\Local\baby\logs\baby-diagnostics-1.txt`;
+    expect(savedFileName(p)).toBe("baby-diagnostics-1.txt");
+    expect(savedFileName(p)).not.toMatch(/tanishq/);
+  });
+  it("handles posix paths and junk", () => {
+    expect(savedFileName("/home/x/logs/r.txt")).toBe("r.txt");
+    expect(savedFileName("")).toBe("the report");
   });
 });

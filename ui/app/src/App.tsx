@@ -44,6 +44,7 @@ import InspectorDrawer from "./components/InspectorDrawer";
 import Omnibox from "./components/Omnibox";
 import Toasts from "./components/Toasts";
 import FirstRunWizard from "./components/FirstRunWizard";
+import RepairPanel from "./components/RepairPanel";
 import { shouldShowWizard } from "./lib/setup";
 
 /**
@@ -139,6 +140,7 @@ export default function App() {
       <MemoryDialog />
       <Toasts />
       {showWizard && <FirstRunWizard />}
+      <RepairPanel />
     </div>
   );
 }

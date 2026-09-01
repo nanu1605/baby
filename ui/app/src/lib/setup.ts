@@ -231,3 +231,16 @@ export function restartHint(result: SetupComplete | null): string {
   if (!result?.restart_recommended) return "";
   return "Reopen Baby once to switch over to the cloud brain.";
 }
+
+/**
+ * The bare filename from a saved-report path.
+ *
+ * The repair panel is exactly the screen a user screenshots when asking for
+ * help, and a Windows path carries their username. The report body is scrubbed,
+ * so the text around it has to be too — showing the folder buys nothing the
+ * panel does not already say.
+ */
+export function savedFileName(path: string): string {
+  const parts = String(path || "").split(/[\\/]/);
+  return parts[parts.length - 1] || "the report";
+}

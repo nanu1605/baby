@@ -267,6 +267,27 @@ export interface SetupComplete {
   restart_recommended?: boolean;
 }
 
+/** GET /api/setup/health — the re-runnable functional probe behind repair. */
+export interface SetupHealthResult {
+  name: string;
+  required: boolean;
+  ok: boolean;
+  status: string; // pass | fail | skip
+  detail: string;
+}
+export interface SetupHealth {
+  ok: boolean;
+  summary: string;
+  results: SetupHealthResult[];
+}
+
+/** GET /api/diagnostics — already scrubbed server-side; safe to show and share. */
+export interface DiagnosticsReport {
+  report: Record<string, unknown>;
+  text: string;
+  saved_to: string | null;
+}
+
 /** GET /api/setup/gpu — VRAM snapshot + the Full-vs-cloud-only recommendation. */
 export interface SetupGpu {
   has_nvidia: boolean;

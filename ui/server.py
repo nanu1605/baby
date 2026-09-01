@@ -571,8 +571,22 @@ def create_app(ctx: UIContext) -> FastAPI:
             return JSONResponse(
                 {"error": "mode must be 'full' or 'cloud_only'"}, status_code=400
             )
-        state = paths.write_setup({"install_mode": mode})
-        return {"install_mode": state.get("install_mode")}
+        current = paths.read_setup()
+        updates: dict = {"install_mode": mode}
+        changed = current.get("install_mode") not in (None, mode)
+        if changed:
+            # W5 mode switch: the new mode's dependency set is different (Full
+            # needs Ollama + the 9B that cloud-only never downloaded), so the old
+            # "provisioned" flag no longer describes this machine. Clearing it is
+            # what makes the repair panel actually re-provision instead of
+            # reporting a readiness it has not re-checked.
+            updates["provisioned"] = False
+        state = paths.write_setup(updates)
+        return {
+            "install_mode": state.get("install_mode"),
+            "changed": changed,
+            "provisioned": bool(state.get("provisioned")),
+        }
 
     @app.post("/api/setup/provision")
     async def api_setup_provision():

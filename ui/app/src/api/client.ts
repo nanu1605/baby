@@ -5,6 +5,7 @@
  */
 import type {
   ChatMessage,
+  DiagnosticsReport,
   ConversationDetail,
   ConversationList,
   GraphData,
@@ -14,6 +15,7 @@ import type {
   SetupComplete,
   SetupDisclosure,
   SetupGpu,
+  SetupHealth,
   SetupKeyResult,
   SetupKeys,
   SetupPlan,
@@ -50,9 +52,18 @@ export const getStats = () => getJSON<Stats>("/stats");
 /** GPU pre-check: detected VRAM + Full/cloud-only recommendation. */
 export const getSetupGpu = () => getJSON<SetupGpu>("/api/setup/gpu");
 
-/** Record the chosen install mode. Gates the first-run 9B download (W3). */
+/** Record the chosen install mode. Gates the first-run 9B download (W3).
+ *  Changing it after setup clears `provisioned`, because the other mode's
+ *  dependency set is different — the repair panel then re-provisions. */
 export const postSetupMode = (mode: "full" | "cloud_only") =>
   postJSON("/api/setup/mode", { mode });
+
+/** Re-runnable functional health check (wheels + real model loads). Heavy. */
+export const getSetupHealth = () => getJSON<SetupHealth>("/api/setup/health");
+
+/** Scrubbed diagnostics report, safe to paste into a public issue. */
+export const getDiagnostics = (save = false) =>
+  getJSON<DiagnosticsReport>(`/api/diagnostics${save ? "?save=true" : ""}`);
 
 /** The ordered provisioning checklist for the chosen mode (W3). */
 export const getSetupPlan = () => getJSON<SetupPlan>("/api/setup/plan");

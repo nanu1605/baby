@@ -125,6 +125,8 @@ interface BrainState {
   toasts: Toast[];
   // UI chrome
   memoryOpen: boolean;
+  /** v6 W5: the in-app Repair/Modify surface (NSIS has no such dialog). */
+  repairOpen: boolean;
   rightTab: RightTab;
   rightCollapsed: boolean;
 
@@ -186,6 +188,8 @@ interface BrainState {
   // chrome
   openMemory: () => void;
   closeMemory: () => void;
+  openRepair: () => void;
+  closeRepair: () => void;
   setTab: (t: RightTab) => void;
   toggleRightPanel: () => void;
   dismissWizard: () => void;
@@ -218,6 +222,7 @@ export const useBrain = create<BrainState>((set) => ({
   stats: null,
   toasts: [],
   memoryOpen: false,
+  repairOpen: false,
   rightTab: "chat",
   rightCollapsed: initCollapsed(),
 
@@ -413,6 +418,8 @@ export const useBrain = create<BrainState>((set) => ({
 
   openMemory: () => set({ memoryOpen: true }),
   closeMemory: () => set({ memoryOpen: false }),
+  openRepair: () => set({ repairOpen: true }),
+  closeRepair: () => set({ repairOpen: false }),
   setTab: (t) => set({ rightTab: t, rightCollapsed: false }),
   toggleRightPanel: () => set((st) => ({ rightCollapsed: !st.rightCollapsed })),
   dismissWizard: () => set({ wizardDismissed: true }),

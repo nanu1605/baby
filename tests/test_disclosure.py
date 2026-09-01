@@ -177,3 +177,48 @@ def test_disclosure_is_recorded_before_completion_is_claimed(tmp_path, monkeypat
         assert state.get("setup_complete") and state.get("disclosure_ack")
     finally:
         _close(db)
+
+
+# --- W5 mode switch (the in-app Repair/Modify surface) ----------------------
+
+
+def test_switching_mode_invalidates_provisioning(tmp_path, monkeypatch):
+    """Full needs Ollama + the 9B that a cloud-only install never downloaded, so
+    the old provisioned flag no longer describes this machine. If it survived the
+    switch, the repair panel would report a readiness it has not re-checked."""
+    from tests.test_keys import _client, _close
+
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        paths.write_setup({"install_mode": "cloud_only", "provisioned": True})
+        body = client.post("/api/setup/mode", json={"mode": "full"}).json()
+        assert body["changed"] is True and body["provisioned"] is False
+        assert paths.read_setup()["provisioned"] is False
+    finally:
+        _close(db)
+
+
+def test_reselecting_the_same_mode_keeps_provisioning(tmp_path, monkeypatch):
+    """Re-confirming the current mode must not throw away a good install and
+    trigger a multi-GB re-download."""
+    from tests.test_keys import _client, _close
+
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        paths.write_setup({"install_mode": "full", "provisioned": True})
+        body = client.post("/api/setup/mode", json={"mode": "full"}).json()
+        assert body["changed"] is False and body["provisioned"] is True
+    finally:
+        _close(db)
+
+
+def test_first_mode_choice_does_not_report_a_change(tmp_path, monkeypatch):
+    """The wizard's initial pick is not a switch -- there is nothing to invalidate."""
+    from tests.test_keys import _client, _close
+
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        body = client.post("/api/setup/mode", json={"mode": "cloud_only"}).json()
+        assert body["changed"] is False
+    finally:
+        _close(db)
