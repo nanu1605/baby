@@ -754,6 +754,61 @@ def create_app(ctx: UIContext) -> FastAPI:
             "can_finish": keymod.can_finish(mode),
         }
 
+    # --- disclosure + completion (W5) ---------------------------------------
+
+    @app.get("/api/setup/disclosure")
+    async def api_setup_disclosure():
+        """What Baby can do on this machine, in the user's words, at the moment it
+        matters. The EULA said it at install time, when nobody reads; this is the
+        same substance shown once the app is actually about to be used."""
+        from core import disclosure
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        return {
+            "mode": mode,
+            "items": disclosure.items(mode),
+            "acknowledged": bool(paths.read_setup().get("disclosure_ack")),
+        }
+
+    @app.post("/api/setup/complete")
+    async def api_setup_complete(request: Request):
+        """Finish the wizard: record the acknowledgement and stamp setup_complete.
+
+        Two things are refused rather than papered over. Without an explicit
+        acknowledgement there is nothing to record -- the point is that the user
+        saw it. And a cloud-only install with no working key would stamp "done"
+        onto a build whose next boot has no brain to answer with, so the same
+        can_finish gate that holds the key step holds here too.
+        """
+        from core import keys as keymod
+
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 -- a malformed body is just "not acknowledged"
+            body = {}
+        if not isinstance(body, dict) or body.get("acknowledged") is not True:
+            return JSONResponse(
+                {"error": "acknowledgement required"}, status_code=400
+            )
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        gate = keymod.can_finish(mode)
+        if not gate["ok"]:
+            return JSONResponse({"error": gate["message"], **gate}, status_code=400)
+
+        state = paths.write_setup({"disclosure_ack": True, "setup_complete": True})
+        ctx.bus.publish("status", "setup", text="first-run setup finished")
+        return {
+            "complete": bool(state.get("setup_complete")),
+            "install_mode": state.get("install_mode"),
+            "router_mode": state.get("router_mode"),
+            # .env is read at boot and the router is built once, so a key saved in
+            # this session only takes effect on the next launch.
+            "restart_recommended": bool(state.get("router_mode") == "cloud_primary"),
+        }
+
     @app.get("/memory")
     async def memory_view(limit: int = 200):
         if ctx.memory is None:

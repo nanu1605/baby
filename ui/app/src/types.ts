@@ -246,6 +246,27 @@ export interface SetupKeyResult {
   can_finish?: SetupCanFinish;
 }
 
+/** GET /api/setup/disclosure — what Baby can do, in the user's words. Wording
+ *  follows the install mode (a cloud-only build must not claim chats stay local). */
+export interface SetupDisclosureItem {
+  key: string;
+  title: string;
+  detail: string;
+}
+export interface SetupDisclosure {
+  mode: string;
+  items: SetupDisclosureItem[];
+  acknowledged: boolean;
+}
+
+/** POST /api/setup/complete — the wizard's terminal stamp. */
+export interface SetupComplete {
+  complete: boolean;
+  install_mode: string | null;
+  router_mode?: string;
+  restart_recommended?: boolean;
+}
+
 /** GET /api/setup/gpu — VRAM snapshot + the Full-vs-cloud-only recommendation. */
 export interface SetupGpu {
   has_nvidia: boolean;

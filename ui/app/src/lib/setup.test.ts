@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type {
+  SetupComplete,
+  SetupDisclosure,
   SetupGpu,
   SetupKeyResult,
   SetupKeyRow,
@@ -8,6 +10,7 @@ import type {
   SetupStatus,
 } from "../types";
 import {
+  canFinishSetup,
   canLeaveKeys,
   firstError,
   formatSize,
@@ -20,6 +23,7 @@ import {
   keysBlockedReason,
   keyTone,
   modeTradeoff,
+  restartHint,
   provisionOutcome,
   recommendedMode,
   rowBar,
@@ -78,8 +82,10 @@ describe("initialStep", () => {
     // cloud-only install from finishing without the key its next boot needs.
     expect(initialStep("cloud_only", true)).toBe("keys");
   });
-  it("goes to done only once the keys step is settled", () => {
-    expect(initialStep("cloud_only", true, true)).toBe("done");
+  it("goes to the disclosure step once the keys step is settled", () => {
+    // W5: "done" is never an entry point — setup_complete is stamped by finishing
+    // the disclosure, so a reopened wizard must still pass through it.
+    expect(initialStep("cloud_only", true, true)).toBe("disclosure");
   });
 });
 
@@ -293,5 +299,43 @@ describe("canLeaveKeys / keysBlockedReason", () => {
   it("holds before the first fetch resolves", () => {
     expect(canLeaveKeys(null)).toBe(false);
     expect(keysBlockedReason(null)).toBe("");
+  });
+});
+
+
+// -- W5 disclosure step ------------------------------------------------------
+
+const doc = (o: Partial<SetupDisclosure>): SetupDisclosure => ({
+  mode: "full",
+  items: [{ key: "actions", title: "Baby can act", detail: "It can run things." }],
+  acknowledged: false,
+  ...o,
+});
+
+describe("canFinishSetup", () => {
+  it("needs the box actually ticked", () => {
+    expect(canFinishSetup(doc({}), false)).toBe(false);
+    expect(canFinishSetup(doc({}), true)).toBe(true);
+  });
+  it("holds until the disclosure has loaded", () => {
+    // Otherwise the user could acknowledge an empty list.
+    expect(canFinishSetup(null, true)).toBe(false);
+    expect(canFinishSetup(doc({ items: [] }), true)).toBe(false);
+  });
+});
+
+describe("restartHint", () => {
+  it("tells the user to reopen when a cloud key was just saved", () => {
+    const r: SetupComplete = {
+      complete: true,
+      install_mode: "cloud_only",
+      router_mode: "cloud_primary",
+      restart_recommended: true,
+    };
+    expect(restartHint(r)).toMatch(/[Rr]eopen/);
+  });
+  it("says nothing when no restart is needed", () => {
+    expect(restartHint({ complete: true, install_mode: "full" })).toBe("");
+    expect(restartHint(null)).toBe("");
   });
 });

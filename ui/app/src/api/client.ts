@@ -11,6 +11,8 @@ import type {
   MemoryFact,
   NodeStats,
   SearchResponse,
+  SetupComplete,
+  SetupDisclosure,
   SetupGpu,
   SetupKeyResult,
   SetupKeys,
@@ -82,6 +84,18 @@ export const postSetupKey = async (
 ): Promise<SetupKeyResult> => {
   const r = await postJSON("/api/setup/keys", { env, key });
   return (await r.json()) as SetupKeyResult;
+};
+
+/** What Baby can do on this machine, worded for the chosen install mode. */
+export const getSetupDisclosure = () =>
+  getJSON<SetupDisclosure>("/api/setup/disclosure");
+
+/** Finish the wizard. Refused without an explicit acknowledgement, and refused
+ *  for a cloud-only install that still has no working key. */
+export const postSetupComplete = async (): Promise<SetupComplete> => {
+  const r = await postJSON("/api/setup/complete", { acknowledged: true });
+  if (!r.ok) throw new Error(String(r.status));
+  return (await r.json()) as SetupComplete;
 };
 
 export const getGraph = () => getJSON<GraphData>("/api/graph");

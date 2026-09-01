@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  getSetupDisclosure,
   getSetupGpu,
   getSetupKeys,
   getSetupPlan,
   getSetupStatus,
+  postSetupComplete,
   postSetupKey,
   postSetupKeyValidate,
   postSetupMode,
@@ -11,6 +13,7 @@ import {
 } from "../api/client";
 import { useBrain } from "../store";
 import {
+  canFinishSetup,
   canLeaveKeys,
   firstError,
   formatSize,
@@ -25,6 +28,7 @@ import {
   modeTradeoff,
   provisionOutcome,
   recommendedMode,
+  restartHint,
   rowBar,
   rowStatus,
   stepGlyph,
@@ -32,6 +36,8 @@ import {
   type WizardStep,
 } from "../lib/setup";
 import type {
+  SetupComplete,
+  SetupDisclosure,
   SetupGpu,
   SetupKeyResult,
   SetupKeyRow,
@@ -41,12 +47,14 @@ import type {
 } from "../types";
 
 /**
- * v6 first-run wizard — W2 slice: GPU pre-check + install-mode fork. A full-screen
- * overlay shown only in an installed build with setup unfinished (App gates it via
- * shouldShowWizard, so a dev checkout never sees it). W3 (deps) / W4 (keys) / W5
- * (disclosure) slot their steps in ahead of the terminal panel, which is where
- * setup_complete finally gets stamped. Until then the terminal panel just frees the
- * current session (dismissWizard) — it never fakes completion.
+ * v6 first-run wizard. A full-screen overlay shown only in an installed build with
+ * setup unfinished (App gates it via shouldShowWizard, so a dev checkout never sees
+ * it).
+ *
+ * mode (W2) → provision (W3) → keys (W4) → disclosure (W5) → done. The disclosure
+ * step is what finally stamps `setup_complete`: until the user has been shown what
+ * Baby can do and acknowledged it, the wizard never claims to be finished, so
+ * closing early means being asked again rather than being silently marked set up.
  */
 export default function FirstRunWizard() {
   const installMode = useBrain((s) => s.stats?.setup?.install_mode ?? null);
@@ -57,6 +65,7 @@ export default function FirstRunWizard() {
   const [busy, setBusy] = useState<InstallMode | null>(null);
   const [postError, setPostError] = useState(false);
   const [chosen, setChosen] = useState<InstallMode | null>(null);
+  const [finish, setFinish] = useState<SetupComplete | null>(null);
   // Guards every post-await setState so a mid-flight unmount (e.g. /stats flips
   // setup.complete while a POST is pending) can't set state on a dead component.
   const alive = useRef(true);
@@ -138,10 +147,18 @@ export default function FirstRunWizard() {
         ) : step === "provision" ? (
           <ProvisionStep onDone={() => setStep("keys")} />
         ) : step === "keys" ? (
-          <KeysStep onDone={() => setStep("done")} />
+          <KeysStep onDone={() => setStep("disclosure")} />
+        ) : step === "disclosure" ? (
+          <DisclosureStep
+            onDone={(r) => {
+              setFinish(r);
+              setStep("done");
+            }}
+          />
         ) : (
           <DoneStep
             mode={chosen ?? (installMode as InstallMode | null)}
+            finish={finish}
             onContinue={() => useBrain.getState().dismissWizard()}
           />
         )}
@@ -473,14 +490,100 @@ function ModeCard({
   );
 }
 
+/**
+ * W5 disclosure. The EULA covered this legally at install time, when nobody
+ * reads; this is the same substance at the moment it matters, in an owner's
+ * words, with an acknowledgement recorded in setup.json.
+ *
+ * Finishing here is what finally stamps `setup_complete` — until this step the
+ * wizard has never claimed to be done, so a user who closed it early gets asked
+ * again rather than being silently marked set up.
+ */
+function DisclosureStep({ onDone }: { onDone: (r: SetupComplete) => void }) {
+  const [doc, setDoc] = useState<SetupDisclosure | null>(null);
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    getSetupDisclosure()
+      .then((d) => alive.current && setDoc(d))
+      .catch(() => alive.current && setError("Couldn't load this. Reopen Baby."));
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const finish = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await postSetupComplete();
+      if (alive.current) onDone(r);
+    } catch {
+      // The server refuses an unkeyed cloud-only finish too — say what to do.
+      if (alive.current) {
+        setError("Couldn't finish setup. Check that your cloud key is saved.");
+      }
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Before you start</h2>
+      <p className="wizard-sub">
+        What Baby can do on this PC, in plain terms. Worth thirty seconds.
+      </p>
+
+      <ul className="wizard-disclosure">
+        {(doc?.items ?? []).map((i) => (
+          <li key={i.key}>
+            <span className="wizard-disclosure-title">{i.title}</span>
+            <span className="wizard-disclosure-detail">{i.detail}</span>
+          </li>
+        ))}
+      </ul>
+
+      <label className="wizard-ack">
+        <input
+          type="checkbox"
+          checked={ack}
+          onChange={(e) => setAck(e.target.checked)}
+        />
+        <span>I understand what Baby can do on this PC.</span>
+      </label>
+
+      {error && <p className="wizard-err">{error}</p>}
+
+      <div className="wizard-actions">
+        <button
+          type="button"
+          className="wizard-primary"
+          disabled={!canFinishSetup(doc, ack) || busy}
+          onClick={finish}
+        >
+          {busy ? "Finishing…" : "Finish setup"}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function DoneStep({
   mode,
+  finish,
   onContinue,
 }: {
   mode: InstallMode | null;
+  finish: SetupComplete | null;
   onContinue: () => void;
 }) {
   const label = mode === "cloud_only" ? "Cloud only" : "Full (local + cloud)";
+  const restart = restartHint(finish);
   return (
     <>
       <h2>Baby is ready</h2>
@@ -490,8 +593,7 @@ function DoneStep({
       </p>
       <p className="wizard-note">
         Any key you saved is stored on this PC only, in a file just you can read.
-        Reopen Baby once to switch it over to the cloud brain — until then it keeps
-        using what it already had.
+        {restart ? ` ${restart}` : ""}
       </p>
       <div className="wizard-actions">
         <button type="button" className="wizard-primary" onClick={onContinue}>

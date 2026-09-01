@@ -4,6 +4,8 @@
  * components/FirstRunWizard.tsx renders these.
  */
 import type {
+  SetupComplete,
+  SetupDisclosure,
   SetupGpu,
   SetupKeyResult,
   SetupKeyRow,
@@ -44,10 +46,10 @@ export function initialStep(
 ): WizardStep {
   if (!installMode) return "mode";
   if (!provisioned) return "provision";
-  return keysSettled ? "done" : "keys";
+  return keysSettled ? "disclosure" : "keys";
 }
 
-export type WizardStep = "mode" | "provision" | "keys" | "done";
+export type WizardStep = "mode" | "provision" | "keys" | "disclosure" | "done";
 
 /** One-line GPU summary for the mode screen. */
 export function gpuSummaryLine(gpu: SetupGpu): string {
@@ -203,4 +205,29 @@ export function canLeaveKeys(keys: SetupKeys | null): boolean {
 export function keysBlockedReason(keys: SetupKeys | null): string {
   if (!keys || keys.can_finish?.ok) return "";
   return keys.can_finish?.message ?? "A cloud key is required to continue.";
+}
+
+
+// -- W5 disclosure step ------------------------------------------------------
+
+/**
+ * The wizard may only finish once the user has actually ticked the box. The
+ * server refuses an unacknowledged complete too -- this just keeps the button
+ * honest rather than letting it fail on click.
+ */
+export function canFinishSetup(
+  disclosure: SetupDisclosure | null,
+  acknowledged: boolean,
+): boolean {
+  return Boolean(disclosure && disclosure.items.length > 0 && acknowledged);
+}
+
+/**
+ * A saved cloud key only takes effect on the next launch: .env is read at boot
+ * and the router is built once. Say so rather than letting the user wonder why
+ * the brain they just paid for is not answering yet.
+ */
+export function restartHint(result: SetupComplete | null): string {
+  if (!result?.restart_recommended) return "";
+  return "Reopen Baby once to switch over to the cloud brain.";
 }
