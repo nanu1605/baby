@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -652,6 +652,31 @@ def create_app(ctx: UIContext) -> FastAPI:
     # never a path), is proved against the vendor before it is trusted, and is
     # written only to .env. Nothing here returns, logs, or stores a raw key --
     # every response goes through keys.mask().
+    #
+    # They take a raw Request and parse the JSON themselves rather than declaring
+    # `body: dict`. FastAPI's validation error for a malformed body ECHOES that
+    # body back in `detail[].input` -- so a client that posted a bare string or a
+    # list containing the key would get the key reflected in a 422 (verified: it
+    # does). Parsing by hand means a malformed body can only ever produce a fixed
+    # message with nothing of the request in it.
+
+    async def _key_body(request: Request) -> tuple[str, str] | None:
+        """(env, key) from a POST body, or None when the body is not usable.
+
+        Never raises and never reports what it saw -- the caller answers with a
+        constant message, because anything derived from the body could be a key.
+        """
+        try:
+            data = await request.json()
+        except Exception:  # noqa: BLE001 -- malformed JSON must not echo the body
+            return None
+        if not isinstance(data, dict):
+            return None
+        env = data.get("env")
+        key = data.get("key")
+        if not isinstance(env, str) or (key is not None and not isinstance(key, str)):
+            return None
+        return env, key or ""
 
     @app.get("/api/setup/keys")
     async def api_setup_keys():
@@ -667,7 +692,7 @@ def create_app(ctx: UIContext) -> FastAPI:
         }
 
     @app.post("/api/setup/keys/validate")
-    async def api_setup_keys_validate(body: dict):
+    async def api_setup_keys_validate(request: Request):
         """Test a key against its vendor WITHOUT saving it.
 
         Lets the wizard show a red/green result while the user is still typing,
@@ -676,14 +701,15 @@ def create_app(ctx: UIContext) -> FastAPI:
         """
         from core import keys as keymod
 
-        env = body.get("env")
-        if keymod.spec(env) is None:
+        parsed = await _key_body(request)
+        if parsed is None or keymod.spec(parsed[0]) is None:
             return JSONResponse({"error": "unknown key"}, status_code=400)
-        result = await keymod.validate_key(env, body.get("key") or "")
+        env, raw = parsed
+        result = await keymod.validate_key(env, raw)
         return {"env": env, **result}
 
     @app.post("/api/setup/keys")
-    async def api_setup_keys_save(body: dict):
+    async def api_setup_keys_save(request: Request):
         """Validate a key and, only if it works, persist it to BABY_HOME/.env.
 
         Then re-stamp router.mode from the resulting key state: with the primary
@@ -693,10 +719,11 @@ def create_app(ctx: UIContext) -> FastAPI:
         """
         from core import keys as keymod
 
-        env = body.get("env")
-        if keymod.spec(env) is None:
+        parsed = await _key_body(request)
+        if parsed is None or keymod.spec(parsed[0]) is None:
             return JSONResponse({"error": "unknown key"}, status_code=400)
-        raw = (body.get("key") or "").strip()
+        env, raw = parsed
+        raw = raw.strip()
 
         if raw:
             result = await keymod.validate_key(env, raw)

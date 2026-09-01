@@ -32,6 +32,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -227,11 +228,13 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
             )
     except httpx.HTTPError as exc:
         # Reuse the provisioning classifier so "no internet" reads the same here
-        # as it does during the download step. str(exc) is a transport message;
-        # httpx does not put credentials in it (they live in a header, not the URL).
+        # as it does during the download step. The key lives in a header, not the
+        # URL, so httpx has no reason to put it in the message -- but this is a
+        # third party's error string on a security-critical path, so scrub the key
+        # out of it before anything looks at it rather than trusting that.
         from core.provision import classify_error
 
-        detail = classify_error(f"{type(exc).__name__}: {exc}")
+        detail = classify_error(f"{type(exc).__name__}: {exc}".replace(k, "<key>"))
         return {
             "ok": False,
             "kind": "network",
@@ -243,6 +246,10 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
 # --- .env persistence -------------------------------------------------------
 
 _LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+
+# .env is read-merge-written, so concurrent saves must not interleave and drop a
+# key. The wizard can easily produce two in flight (Save on two rows in a row).
+_WRITE_LOCK = threading.Lock()
 
 
 def read_env_file(path: Path | None = None) -> dict[str, str]:
@@ -290,6 +297,9 @@ def secure_file(path: Path) -> bool:
             return False
         domain = os.environ.get("USERDOMAIN") or ""
         account = f"{domain}\\{user}" if domain else user
+        # Passed as a list, so subprocess quotes an account name containing a
+        # space ("CORP SERVERS\user") for the Windows command line. A failure
+        # here is still non-fatal -- the caller reports secured: false.
         proc = subprocess.run(
             ["icacls", str(path), "/inheritance:r", "/grant:r", f"{account}:(R,W)"],
             capture_output=True,
@@ -312,10 +322,33 @@ def write_keys(values: dict[str, str], path: Path | None = None) -> dict:
 
     Also updates os.environ so the same process can use the key immediately
     without a reload. Returns {path, written, secured} -- names only, no values.
+
+    Serialised: two quick saves from the wizard would otherwise interleave
+    read-merge-write and silently drop one of the keys.
     """
     p = path or paths.env_path()
+    with _WRITE_LOCK:
+        secured = _write_env(p, values)
+
+    for name, new in ((k, (v or "").strip()) for k, v in values.items()):
+        if new:
+            os.environ[name] = new
+        else:
+            os.environ.pop(name, None)
+
+    return {"path": str(p), "written": sorted(values), "secured": secured}
+
+
+def _write_env(p: Path, values: dict[str, str]) -> bool:
+    """The merge-and-swap half of write_keys. Returns whether the ACL was tightened."""
     p.parent.mkdir(parents=True, exist_ok=True)
-    existing = p.read_text(encoding="utf-8").splitlines() if p.exists() else []
+    # surrogateescape round-trips bytes we did not write (a user's hand edit saved
+    # in the system codepage) losslessly, instead of raising and losing their file.
+    existing = (
+        p.read_text(encoding="utf-8", errors="surrogateescape").splitlines()
+        if p.exists()
+        else []
+    )
 
     pending = {k: (v or "").strip() for k, v in values.items()}
     out: list[str] = []
@@ -335,21 +368,27 @@ def write_keys(values: dict[str, str], path: Path | None = None) -> dict:
 
     body = "\n".join(out).rstrip("\n")
     # Write, then tighten, then swap: the temp file lives in the same per-user dir
-    # for the moment it holds key material, so no wider audience ever sees it.
+    # for the moment it holds key material, so no wider audience ever sees it. Any
+    # failure before the swap deletes the temp rather than leaving key material
+    # behind in a file nothing will ever clean up.
     tmp = p.with_suffix(p.suffix + ".tmp")
-    tmp.write_text(body + "\n" if body else "", encoding="utf-8")
-    secured = secure_file(tmp)
-    os.replace(tmp, p)
+    try:
+        tmp.write_text(
+            body + "\n" if body else "", encoding="utf-8", errors="surrogateescape"
+        )
+        secured = secure_file(tmp)
+        os.replace(tmp, p)
+    except BaseException:
+        # BaseException, not Exception: a KeyboardInterrupt here would otherwise
+        # strand a readable temp file holding the key.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     if not secured:
         secured = secure_file(p)
-
-    for name, new in ((k, (v or "").strip()) for k, v in values.items()):
-        if new:
-            os.environ[name] = new
-        else:
-            os.environ.pop(name, None)
-
-    return {"path": str(p), "written": sorted(values), "secured": secured}
+    return secured
 
 
 # --- wizard-facing status ---------------------------------------------------

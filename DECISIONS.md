@@ -1345,3 +1345,72 @@ Running log of non-obvious choices made during the build. Newest last.
        can't validate a stranger's first launch. Deferred: relocate the voice-enrollment
        WRITE path through BABY_HOME when an installed enrollment flow is built (dormant
        OOTB; speaker verify is off until enrollment).
+
+131. **v6 W4 -- API keys: proved before they are trusted, and never anywhere but
+     `.env`.** The installer asks a stranger for cloud credentials, so this is the
+     one phase where a mistake leaks something that is not ours.
+     - **A key is validated by a real vendor call before it is written.** `core/keys.py`
+       probes `GET {base_url}/models` with an `Authorization: Bearer` header -- the
+       same auth-only check `NvidiaProvider.probe` already uses, so it proves DNS +
+       TLS + auth without spending generation quota, and all three vendors answer it
+       identically (they are all OpenAI-compatible, Gemini included, via its
+       `/v1beta/openai` endpoint). The key travels in a header, never a query string.
+       A typo is therefore caught in the wizard rather than at the first cloud
+       escalation, weeks later, on a machine we cannot see.
+     - **The failure classification is the feature.** 401/403 says the key is wrong.
+       A transport failure is routed through the W3 provisioning classifier and says
+       the NETWORK is wrong -- telling someone their key is bad when their wifi
+       dropped sends them hunting for a replacement key that cannot help. 402 names
+       an empty account. And 429 is treated as a PASS: the vendor recognised the key
+       and is throttling, so rejecting it would trap a rate-limited user in a wizard
+       with no way forward.
+     - **`.env` is the only thing that ever holds key material.** Writes merge line by
+       line, so comments and unrelated vars survive a save, and an empty value removes
+       the line. The file is then locked to its owner (inheritance stripped, one
+       grant; `chmod 600` off Windows) -- defense in depth, since `%LOCALAPPDATA%` is
+       already per-user. Tightening fails SOFT: a policy-blocked `icacls` still leaves
+       a working install and reports `secured: false`, because losing the user's key
+       to a hardening step would be the worse failure. Nothing else stores a key --
+       `setup.json` holds flags only, and every value leaving the module goes through
+       `mask()` (vendor prefix + last 4).
+     - **`router.mode` follows the KEY STATE, not the user's intent.** `cloud_primary`
+       is stamped only once the primary slot is actually keyed; otherwise the mode
+       stays `local_primary`. This is the crash the phase exists to prevent:
+       `build_provider` raises at boot when `cloud_primary` has no key, and the
+       backend runs under `pythonw`, so the user would see a window that never opens
+       and no error at all. Two tests pin both directions -- a stamped `cloud_primary`
+       must build, and no reachable key state may stamp a mode that does not. A
+       cloud-only install is likewise blocked from finishing the wizard without the
+       primary key, since it has no local brain to fall back on. A Full install may
+       finish keyless and run entirely on its own GPU.
+     - **The write path is serialised, lossless, and leaves nothing behind.** Saves
+       take a lock, because two Save clicks in a row would otherwise interleave
+       read-merge-write and silently drop one key (verified: the test fails without
+       the lock). The file is read and written with `surrogateescape`, so bytes we
+       did not write -- a line the user hand-edited in the system codepage --
+       round-trip instead of raising and costing them the file. And any failure
+       between writing the temp file and swapping it in deletes that temp, so a
+       crash mid-save cannot strand key material in a file nothing will clean up.
+       Verified on a real Windows box: the inherited SYSTEM / Administrators /
+       OWNER RIGHTS entries are replaced by a single user grant, the file stays
+       readable and re-writable afterwards, and no temp survives.
+     - **The key handlers parse their own request body.** Declaring `body: dict` on a
+       FastAPI route makes the framework answer a malformed body with a 422 whose
+       `detail[].input` ECHOES that body -- so a client posting a bare string or a
+       list containing the key gets the key reflected straight back (verified live
+       before the fix). The three key routes take a raw `Request`, parse the JSON
+       themselves, and answer anything unusable with a fixed message that contains
+       nothing derived from the request.
+     - **The secrets gate is a regression test, not a one-off scan.** `test_keys.py`
+       drives the real endpoints with a sentinel key through the good, rejected, and
+       offline branches while capturing Python logging, every bus event, every HTTP
+       response, and every file written under `BABY_HOME`; the sentinel may appear in
+       exactly one place, `.env`. The gate was verified non-vacuous by deliberately
+       leaking the key into a bus event and confirming it fails.
+     - Endpoints: `GET /api/setup/keys` (masked state + whether the wizard may
+       finish), `POST /api/setup/keys/validate` (test without saving, so a bad paste
+       never reaches disk), `POST /api/setup/keys` (validate, persist, re-stamp the
+       router mode). The wizard step is `mode -> provision -> keys -> done`, and a
+       reopened wizard lands on the key step rather than skipping it, so the
+       cloud-only gate cannot be walked around by relaunching. A saved key needs one
+       restart to take effect: `.env` is read at boot and the router is built once.

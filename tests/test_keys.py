@@ -249,6 +249,69 @@ def test_secure_file_failure_does_not_lose_the_key(home, monkeypatch):
     assert f"OPENROUTER_API_KEY={_FAKE_KEY}" in (home / ".env").read_text(encoding="utf-8")
 
 
+def test_concurrent_saves_do_not_drop_a_key(home):
+    """Two Save clicks in quick succession read-merge-write the same file; without
+    serialisation one of the keys is silently lost."""
+    import threading
+
+    payloads = [
+        {"OPENROUTER_API_KEY": _FAKE_KEY},
+        {"GEMINI_API_KEY": "AIzaSyExample1234567"},
+        {"NVIDIA_API_KEY": "nvapi-example1234567"},
+    ]
+    barrier = threading.Barrier(len(payloads))
+
+    def go(vals):
+        barrier.wait()
+        keys.write_keys(vals)
+
+    threads = [threading.Thread(target=go, args=(v,)) for v in payloads]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    text = (home / ".env").read_text(encoding="utf-8")
+    for v in payloads:
+        for name in v:
+            assert name in text, f"{name} was lost to a concurrent write"
+
+
+def test_hand_edited_non_utf8_line_survives_a_save(home):
+    """A user editing .env in Notepad can leave system-codepage bytes behind.
+    Reading strict UTF-8 would raise and cost them the file."""
+    latin1 = b"NOTE=caf\xe9 latte\nOPENROUTER_API_KEY=old\n"
+    (home / ".env").write_bytes(latin1)
+    keys.write_keys({"OPENROUTER_API_KEY": _FAKE_KEY})
+    raw = (home / ".env").read_bytes()
+    assert b"caf\xe9 latte" in raw  # round-tripped byte for byte
+    assert _FAKE_KEY.encode() in raw
+    assert b"old" not in raw
+
+
+def test_a_failed_swap_leaves_no_key_bearing_temp_file(home, monkeypatch):
+    """If anything fails between writing the temp file and swapping it in, the
+    temp must not survive holding the key."""
+    import os as _os
+
+    def boom(src, dst):
+        raise OSError("swap failed")
+
+    monkeypatch.setattr(_os, "replace", boom)
+    with pytest.raises(OSError):
+        keys.write_keys({"OPENROUTER_API_KEY": _FAKE_KEY})
+    leftovers = [p.name for p in home.iterdir() if p.name.startswith(".env")]
+    assert leftovers == [], f"key material stranded in {leftovers}"
+
+
+def test_transport_error_text_is_scrubbed_of_the_key(monkeypatch):
+    """Third-party error strings are not ours to trust on a secrets path."""
+    _probe(monkeypatch, exc=httpx.ConnectError(f"connect failed for {_FAKE_KEY}"))
+    out = asyncio.run(keys.validate_key("OPENROUTER_API_KEY", _FAKE_KEY))
+    assert _FAKE_KEY not in str(out)
+    assert out["kind"] == "network"
+
+
 # --- wizard-facing status ---------------------------------------------------
 
 
@@ -502,5 +565,116 @@ def test_keyless_cloud_only_cannot_finish(tmp_path, monkeypatch):
         body = client.get("/api/setup/keys").json()
         assert body["can_finish"]["ok"] is False
         assert body["can_finish"]["missing"] == "OPENROUTER_API_KEY"
+    finally:
+        _close(db)
+
+
+def test_malformed_body_is_rejected_without_echoing_it(tmp_path, monkeypatch):
+    """FastAPI's own validation error echoes the request body back in
+    detail[].input -- so declaring `body: dict` would reflect a key straight into
+    a 422 for any client that posted the wrong shape. These handlers parse the
+    JSON themselves and answer with a fixed message instead."""
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        for payload in ([_FAKE_KEY], _FAKE_KEY, {"env": ["x"], "key": _FAKE_KEY},
+                        {"env": "OPENROUTER_API_KEY", "key": [_FAKE_KEY]}):
+            for url in ("/api/setup/keys", "/api/setup/keys/validate"):
+                r = client.post(url, json=payload)
+                assert r.status_code == 400, (url, payload)
+                assert _FAKE_KEY not in r.text
+        # Non-JSON bodies too.
+        r = client.post("/api/setup/keys", content=_FAKE_KEY.encode())
+        assert r.status_code == 400 and _FAKE_KEY not in r.text
+    finally:
+        _close(db)
+
+
+# --- the log-scan gate ------------------------------------------------------
+
+
+def test_no_key_material_reaches_logs_bus_or_disk(tmp_path, monkeypatch, caplog):
+    """The W4 secrets gate, as a regression test rather than a one-off check.
+
+    Drives the real endpoints with a sentinel key through every branch a user can
+    hit -- a good key, a rejected key, and a network failure -- while capturing
+    Python logging, every bus event, and every byte written under BABY_HOME. The
+    sentinel may appear in exactly one place: .env. Anywhere else (a log line, a
+    bus payload, an HTTP response, setup.json) is a leak.
+    """
+    import logging
+
+    sentinel = "sk-or-v1-canary-do-not-log-0001"
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        from core import paths
+
+        paths.write_setup({"install_mode": "cloud_only"})
+
+        # Record every bus event the key handlers publish.
+        published: list[str] = []
+        from core.bus import EventBus
+
+        real_publish = EventBus.publish
+
+        def spy(self, kind, channel, **payload):
+            published.append(f"{kind}|{channel}|{payload}")
+            return real_publish(self, kind, channel, **payload)
+
+        monkeypatch.setattr(EventBus, "publish", spy)
+
+        responses: list[str] = []
+        with caplog.at_level(logging.DEBUG):
+            _probe(monkeypatch, status=200)
+            responses.append(
+                client.post(
+                    "/api/setup/keys", json={"env": "OPENROUTER_API_KEY", "key": sentinel}
+                ).text
+            )
+            responses.append(client.get("/api/setup/keys").text)
+            _probe(monkeypatch, status=401)
+            responses.append(
+                client.post(
+                    "/api/setup/keys", json={"env": "NVIDIA_API_KEY", "key": sentinel}
+                ).text
+            )
+            responses.append(
+                client.post(
+                    "/api/setup/keys/validate",
+                    json={"env": "GEMINI_API_KEY", "key": sentinel},
+                ).text
+            )
+            _probe(monkeypatch, exc=httpx.ConnectError("client error (Connect)"))
+            responses.append(
+                client.post(
+                    "/api/setup/keys/validate",
+                    json={"env": "GEMINI_API_KEY", "key": sentinel},
+                ).text
+            )
+
+        # 1. No HTTP response may carry the key.
+        for body in responses:
+            assert sentinel not in body
+
+        # 2. No log record -- message or formatted output.
+        for rec in caplog.records:
+            assert sentinel not in rec.getMessage()
+        assert sentinel not in caplog.text
+
+        # 3. No bus event.
+        assert published, "the spy never fired -- the gate would pass vacuously"
+        for ev in published:
+            assert sentinel not in ev
+
+        # 4. On disk: .env and nothing else.
+        holders = []
+        for path in tmp_path.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                if sentinel in path.read_text(encoding="utf-8", errors="ignore"):
+                    holders.append(path.name)
+            except OSError:
+                continue
+        assert holders == [".env"], f"key material found in {holders}"
     finally:
         _close(db)
