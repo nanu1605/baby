@@ -240,6 +240,32 @@ def test_write_leaves_no_temp_file_behind(home):
     assert leftovers == []
 
 
+def test_unreadable_env_never_raises_through_the_finish_gate(home):
+    """A .env with non-UTF-8 bytes -- a line hand-edited in Notepad -- must not
+    take out the wizard.
+
+    read_env_file backs has_key -> can_finish -> POST /api/setup/complete, so a
+    strict-UTF-8 read here meant one stray byte blocked a user from EVER
+    finishing setup, with a 500 and no legible reason.
+    """
+    env = home / ".env"
+    env.write_bytes(b"NOTE=caf\xe9 latte\n" + f"OPENROUTER_API_KEY={_FAKE_KEY}\n".encode())
+    parsed = keys.read_env_file()
+    assert parsed["OPENROUTER_API_KEY"] == _FAKE_KEY  # the good line still parses
+    assert keys.has_key("OPENROUTER_API_KEY") is True
+    assert keys.can_finish("cloud_only")["ok"] is True
+    assert keys.router_mode_for("cloud_only") == "cloud_primary"
+    assert keys.key_status("cloud_only")
+
+
+def test_env_that_cannot_be_read_at_all_degrades_quietly(home):
+    """Reading .env as a directory (or with no permission) must return nothing
+    rather than propagating -- same reasoning as above."""
+    (home / ".env").mkdir()
+    assert keys.read_env_file() == {}
+    assert keys.has_key("OPENROUTER_API_KEY") is False
+
+
 def test_secure_file_failure_does_not_lose_the_key(home, monkeypatch):
     """A machine where icacls is blocked still gets a working install; the caller
     just learns the file could not be tightened."""

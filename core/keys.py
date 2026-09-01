@@ -257,14 +257,21 @@ def read_env_file(path: Path | None = None) -> dict[str, str]:
 
     Deliberately tolerant and dependency-free: it must not fail on a file a user
     hand-edited. Unparseable lines are ignored here but PRESERVED by write_keys.
+
+    surrogateescape matches write_keys, so a line saved in the system codepage
+    round-trips instead of raising. That matters more than it looks: this
+    function backs has_key -> can_finish -> POST /api/setup/complete, so a
+    strict-UTF-8 read would let one stray byte in .env block a user from ever
+    finishing the wizard, with a 500 and no legible reason. Reading it as a
+    directory or with no permission is caught for the same reason.
     """
     p = path or paths.env_path()
     out: dict[str, str] = {}
     if not p.exists():
         return out
     try:
-        text = p.read_text(encoding="utf-8")
-    except OSError:
+        text = p.read_text(encoding="utf-8", errors="surrogateescape")
+    except (OSError, UnicodeDecodeError, ValueError):
         return out
     for raw in text.splitlines():
         m = _LINE.match(raw)

@@ -1414,3 +1414,80 @@ Running log of non-obvious choices made during the build. Newest last.
        reopened wizard lands on the key step rather than skipping it, so the
        cloud-only gate cannot be walked around by relaunching. A saved key needs one
        restart to take effect: `.env` is read at boot and the router is built once.
+
+132. **v6 W5 -- public hardening: what a stranger is told, what they can repair,
+     and what leaves their machine.** Three of the four items here started as a
+     promise the build did not keep.
+     - **The uninstaller's "delete application data" box removed nothing.** Tauri's
+       NSIS template deletes `%LOCALAPPDATA%\<BUNDLEID>` -- `com.tanishq.baby`, a
+       directory that has never existed. Baby's state lives in
+       `%LOCALAPPDATA%\baby`, a name chosen long before the app had a bundle id,
+       and that folder holds the `.env` with the user's cloud API keys, `baby.db`
+       with every conversation, the models and the ~1.5 GB venv. So a user who
+       ticked the box kept all of it, ~3.5 GB orphaned, while EULA section 5 told
+       them the opposite. `installer_hooks.nsh` adds a POSTUNINSTALL hook behind
+       the template's own two guards (the box is ticked, and this is not an
+       update). Verified with a real `tauri build`: the hook is included in the
+       generated `installer.nsi` and makensis compiles it into the setup exe. The
+       drift guard is a test, not a comment -- it pins the hook's target to the
+       directory `main.rs` actually points `BABY_HOME` at, and was
+       mutation-checked by renaming the target.
+     - **The wizard never finished.** Nothing set `setup_complete`, so every launch
+       re-prompted. It now ends on a capability disclosure (`core/disclosure.py`):
+       what Baby can act on, that it asks before anything changes, where
+       conversations and keys live, what the microphone does, and that the user is
+       responsible for what they approve. Two rules keep it honest. It describes
+       the SHIPPED DEFAULTS rather than what the app could do reconfigured, and a
+       test pins "nothing is auto-approved" to the template's `safety.mode` and
+       empty `auto_allow_app_close` -- if the template relaxes, the test fails
+       instead of the claim quietly becoming a lie. And the cloud wording follows
+       the install mode, because telling a cloud-only user their chats can stay on
+       this PC would be false. The EULA says this legally at install time, when
+       nobody reads; this says it once, in an owner's words, at the moment it
+       matters. `POST /api/setup/complete` refuses an unacknowledged finish and a
+       keyless cloud-only finish -- the latter would stamp "done" onto a build
+       whose next boot has no brain to answer with.
+     - **Diagnostics: the scrubber is the feature, not the collector.** "Send me
+       your diagnostics" is the useful reply to a broken install, and the obvious
+       implementation hands a public bug tracker the user's API keys and Windows
+       username. `core/diagnostics.py` scrubs in three layers because each catches
+       what the others cannot: exact `.env` values (the only thing that catches a
+       key of unfamiliar shape), key SHAPES anchored on the vendor prefix (an old
+       key in a weeks-old log line is no longer in `.env`), then personal
+       identifiers. Key values never appear, not even masked -- once a report is
+       public, the last four characters are still key material; presence is
+       reported instead, which is the part that helps. Verified against real data
+       on the dev box: four real `.env` secrets, none reached the report; the real
+       37 KB production log, clean and correctly bounded. The suite was
+       mutation-checked -- disabling `scrub()` fails 10 of 17 tests.
+     - **Repair and mode-switch live in the app, as W0 predicted.** NSIS has no MSI
+       Repair/Modify dialog, so the panel carries it: re-run the functional health
+       check, re-download whatever broke, switch modes, see which keys are set,
+       and produce the scrubbed report. It drives the same endpoints as the
+       first-run wizard, so there is one provisioning path rather than two that
+       can disagree. A mode change clears `provisioned`, because the other mode's
+       dependency set is different and the old flag no longer describes the
+       machine. **Running it for real caught what the tests missed:** the report
+       body was scrubbed but the "Saved to" line printed the full path, username
+       included, on the one screen users screenshot when asking for help. It shows
+       the filename only now.
+     - **A stray byte in `.env` could block setup forever.** Probing the scrubber
+       with a deliberately corrupt `.env` turned up a W4 gap: `read_env_file`
+       read strict UTF-8 and caught only `OSError`, so one non-UTF-8 byte -- a
+       line hand-edited in Notepad, the exact case `write_keys` was already
+       hardened for -- raised a `UnicodeDecodeError` straight through
+       `has_key` -> `can_finish` -> `POST /api/setup/complete`. The user could
+       never finish the wizard, and got a 500 with no legible reason. The read
+       path now matches the write path (`surrogateescape`). Worth noting how it
+       was found: an adversarial review of this diff reasoned about that exact
+       function and concluded "no throw risk"; running it proved otherwise.
+     - **The docs say the uncomfortable part out loud.** `docs/INSTALL.md` explains
+       the SmartScreen warning rather than hoping the user pushes through it: the
+       build is unsigned, reputation is bought, and the checksum -- not the
+       absence of a warning -- is what tells them the file is genuine. Anyone who
+       would rather not run unsigned software is pointed at running from source.
+       `docs/SIGNING.md` records the options and their costs, that the
+       `signCommand` hook needs no code change, and keeps the **LICENSE blocker**
+       where the release process will trip over it: SignPath's free OSS signing
+       requires an OSI-approved license, and this repo still has none. Four tests
+       pin the docs to the build so they cannot drift into fiction.
