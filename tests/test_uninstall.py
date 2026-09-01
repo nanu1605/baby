@@ -88,3 +88,47 @@ def test_eula_promise_matches_what_the_uninstaller_does():
     eula = _EULA.read_text(encoding="utf-8").lower()
     assert "uninstall" in eula
     assert _HOOKS.exists(), "the EULA promises a deletion the installer no longer does"
+
+
+# --- the public docs must describe the installer we actually ship ------------
+
+_INSTALL_DOC = _ROOT / "docs" / "INSTALL.md"
+_SIGNING_DOC = _ROOT / "docs" / "SIGNING.md"
+
+
+def test_install_doc_matches_the_install_mode_we_ship():
+    """INSTALL.md tells a stranger the install needs no administrator rights.
+    That is only true while the bundle stays per-user."""
+    assert _conf()["bundle"]["windows"]["nsis"]["installMode"] == "currentUser"
+    doc = _INSTALL_DOC.read_text(encoding="utf-8")
+    assert "per-user" in doc and "no administrator rights" in doc
+
+
+def test_install_doc_documents_the_uninstall_checkbox_accurately():
+    doc = _INSTALL_DOC.read_text(encoding="utf-8")
+    assert "Delete application data" in doc
+    assert r"%LOCALAPPDATA%\baby" in doc
+    # The unticked branch matters too -- it is why a reinstall keeps history.
+    assert "Unticked" in doc
+
+
+def test_install_doc_is_honest_about_smartscreen():
+    """The build is unsigned. A public install guide that omits the blue warning
+    box leaves a first-time user assuming the download is malicious."""
+    doc = _INSTALL_DOC.read_text(encoding="utf-8")
+    assert "SmartScreen" in doc
+    assert "not code-signed" in doc
+    assert "More info" in doc and "Run anyway" in doc
+    # And it must point at how to actually verify the download instead.
+    assert "SHA256" in doc and "Get-FileHash" in doc
+    assert _conf()["bundle"]["windows"]["nsis"].get("signCommand") is None
+
+
+def test_signing_doc_records_the_license_blocker():
+    """SignPath's free tier needs an OSI license. While the repo has none, that
+    has to stay written down where the release process will see it."""
+    signing = _SIGNING_DOC.read_text(encoding="utf-8")
+    assert "SignPath" in signing
+    has_license = (_ROOT / "LICENSE").exists() or (_ROOT / "LICENSE.md").exists()
+    if not has_license:
+        assert "Blocker" in signing, "the LICENSE blocker must stay documented"

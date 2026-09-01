@@ -110,7 +110,23 @@ keeps everything working with the Wi-Fi cable pulled.
 - Conversations persist (SQLite, WAL) and resume across restarts; long
   sessions get rolling summaries so context never silently truncates.
 
-## Setup
+## Install
+
+**Just want to use Baby?** Download the Windows installer from the
+[Releases page](https://github.com/nanu1605/baby/releases) — no Python, no Git,
+no developer setup. It brings its own runtime and fetches the models on first
+launch, with a wizard that checks your GPU, picks a mode, and validates your API
+key before accepting it.
+
+Read **[docs/INSTALL.md](docs/INSTALL.md)** first. It covers the SmartScreen
+warning you *will* see (Baby is not code-signed yet — verify the published
+SHA-256 checksum), what the first run downloads, where your data lives, and how
+to uninstall cleanly. [docs/SIGNING.md](docs/SIGNING.md) explains the signing
+situation.
+
+## Setup (from source)
+
+For development, or if you would rather not run an unsigned installer.
 
 Requirements: Windows 11, Python 3.11+, an NVIDIA GPU with 8 GB VRAM.
 
