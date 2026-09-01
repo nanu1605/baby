@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
-import type { SetupGpu, SetupState, SetupStatus } from "../types";
+import type {
+  SetupGpu,
+  SetupKeyResult,
+  SetupKeyRow,
+  SetupKeys,
+  SetupState,
+  SetupStatus,
+} from "../types";
 import {
+  canLeaveKeys,
   firstError,
   formatSize,
   gpuSummaryLine,
   initialStep,
   isCounterRecommended,
+  keyHint,
+  keyOutcomeOk,
+  keyRowSummary,
+  keysBlockedReason,
+  keyTone,
   modeTradeoff,
   provisionOutcome,
   recommendedMode,
@@ -60,8 +73,13 @@ describe("initialStep", () => {
     expect(initialStep("cloud_only")).toBe("provision");
     expect(initialStep("cloud_only", false)).toBe("provision");
   });
-  it("goes straight to done once provisioned", () => {
-    expect(initialStep("cloud_only", true)).toBe("done");
+  it("lands on the key step once provisioned but not settled", () => {
+    // W4: a reopened wizard must not skip past keys — that step is what stops a
+    // cloud-only install from finishing without the key its next boot needs.
+    expect(initialStep("cloud_only", true)).toBe("keys");
+  });
+  it("goes to done only once the keys step is settled", () => {
+    expect(initialStep("cloud_only", true, true)).toBe("done");
   });
 });
 
@@ -164,5 +182,116 @@ describe("firstError", () => {
     expect(
       firstError({ kokoro: { dep: "kokoro", phase: "error", status: "error", message: "net down" } }),
     ).toBe("net down");
+  });
+});
+
+
+// -- W4 API-key step ---------------------------------------------------------
+
+const keyRow = (o: Partial<SetupKeyRow>): SetupKeyRow => ({
+  env: "OPENROUTER_API_KEY",
+  label: "OpenRouter",
+  role: "primary",
+  signup_url: "https://openrouter.ai/keys",
+  prefix: "sk-or-",
+  note: "The main cloud brain.",
+  required: true,
+  present: false,
+  masked: "(not set)",
+  ...o,
+});
+
+const keyResult = (o: Partial<SetupKeyResult>): SetupKeyResult => ({
+  env: "OPENROUTER_API_KEY",
+  kind: "valid",
+  message: "OpenRouter key works.",
+  ...o,
+});
+
+const keysState = (o: Partial<SetupKeys>): SetupKeys => ({
+  mode: "cloud_only",
+  keys: [keyRow({})],
+  can_finish: { ok: false, missing: "OPENROUTER_API_KEY", message: "needs a key" },
+  ...o,
+});
+
+describe("keyOutcomeOk", () => {
+  it("prefers the save receipt over the validate flag", () => {
+    expect(keyOutcomeOk(keyResult({ saved: true, ok: false }))).toBe(true);
+    expect(keyOutcomeOk(keyResult({ saved: false, ok: true }))).toBe(false);
+  });
+  it("falls back to ok for a validate-only result", () => {
+    expect(keyOutcomeOk(keyResult({ ok: true }))).toBe(true);
+    expect(keyOutcomeOk(keyResult({ ok: false, kind: "invalid_key" }))).toBe(false);
+  });
+  it("is false before anything has been tried", () => {
+    expect(keyOutcomeOk(null)).toBe(false);
+  });
+});
+
+describe("keyTone", () => {
+  it("greens a working key", () => {
+    expect(keyTone(keyResult({ ok: true }))).toBe("ok");
+  });
+  it("warns rather than greens a rate-limited key (it still works)", () => {
+    expect(keyTone(keyResult({ ok: true, kind: "rate_limited" }))).toBe("warn");
+  });
+  it("does NOT blame the key for a network failure", () => {
+    // Telling someone their key is bad when their wifi dropped sends them
+    // hunting for a new key that will not help.
+    expect(keyTone(keyResult({ ok: false, kind: "network" }))).toBe("warn");
+    expect(keyTone(keyResult({ ok: false, kind: "server_error" }))).toBe("warn");
+  });
+  it("errors on a genuinely rejected key", () => {
+    expect(keyTone(keyResult({ ok: false, kind: "invalid_key" }))).toBe("error");
+    expect(keyTone(keyResult({ ok: false, kind: "no_credit" }))).toBe("error");
+  });
+  it("is idle with no result yet", () => {
+    expect(keyTone(null)).toBe("idle");
+  });
+});
+
+describe("keyRowSummary", () => {
+  it("shows the masked key once set", () => {
+    expect(keyRowSummary(keyRow({ present: true, masked: "sk-or-...tail" }))).toBe(
+      "sk-or-...tail",
+    );
+  });
+  it("marks an unset key required or optional", () => {
+    expect(keyRowSummary(keyRow({ required: true }))).toBe("Required");
+    expect(keyRowSummary(keyRow({ required: false }))).toBe("Optional");
+  });
+});
+
+describe("keyHint", () => {
+  it("says nothing for an empty field or a plausible key", () => {
+    expect(keyHint(keyRow({}), "")).toBe("");
+    expect(keyHint(keyRow({}), "sk-or-v1-longenoughkey")).toBe("");
+  });
+  it("catches the common paste mistakes", () => {
+    expect(keyHint(keyRow({}), "https://openrouter.ai/keys")).toMatch(/URL/);
+    expect(keyHint(keyRow({}), "sk-or-a")).toMatch(/short/);
+    expect(keyHint(keyRow({}), "sk or v1 key with spaces")).toMatch(/spaces/);
+    expect(keyHint(keyRow({}), "nvapi-1234567890abcdef")).toMatch(/sk-or-/);
+  });
+  it("has no prefix opinion for a vendor without one", () => {
+    expect(keyHint(keyRow({ prefix: "" }), "AIzaSyExample1234567")).toBe("");
+  });
+});
+
+describe("canLeaveKeys / keysBlockedReason", () => {
+  it("holds a cloud-only install that has no primary key", () => {
+    const s = keysState({});
+    expect(canLeaveKeys(s)).toBe(false);
+    expect(keysBlockedReason(s)).toBe("needs a key");
+  });
+  it("lets a satisfied install through", () => {
+    const s = keysState({ can_finish: { ok: true, missing: null, message: "" } });
+    expect(canLeaveKeys(s)).toBe(true);
+    expect(keysBlockedReason(s)).toBe("");
+  });
+  it("holds before the first fetch resolves", () => {
+    expect(canLeaveKeys(null)).toBe(false);
+    expect(keysBlockedReason(null)).toBe("");
   });
 });

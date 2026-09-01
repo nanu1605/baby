@@ -3,7 +3,15 @@
  * cover them (the codebase tests logic, not JSX). The component in
  * components/FirstRunWizard.tsx renders these.
  */
-import type { SetupGpu, SetupProgressEvent, SetupState, SetupStatus } from "../types";
+import type {
+  SetupGpu,
+  SetupKeyResult,
+  SetupKeyRow,
+  SetupKeys,
+  SetupProgressEvent,
+  SetupState,
+  SetupStatus,
+} from "../types";
 
 export type InstallMode = "full" | "cloud_only";
 
@@ -22,18 +30,24 @@ export function shouldShowWizard(
 
 /**
  * Where the wizard opens on (re-)entry: no mode yet → the fork; a mode chosen but
- * deps not provisioned → the provisioning step (resume it); fully provisioned →
- * the terminal panel. Grows as W4/W5 add steps.
+ * deps not provisioned → the provisioning step (resume it); provisioned but the
+ * key step not settled → keys; everything settled → the terminal panel.
+ *
+ * `keysSettled` defaults to false so a reopened wizard lands on the key step
+ * rather than skipping past it — that step is where a cloud-only install is
+ * stopped from finishing without the key its next boot requires.
  */
 export function initialStep(
   installMode: string | null | undefined,
   provisioned = false,
+  keysSettled = false,
 ): WizardStep {
   if (!installMode) return "mode";
-  return provisioned ? "done" : "provision";
+  if (!provisioned) return "provision";
+  return keysSettled ? "done" : "keys";
 }
 
-export type WizardStep = "mode" | "provision" | "done";
+export type WizardStep = "mode" | "provision" | "keys" | "done";
 
 /** One-line GPU summary for the mode screen. */
 export function gpuSummaryLine(gpu: SetupGpu): string {
@@ -122,4 +136,71 @@ export function firstError(progress: Record<string, SetupProgressEvent>): string
     if (_ERROR.has(ev.status)) return ev.message ?? ev.detail ?? `${k} failed`;
   }
   return "";
+}
+
+// -- W4 API-key step ---------------------------------------------------------
+
+/**
+ * Whether a validation/save outcome should read as success.
+ *
+ * `rate_limited` counts as a PASS: a 429 means the vendor recognised the key and
+ * is throttling, so rejecting it would trap a rate-limited user in the wizard
+ * with no way forward. `cleared` is the deliberate removal of a key.
+ */
+export function keyOutcomeOk(result: SetupKeyResult | null): boolean {
+  if (!result) return false;
+  if (typeof result.saved === "boolean") return result.saved;
+  return result.ok === true;
+}
+
+/**
+ * The tone a key result should be shown in. A network failure is deliberately
+ * NOT an error against the key — telling someone their key is bad when their
+ * wifi dropped sends them hunting for a new key that will not help.
+ */
+export function keyTone(result: SetupKeyResult | null): "ok" | "warn" | "error" | "idle" {
+  if (!result) return "idle";
+  if (keyOutcomeOk(result)) return result.kind === "rate_limited" ? "warn" : "ok";
+  if (result.kind === "network" || result.kind === "server_error") return "warn";
+  return "error";
+}
+
+/** What a row shows on the right: the masked key, or a nudge to add one. */
+export function keyRowSummary(row: SetupKeyRow): string {
+  if (row.present) return row.masked;
+  return row.required ? "Required" : "Optional";
+}
+
+/**
+ * Client-side paste hint, advisory only — the vendor probe is the real
+ * authority, so this may warn but must never block a submit. Catches the
+ * common paste errors: a URL, a truncated key, or the wrong vendor's key.
+ */
+export function keyHint(row: SetupKeyRow, value: string): string {
+  const v = value.trim();
+  if (!v) return "";
+  if (/\s/.test(v)) return "That contains spaces — check the paste.";
+  if (v.startsWith("http")) return "That looks like a URL, not a key.";
+  if (v.length < 12) return "That looks too short to be a key.";
+  if (row.prefix && !v.startsWith(row.prefix)) {
+    return `${row.label} keys usually start with "${row.prefix}".`;
+  }
+  return "";
+}
+
+/**
+ * Whether the wizard may leave the key step.
+ *
+ * Mirrors the server's can_finish rather than second-guessing it: a cloud-only
+ * install with no primary key would boot straight into a crash, so the step
+ * holds. Full may continue keyless and stay on the local brain.
+ */
+export function canLeaveKeys(keys: SetupKeys | null): boolean {
+  return keys?.can_finish?.ok ?? false;
+}
+
+/** Why the step is blocking, for the banner. "" when it is not blocking. */
+export function keysBlockedReason(keys: SetupKeys | null): string {
+  if (!keys || keys.can_finish?.ok) return "";
+  return keys.can_finish?.message ?? "A cloud key is required to continue.";
 }

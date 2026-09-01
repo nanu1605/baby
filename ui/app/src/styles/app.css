@@ -1696,3 +1696,94 @@ body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
   color: var(--text);
   mix-blend-mode: difference;
 }
+
+/* -- W4 API-key step -------------------------------------------------------- */
+.wizard-keys {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.wizard-key {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+}
+.wizard-key.required {
+  border-color: var(--accent);
+}
+.wizard-key-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.wizard-key-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.wizard-key-state {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-family: var(--mono, monospace);
+}
+.wizard-key-note {
+  margin: var(--sp-1) 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.wizard-key-row {
+  display: flex;
+  gap: var(--sp-2);
+}
+.wizard-key-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono, monospace);
+  font-size: var(--fs-sm);
+}
+.wizard-key-btn {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.wizard-key-btn.primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.wizard-key-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.wizard-key-hint,
+.wizard-key-msg {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-xs);
+}
+.wizard-key-hint {
+  color: var(--muted);
+}
+.wizard-key-msg.tone-ok {
+  color: var(--green);
+}
+.wizard-key-msg.tone-warn {
+  color: var(--amber, var(--muted));
+}
+.wizard-key-msg.tone-error {
+  color: var(--red);
+}
+.wizard-key-link {
+  display: inline-block;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--accent);
+}

@@ -1,18 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getSetupGpu,
+  getSetupKeys,
   getSetupPlan,
   getSetupStatus,
+  postSetupKey,
+  postSetupKeyValidate,
   postSetupMode,
   postSetupProvision,
 } from "../api/client";
 import { useBrain } from "../store";
 import {
+  canLeaveKeys,
   firstError,
   formatSize,
   gpuSummaryLine,
   initialStep,
   isCounterRecommended,
+  keyHint,
+  keyOutcomeOk,
+  keyRowSummary,
+  keysBlockedReason,
+  keyTone,
   modeTradeoff,
   provisionOutcome,
   recommendedMode,
@@ -22,7 +31,14 @@ import {
   type InstallMode,
   type WizardStep,
 } from "../lib/setup";
-import type { SetupGpu, SetupStatus, SetupStep } from "../types";
+import type {
+  SetupGpu,
+  SetupKeyResult,
+  SetupKeyRow,
+  SetupKeys,
+  SetupStatus,
+  SetupStep,
+} from "../types";
 
 /**
  * v6 first-run wizard — W2 slice: GPU pre-check + install-mode fork. A full-screen
@@ -120,7 +136,9 @@ export default function FirstRunWizard() {
             )}
           </>
         ) : step === "provision" ? (
-          <ProvisionStep onDone={() => setStep("done")} />
+          <ProvisionStep onDone={() => setStep("keys")} />
+        ) : step === "keys" ? (
+          <KeysStep onDone={() => setStep("done")} />
         ) : (
           <DoneStep
             mode={chosen ?? (installMode as InstallMode | null)}
@@ -236,6 +254,184 @@ function ProvisionStep({ onDone }: { onDone: () => void }) {
   );
 }
 
+/**
+ * W4 key step. Every key is proved against its vendor before it is saved, so a
+ * typo is caught here rather than at the first cloud escalation.
+ *
+ * A cloud-only install cannot leave this step without the primary key: with no
+ * local model on the machine, finishing keyless would boot into a router that
+ * refuses to build. The server decides that (`can_finish`) and the UI mirrors it
+ * rather than keeping its own rule.
+ */
+function KeysStep({ onDone }: { onDone: () => void }) {
+  const [keys, setKeys] = useState<SetupKeys | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    getSetupKeys()
+      .then((k) => alive.current && setKeys(k))
+      .catch(() => alive.current && setLoadError(true));
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // A save returns the refreshed roster, so the step re-gates itself without
+  // another round trip.
+  const applySaved = (r: SetupKeyResult) => {
+    if (!alive.current || !r.keys || !r.can_finish) return;
+    setKeys((prev) =>
+      prev ? { ...prev, keys: r.keys!, can_finish: r.can_finish! } : prev,
+    );
+  };
+
+  const blocked = keysBlockedReason(keys);
+  const cloudOnly = keys?.mode === "cloud_only";
+
+  return (
+    <>
+      <h2>Connect a cloud brain</h2>
+      <p className="wizard-sub">
+        {cloudOnly
+          ? "This install runs entirely on cloud models, so it needs at least the main key."
+          : "Optional — Baby already has a local brain. Adding a key lets it reach for a stronger cloud model."}
+      </p>
+
+      {loadError && (
+        <p className="wizard-err">
+          Couldn't load the key settings. Reopen Baby and try again.
+        </p>
+      )}
+
+      <div className="wizard-keys">
+        {(keys?.keys ?? []).map((row) => (
+          <KeyField key={row.env} row={row} onSaved={applySaved} />
+        ))}
+      </div>
+
+      {blocked && <p className="wizard-warn">{blocked}</p>}
+
+      <div className="wizard-actions">
+        <button
+          type="button"
+          className="wizard-primary"
+          disabled={!canLeaveKeys(keys)}
+          onClick={onDone}
+        >
+          Continue
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * One key: a masked summary, a password field, and a real vendor check.
+ *
+ * The field is type=password and is cleared the moment a save succeeds — the raw
+ * key exists in this component only between paste and save. Everything the server
+ * sends back is already masked.
+ */
+function KeyField({
+  row,
+  onSaved,
+}: {
+  row: SetupKeyRow;
+  onSaved: (r: SetupKeyResult) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [result, setResult] = useState<SetupKeyResult | null>(null);
+  const [busy, setBusy] = useState<"test" | "save" | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const run = async (what: "test" | "save") => {
+    setBusy(what);
+    setResult(null);
+    try {
+      const r =
+        what === "test"
+          ? await postSetupKeyValidate(row.env, value)
+          : await postSetupKey(row.env, value);
+      if (!alive.current) return;
+      setResult(r);
+      if (what === "save" && keyOutcomeOk(r)) {
+        setValue(""); // the raw key never lingers in component state
+        onSaved(r);
+      }
+    } catch {
+      if (alive.current) {
+        setResult({
+          env: row.env,
+          ok: false,
+          kind: "network",
+          message: "Couldn't reach Baby's backend. Try again.",
+        });
+      }
+    } finally {
+      if (alive.current) setBusy(null);
+    }
+  };
+
+  const hint = keyHint(row, value);
+  const tone = keyTone(result);
+
+  return (
+    <div className={`wizard-key${row.required ? " required" : ""}`}>
+      <div className="wizard-key-head">
+        <span className="wizard-key-label">{row.label}</span>
+        <span className="wizard-key-state">{keyRowSummary(row)}</span>
+      </div>
+      <p className="wizard-key-note">{row.note}</p>
+      <div className="wizard-key-row">
+        <input
+          type="password"
+          className="wizard-key-input"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={row.present ? "Replace this key…" : `Paste your ${row.label} key`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          aria-label={`${row.label} API key`}
+        />
+        <button
+          type="button"
+          className="wizard-key-btn"
+          disabled={!value.trim() || busy !== null}
+          onClick={() => run("test")}
+        >
+          {busy === "test" ? "Testing…" : "Test"}
+        </button>
+        <button
+          type="button"
+          className="wizard-key-btn primary"
+          disabled={!value.trim() || busy !== null}
+          onClick={() => run("save")}
+        >
+          {busy === "save" ? "Saving…" : "Save"}
+        </button>
+      </div>
+      {hint && !result && <p className="wizard-key-hint">{hint}</p>}
+      {result && <p className={`wizard-key-msg tone-${tone}`}>{result.message}</p>}
+      <a
+        className="wizard-key-link"
+        href={row.signup_url}
+        target="_blank"
+        rel="noreferrer noopener"
+      >
+        Get a {row.label} key
+      </a>
+    </div>
+  );
+}
+
 function ModeCard({
   mode,
   gpu,
@@ -293,8 +489,9 @@ function DoneStep({
         <strong>{label}</strong> mode.
       </p>
       <p className="wizard-note">
-        Adding API keys comes next — that step isn't wired up in this build yet. For
-        now you can start using Baby.
+        Any key you saved is stored on this PC only, in a file just you can read.
+        Reopen Baby once to switch it over to the cloud brain — until then it keeps
+        using what it already had.
       </p>
       <div className="wizard-actions">
         <button type="button" className="wizard-primary" onClick={onContinue}>

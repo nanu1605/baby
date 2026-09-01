@@ -204,6 +204,48 @@ export interface SetupStatus {
   progress: Record<string, SetupProgressEvent>;
 }
 
+/** GET /api/setup/keys — one row per API key Baby can use.
+ *  `masked` is the ONLY rendering of a key that ever reaches the client: the
+ *  server never returns key material, so the UI has nothing to leak. */
+export interface SetupKeyRow {
+  env: string;
+  label: string;
+  role: "primary" | "backstop" | "heavy";
+  signup_url: string;
+  prefix: string;
+  note: string;
+  required: boolean;
+  present: boolean;
+  masked: string;
+}
+/** Whether the wizard is allowed to finish, and what is missing if not. */
+export interface SetupCanFinish {
+  ok: boolean;
+  missing: string | null;
+  message: string;
+}
+export interface SetupKeys {
+  mode: string;
+  keys: SetupKeyRow[];
+  can_finish: SetupCanFinish;
+}
+
+/** POST /api/setup/keys{,/validate} — the outcome of a real vendor auth probe.
+ *  kind: valid | rate_limited | cleared (ok) · invalid_key | no_credit |
+ *  network | server_error | unexpected | empty | unknown_key (not ok). */
+export interface SetupKeyResult {
+  env: string;
+  ok?: boolean;
+  saved?: boolean;
+  kind: string;
+  message: string;
+  secured?: boolean;
+  router_mode?: string;
+  restart_required?: boolean;
+  keys?: SetupKeyRow[];
+  can_finish?: SetupCanFinish;
+}
+
 /** GET /api/setup/gpu — VRAM snapshot + the Full-vs-cloud-only recommendation. */
 export interface SetupGpu {
   has_nvidia: boolean;

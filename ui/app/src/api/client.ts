@@ -12,6 +12,8 @@ import type {
   NodeStats,
   SearchResponse,
   SetupGpu,
+  SetupKeyResult,
+  SetupKeys,
   SetupPlan,
   SetupStatus,
   Stats,
@@ -58,6 +60,29 @@ export const postSetupProvision = () => postJSON("/api/setup/provision");
 
 /** Latest per-dependency provisioning snapshot (poll while it runs). */
 export const getSetupStatus = () => getJSON<SetupStatus>("/api/setup/status");
+
+/** Which API keys Baby can use, which are set (masked), and whether we may finish. */
+export const getSetupKeys = () => getJSON<SetupKeys>("/api/setup/keys");
+
+/** Test a key against its vendor WITHOUT saving it, so a bad paste never lands
+ *  on disk. The key goes in the POST body — never a query string. */
+export const postSetupKeyValidate = async (
+  env: string,
+  key: string,
+): Promise<SetupKeyResult> => {
+  const r = await postJSON("/api/setup/keys/validate", { env, key });
+  return (await r.json()) as SetupKeyResult;
+};
+
+/** Validate and persist a key to .env (empty string clears it). A rejected key
+ *  comes back 400 with a reason and is NOT written. */
+export const postSetupKey = async (
+  env: string,
+  key: string,
+): Promise<SetupKeyResult> => {
+  const r = await postJSON("/api/setup/keys", { env, key });
+  return (await r.json()) as SetupKeyResult;
+};
 
 export const getGraph = () => getJSON<GraphData>("/api/graph");
 
