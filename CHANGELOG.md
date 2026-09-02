@@ -70,6 +70,18 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   answered the "Ollama runtime" row only when the daemon was missing, so an Ollama
   that was already running left a permanent grey circle beside a ticked 9B download
   -- a finished install reading as one still in progress.
+- **The wizard's cloud key now takes effect immediately.** `router.mode` is read once
+  at boot, so a wizard that validated a cloud key mid-session left the running process
+  on the local-only ladder it started with: the cloud badge never lit and the
+  game-mode button did nothing, on an install whose key was valid and working. The
+  backend now exits with a restart code and the shell — which spawned it and already
+  watches the handle — brings it straight back on the stamped mode. Never applies to
+  an always-on service, which has nobody to restart it.
+- **Baby says which wake phrase it answers to.** A public install wakes on
+  **"Hey Jarvis"**: openWakeWord ships no phrase for Baby's own name, and the custom
+  model the config points at is owner-trained and not in the installer. The wizard's
+  disclosure step and `docs/INSTALL.md` now say so (and mention Ctrl+Alt+B), pinned by
+  test to the shipped config so the two cannot drift.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.
@@ -79,8 +91,9 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
 
 **Known limitations.** The build is **unsigned**, so SmartScreen warns -- verify the
 published checksum (see `docs/INSTALL.md`). Offline first-install is out of scope: the
-first run needs a network connection. A saved cloud key takes effect on the next
-launch, since `.env` is read at boot.
+first run needs a network connection. Voice answers to **"Hey Jarvis"**, not "Hey
+Baby" -- the pretrained wake-word set has no phrase for Baby's own name; train your own
+with `scripts/wakeword_training.md`.
 
 ## v5.0.0 — chat history & default cloud mode (2026-07-11)
 

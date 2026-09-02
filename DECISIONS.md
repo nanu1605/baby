@@ -1683,3 +1683,55 @@ Running log of non-obvious choices made during the build. Newest last.
      daemon. A finished install rendering as one still in progress, which is exactly
      the reading that sent a user to wait three hours on #135. It now reports
      `status="pass"`, which is what the wizard counts as done.
+
+140. **The wizard stamped a router mode the running process could not honour.**
+     Found on a live install: `setup.json` said `router_mode: cloud_primary`, the
+     OpenRouter key in `.env` was valid and answering real chat completions, and
+     `/stats` carried no `router`, no `game_mode` and no `brain_turns` at all. File
+     mtimes told the whole story -- the backend read its config at 22:55:14, the key
+     landed at 22:58:29 and the stamp at 22:58:35. `build_provider` runs ONCE, at
+     boot, so the process spent the rest of its life as a bare `OllamaProvider`.
+
+     Two features read as broken because of it. The cloud badge never lit. The
+     game-mode button POSTed to a provider with no `set_game_mode` and did nothing
+     at all, while Ollama held the 9B resident the whole time. Both were reported as
+     separate bugs; they were one.
+
+     The product already knew: `/api/setup/complete` returned `restart_recommended`,
+     and the wizard rendered it as one line of text on its last screen. **A correct
+     diagnosis delivered as advice the user can walk past is not a fix.**
+
+     The shell spawned this backend and is already polling the handle (#135), so it
+     is the thing that can act. The backend now exits with `RESTART_EXIT_CODE` (86)
+     when the stamped mode differs from the one it is running, and the watcher
+     branches on that code -- restart instead of the death overlay -- respawns, waits
+     for the port, and puts the user back on the live UI. The wizard says "Baby is
+     restarting itself" rather than asking.
+
+     Two guards matter more than the rest. It fires only when `BABY_SHELL_TRAY=1`,
+     i.e. only for a child the shell owns, so an always-on service can never be taken
+     down by a wizard with nobody to bring it back. And it fires only when the live
+     provider is not already a `CloudRouter`, so a second wizard visit cannot loop.
+     The exit code is a magic number crossing a language boundary with nothing but a
+     test holding the two halves together; a drift there degrades silently into the
+     old bug, so that test exists.
+
+141. **A build called Baby answers to "Hey Jarvis", and told nobody.** The user
+     reported voice as dead: "Hey Baby" and "Hi Baby" did nothing, so everything got
+     typed. Voice was working perfectly -- the log said `voice on (hey_jarvis)` on
+     every boot.
+
+     openWakeWord ships six pretrained phrases (alexa, hey_jarvis, hey_mycroft,
+     hey_rhasspy, timer, weather) and none is Baby's own name. The config points at
+     `models/jarvis.onnx`, an owner-trained model that is in neither the installer
+     nor the repo, so a public install runs the built-in `hey_jarvis` and nothing
+     else. Training a real "hey baby" is a Colab job with voice samples, not a config
+     edit, so the shipped phrase stands -- but a product whose name is not its wake
+     word has to say so before the user decides it is broken.
+
+     Now named in the capability disclosure (the wizard's last screen, which everyone
+     sees) alongside the Ctrl+Alt+B alternative, and in `docs/INSTALL.md` with the
+     path to training your own. Both are pinned by test to
+     `installer/config.default.yaml`, so changing the shipped phrase without changing
+     what the user is told fails the build. Same doctrine as the "it asks first" line:
+     **a promise in prose has to be pinned to the config that keeps it.**

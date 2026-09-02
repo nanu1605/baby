@@ -265,6 +265,8 @@ export interface SetupComplete {
   install_mode: string | null;
   router_mode?: string;
   restart_recommended?: boolean;
+  /** The shell owns this backend and is restarting it now — no user action needed. */
+  restarting?: boolean;
 }
 
 /** GET /api/setup/health — the re-runnable functional probe behind repair. */

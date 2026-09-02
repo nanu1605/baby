@@ -64,9 +64,12 @@ _COMMON: tuple[Item, ...] = (
     ),
     Item(
         key="mic",
-        title="The microphone is used for the wake word",
-        detail="Voice runs on this PC. Audio is processed locally to hear the "
-        "wake word; it is not streamed anywhere while Baby is idle.",
+        title='Say "Hey Jarvis" to talk to Baby',
+        detail='The wake phrase is "Hey Jarvis", not "Hey Baby" -- the pretrained '
+        "wake-word model this build ships has no phrase for Baby's own name. You can "
+        "also press Ctrl+Alt+B to talk without it. Voice runs on this PC: audio is "
+        "processed locally to hear the wake phrase and is not streamed anywhere "
+        "while Baby is idle.",
     ),
     Item(
         key="responsibility",

@@ -65,8 +65,13 @@ game_mode:
 
 voice:
   enabled: true                         # voice is required out-of-the-box (v6 owner decision)
-  wakeword_model: models/jarvis.onnx    # custom wake word (optional); builtin fallback always on
+  wakeword_model: models/jarvis.onnx    # owner-trained, NOT shipped in the installer (scripts/wakeword_training.md)
   wakeword_models: []
+  # THE PHRASE A PUBLIC INSTALL ACTUALLY ANSWERS TO. openWakeWord ships six
+  # pretrained models (alexa, hey_jarvis, hey_mycroft, hey_rhasspy, timer, weather)
+  # and none of them is "hey baby", so this is what a stranger has to say. The
+  # disclosure step says so out loud and a test pins the two together -- change one
+  # and change the other, or voice silently looks broken to everyone who installs.
   wakeword_builtin_fallback: hey_jarvis
   wakeword_threshold: 0.55
   push_to_talk_hotkey: ctrl+alt+b

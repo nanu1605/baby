@@ -76,6 +76,18 @@ The first launch does the heavy lifting, with a progress screen:
 
 Then it is ready.
 
+### Talking to Baby
+
+Say **"Hey Jarvis"** — not "Hey Baby". The pretrained wake-word model this build
+ships recognises a fixed set of phrases and none of them is Baby's own name, so
+"Hey Baby" does nothing at all. You can also press **Ctrl+Alt+B** to talk without
+a wake phrase, or just type.
+
+If you want Baby to answer to something else, train your own wake-word model with
+[scripts/wakeword_training.md](../scripts/wakeword_training.md), drop the `.onnx`
+into `%LOCALAPPDATA%\baby\models\`, and point `voice.wakeword_model` at it. The
+built-in phrase keeps working alongside it.
+
 ### Where your data lives
 
 Everything is under `%LOCALAPPDATA%\baby`:

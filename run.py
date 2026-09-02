@@ -134,9 +134,15 @@ def main() -> None:
         try:
             # --voice boots the UI stack too (same process, spec section 16);
             # voice attaches on top and fails soft back to text-only.
-            asyncio.run(run_ui(config, with_voice=args.voice))
+            code = asyncio.run(run_ui(config, with_voice=args.voice))
         except KeyboardInterrupt:
             print("\nbye.")
+        else:
+            # Non-zero means the first-run wizard stamped a router mode only a fresh
+            # boot can honour, and the shell that spawned us is watching for exactly
+            # this status so it can bring us back. See ui/server.py RESTART_EXIT_CODE.
+            if code:
+                sys.exit(code)
     elif args.cli:
         from clients.cli import run_cli
 

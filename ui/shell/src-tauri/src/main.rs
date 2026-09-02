@@ -36,6 +36,19 @@ const BACKEND_URL: &str = "http://127.0.0.1:8765/";
 const BACKEND_ADDR: &str = "127.0.0.1:8765";
 const READY_TIMEOUT: Duration = Duration::from_secs(180); // startup.wait_for_model_s (120) + margin
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+/// The backend exits with this to ASK to be restarted -- it is not a crash.
+///
+/// The router is built once, at boot, from a config read before the first-run wizard
+/// stamped anything. A wizard that validates a cloud key and upgrades the mode to
+/// cloud_primary therefore leaves the RUNNING process on the local-only ladder it
+/// booted with: no cloud brain, and a game-mode button wired to a provider that has
+/// no such method. Both looked broken, and the only thing saying otherwise was one
+/// line of text at the end of the wizard. The backend now exits with this code once
+/// the wizard finishes, and we bring it straight back on the stamped mode.
+///
+/// Only a backend WE spawned ever sends it (it keys on BABY_SHELL_TRAY), so an
+/// always-on service in --attach-only mode is never restarted out from under itself.
+const RESTART_EXIT_CODE: i32 = 86;
 
 /// Only set when the shell SPAWNED the backend itself; on quit that child is killed,
 /// an attached always-on service is left running (DECISIONS #120).
@@ -342,9 +355,38 @@ fn watch_backend(app: AppHandle) {
         };
         // Drop the reaped handle so quit doesn't try to kill a dead pid.
         *app.state::<AppState>().spawned.lock().unwrap() = None;
-        show_backend_died(&app, exited);
+        if exited == Some(RESTART_EXIT_CODE) {
+            restart_backend(&app);
+        } else {
+            show_backend_died(&app, exited);
+        }
         return;
     });
+}
+
+/// Bring the backend back after it asked to be restarted (RESTART_EXIT_CODE).
+///
+/// Runs on the watcher thread, which is already off the UI thread, so blocking on
+/// readiness here is fine. spawn_backend arms a fresh watcher, so a crash on the way
+/// back up still reports itself. The venv is not rebuilt: nothing can reach this
+/// point without one.
+fn restart_backend(app: &AppHandle) {
+    show_overlay(
+        app,
+        "baby-restarting",
+        "#e4e4e7",
+        "Applying your setup — Baby is restarting. This takes a few seconds.",
+    );
+    let Some(layout) = resolve_layout(app) else {
+        show_backend_died(app, Some(RESTART_EXIT_CODE));
+        return;
+    };
+    spawn_backend(app, &layout);
+    if wait_ready(READY_TIMEOUT) {
+        reveal(app);
+    } else {
+        show_backend_died(app, None);
+    }
 }
 
 /// Overlay the live page with the bad news. Not show_splash_message: that writes into
@@ -360,16 +402,25 @@ fn show_backend_died(app: &AppHandle, code: Option<i32>) {
          Close Baby and open it again — setup resumes from whatever already finished. \
          Details are in %LOCALAPPDATA%\\baby\\logs\\baby.log"
     );
+    show_overlay(app, "baby-backend-died", "#f87171", &msg);
+}
+
+/// Cover the live page with one line of text.
+///
+/// Not show_splash_message: that writes into the splash's `.wrap`, which no longer
+/// exists once the window has navigated to the backend-served UI — exactly the case
+/// these fire in. `id` keeps a repeat call from stacking overlays.
+fn show_overlay(app: &AppHandle, id: &str, colour: &str, msg: &str) {
     if let Some(w) = app.get_webview_window("main") {
         let safe = msg.replace('\\', "\\\\").replace('\'', "\\'");
-        // textContent, not innerHTML: the message carries a path, and nothing here
+        // textContent, not innerHTML: the message can carry a path, and nothing here
         // should ever be parsed as markup.
         let js = format!(
-            "(function(){{if(document.getElementById('baby-backend-died'))return;\
-             var d=document.createElement('div');d.id='baby-backend-died';\
+            "(function(){{if(document.getElementById('{id}'))return;\
+             var d=document.createElement('div');d.id='{id}';\
              d.setAttribute('style','position:fixed;inset:0;z-index:2147483647;\
              display:flex;align-items:center;justify-content:center;text-align:center;\
-             padding:2rem;background:rgba(9,9,11,0.94);color:#f87171;\
+             padding:2rem;background:rgba(9,9,11,0.94);color:{colour};\
              font:14px system-ui,sans-serif;line-height:1.6');\
              d.textContent='{safe}';\
              (document.body||document.documentElement).appendChild(d);}})();"

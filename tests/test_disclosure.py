@@ -69,6 +69,24 @@ def test_asks_first_claim_matches_the_shipped_template():
     assert "auto-approved" in confirm["detail"]
 
 
+def test_the_wake_phrase_is_named_and_matches_the_shipped_config():
+    """A build called Baby wakes on "Hey Jarvis".
+
+    openWakeWord ships six pretrained phrases and none of them is Baby's own name,
+    and the custom models/jarvis.onnx the config points at is trained by the owner
+    and is not in the installer. So a public install answers "Hey Jarvis" and
+    nothing else -- and a user who is never told that concludes voice is broken and
+    types everything instead, which is exactly what happened. Pinned to the shipped
+    template so the two can never drift apart silently.
+    """
+    voice = _template()["voice"]
+    spoken = str(voice["wakeword_builtin_fallback"]).replace("_", " ")  # hey_jarvis
+    mic = next(i for i in disclosure.items("full") if i["key"] == "mic")
+    text = f"{mic['title']} {mic['detail']}".lower()
+    assert spoken in text, f"the disclosure never names the wake phrase ({spoken!r})"
+    assert str(voice["push_to_talk_hotkey"]).lower() in text, "no way in without the phrase"
+
+
 def test_no_telemetry_claim_matches_the_shipped_template():
     """'Nothing is uploaded to Baby's authors' must stay true of the build."""
     cfg = _template()

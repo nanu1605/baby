@@ -214,8 +214,45 @@ def _gpu_recommendation() -> dict:
     }
 
 
+# Handed to the shell as this process's exit status when the wizard has stamped a
+# router mode only a fresh boot can honour. Mirrored by RESTART_EXIT_CODE in
+# ui/shell/src-tauri/src/main.rs, which brings the backend straight back.
+RESTART_EXIT_CODE = 86
+
+
+def _restart_needed_to_apply(state: dict, provider: object) -> bool:
+    """True when the wizard just stamped a router mode THIS process cannot honour.
+
+    `router.mode` is read once, at boot, and `build_provider` runs once against it. A
+    wizard that validates a cloud key mid-session upgrades the stamp to cloud_primary
+    -- and the provider built minutes earlier from the pre-wizard config stays a
+    local-only ladder for the rest of the process's life. Observed on a real install:
+    setup.json said cloud_primary, the key was live and working, and /stats carried no
+    `router` and no `game_mode` at all, because the provider was a bare OllamaProvider.
+    The cloud badge never lit and the game-mode button POSTed to a provider with no
+    set_game_mode. Both read as broken features; the only thing saying otherwise was a
+    single line of text on the wizard's last screen.
+
+    Restarting is the only way this process picks the mode up. The shell can do that
+    only for a backend IT spawned -- an always-on service must never be taken down by
+    a wizard -- and BABY_SHELL_TRAY is set on exactly those children.
+    """
+    if state.get("router_mode") != "cloud_primary":
+        return False
+    if os.environ.get("BABY_SHELL_TRAY") != "1":
+        return False  # an attached service or a bare dev run: not ours to restart
+    from core.router import CloudRouter
+
+    return not isinstance(provider, CloudRouter)
+
+
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
+    # Set when the first-run wizard stamps a router mode this process cannot honour;
+    # run_ui watches the event and exits with RESTART_EXIT_CODE so the shell can bring
+    # the backend straight back on the stamped mode. See _restart_needed_to_apply.
+    app.state.restart_requested = False
+    app.state.restart_event = asyncio.Event()
     # Vanilla UI assets — always mounted so /classic keeps working regardless of
     # the ui.frontend flag (config-first rollback for the whole v3 branch).
     app.mount("/static", _NoCacheStatic(directory=WEB_DIR), name="static")
@@ -814,6 +851,10 @@ def create_app(ctx: UIContext) -> FastAPI:
 
         state = paths.write_setup({"disclosure_ack": True, "setup_complete": True})
         ctx.bus.publish("status", "setup", text="first-run setup finished")
+        restarting = _restart_needed_to_apply(state, ctx.agent.provider)
+        if restarting:
+            app.state.restart_requested = True
+            app.state.restart_event.set()  # run_ui stops uvicorn once this response is out
         return {
             "complete": bool(state.get("setup_complete")),
             "install_mode": state.get("install_mode"),
@@ -821,6 +862,10 @@ def create_app(ctx: UIContext) -> FastAPI:
             # .env is read at boot and the router is built once, so a key saved in
             # this session only takes effect on the next launch.
             "restart_recommended": bool(state.get("router_mode") == "cloud_primary"),
+            # ...and when the shell owns this process, that next launch is immediate:
+            # it restarts us rather than leaving the user on a build that silently
+            # cannot use the key they just entered.
+            "restarting": restarting,
         }
 
     @app.get("/api/diagnostics")
@@ -1174,7 +1219,7 @@ def _quiet_playwright_teardown(loop, context) -> None:
     loop.default_exception_handler(context)
 
 
-async def run_ui(config: dict, with_voice: bool = False) -> None:
+async def run_ui(config: dict, with_voice: bool = False) -> int:
     """Boot the full text stack: DB, model, tools, agent, UI server.
 
     with_voice=True additionally attaches the Phase 3 voice pipeline on its
@@ -1285,6 +1330,19 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         _toast("Baby could not start", f"UI server failed to bind {host}:{port}")
         await db.close()
         sys.exit(1)
+
+    async def _restart_watch() -> None:
+        """Stop uvicorn once the wizard asks to be restarted (_restart_needed_to_apply).
+
+        The brief wait is for the /api/setup/complete response itself: the wizard needs
+        to receive `restarting: true` and paint it before the socket goes away, or the
+        user's last view of Baby is a dead connection rather than a message.
+        """
+        await app.state.restart_event.wait()
+        await asyncio.sleep(0.75)
+        server.should_exit = True
+
+    restart_task = asyncio.create_task(_restart_watch())
 
     voice_pipeline = None
     voice_ok = False
@@ -1463,3 +1521,6 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             except Exception:  # noqa: BLE001
                 pass
         await db.close()
+        restart_task.cancel()
+    # The shell reads this: 86 means "bring me back", anything else means we are done.
+    return RESTART_EXIT_CODE if app.state.restart_requested else 0

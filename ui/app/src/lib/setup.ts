@@ -224,10 +224,19 @@ export function canFinishSetup(
 
 /**
  * A saved cloud key only takes effect on the next launch: .env is read at boot
- * and the router is built once. Say so rather than letting the user wonder why
- * the brain they just paid for is not answering yet.
+ * and the router is built once.
+ *
+ * When the shell owns this backend it restarts it right here, so say that instead
+ * of asking for something the user does not have to do. Leaving it as advice is how
+ * a real install ended up with a valid, working OpenRouter key, a stamped
+ * cloud_primary, and a running process that had neither a cloud brain nor a
+ * game-mode button — both reading as broken features rather than as a pending
+ * restart nobody noticed one line of text about.
  */
 export function restartHint(result: SetupComplete | null): string {
+  if (result?.restarting) {
+    return "Applying your setup — Baby is restarting itself. This takes a few seconds.";
+  }
   if (!result?.restart_recommended) return "";
   return "Reopen Baby once to switch over to the cloud brain.";
 }

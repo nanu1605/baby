@@ -87,7 +87,16 @@ for W3 and W5 — the dev box cannot fake any of it.
 - [ ] `icacls "%LOCALAPPDATA%\baby\.env"` shows a **single user grant**, with
       SYSTEM and Administrators absent.
 - [ ] **Cloud-only with no key cannot finish** — Continue stays disabled.
-- [ ] Disclosure step appears; Finish is disabled until the box is ticked.
+- [ ] Disclosure step appears; Finish is disabled until the box is ticked, and it
+      **names the wake phrase** ("Hey Jarvis") plus Ctrl+Alt+B.
+- [ ] **With a cloud key: finishing restarts the backend by itself.** The wizard
+      says "Baby is restarting itself", the window goes to an overlay for a few
+      seconds, and comes back on the live UI. Then confirm it actually took:
+      `/stats` carries a `router` and a `game_mode` key, and the cloud badge lights.
+      Before this, the wizard stamped `cloud_primary` and the running process stayed
+      local-only for its whole life with a valid key sitting unused in `.env`.
+- [ ] **Without a cloud key (Full install): finishing does NOT restart.** A bounce
+      here would be an outage for nothing.
 - [ ] After finishing, **relaunch → the wizard does not reappear**.
 - [ ] Search the whole of `%LOCALAPPDATA%\baby\logs` for your API key. Expect
       zero hits.
@@ -145,7 +154,9 @@ The W5 fix. Verify both branches.
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.
 
-- [ ] Voice: wake word → transcribe → answer → speak.
+- [ ] Voice: wake word → transcribe → answer → speak. The phrase is **"Hey Jarvis"**
+      on a public install — "Hey Baby" wakes nothing, and testing with it will make
+      working voice look dead.
 - [ ] Safety gate: a mutating command still asks first; a destructive one is refused.
 - [ ] Local 9B answers offline (Full mode, network off).
 - [ ] Cloud escalation and the brain badge behave as in v5.

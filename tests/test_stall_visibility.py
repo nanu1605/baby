@@ -307,12 +307,15 @@ def test_the_death_notice_reaches_the_live_page_not_the_splash():
     inject its own overlay, and as text so a path can never be parsed as markup."""
     src = _MAIN_RS.read_text(encoding="utf-8")
     notice = src.split("fn show_backend_died(", 1)[1].split("\nfn ", 1)[0]
-    assert "position:fixed" in notice
     assert "baby.log" in notice, "the notice must point at the log"
+    assert "show_overlay(" in notice, "the notice no longer reaches the live page"
+    # The overlay itself is shared with the restart notice; the properties that make
+    # it safe belong to it, not to either caller.
+    overlay = src.split("fn show_overlay(", 1)[1].split("\nfn ", 1)[0]
+    assert "position:fixed" in overlay
+    assert "show_splash_message" not in overlay
     # Comments discuss innerHTML; only the code matters.
-    code = "\n".join(
-        ln for ln in notice.splitlines() if not ln.lstrip().startswith("//")
-    )
+    code = "\n".join(ln for ln in overlay.splitlines() if not ln.lstrip().startswith("//"))
     assert "textContent" in code and "innerHTML" not in code
 
 

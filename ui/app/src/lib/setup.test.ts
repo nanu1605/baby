@@ -339,6 +339,20 @@ describe("restartHint", () => {
     expect(restartHint({ complete: true, install_mode: "full" })).toBe("");
     expect(restartHint(null)).toBe("");
   });
+  it("says Baby is doing it when the shell restarts the backend itself", () => {
+    // The shell owns this process and is bringing it back on the stamped mode, so
+    // asking the user to reopen would be telling them to do something already done.
+    const r: SetupComplete = {
+      complete: true,
+      install_mode: "cloud_only",
+      router_mode: "cloud_primary",
+      restart_recommended: true,
+      restarting: true,
+    };
+    const hint = restartHint(r);
+    expect(hint).toMatch(/restarting/i);
+    expect(hint).not.toMatch(/[Rr]eopen/);
+  });
 });
 
 describe("savedFileName", () => {
