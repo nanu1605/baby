@@ -12,10 +12,10 @@ cannot prove.
 
 ## 0. Blockers before any of this matters
 
-- [ ] **`LICENSE` file exists.** The repo is currently all-rights-reserved, which
-      makes a public release meaningless and blocks SignPath's free OSS signing
-      (it requires an OSI-approved license — MIT or Apache-2.0). This is a
-      decision only you can make. **Everything below assumes it is done.**
+- [x] **`LICENSE` file exists** — MIT, which is OSI-approved, so a public
+      release is meaningful and SignPath Foundation's free signing is now
+      applicable. Confirm the copyright holder line reads the way you want it to
+      before publishing; it is the one thing here I picked on your behalf.
 - [ ] Back up `baby.db` and your local `config.yaml` before installing any build
       on your own machine.
 

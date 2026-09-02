@@ -46,7 +46,10 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   report scrubs keys, usernames and owner details so it is safe to paste publicly. An
   in-app **setup & repair** panel replaces the Repair/Modify dialog NSIS lacks. Public
   install and signing docs explain the SmartScreen warning honestly.
-- **W6 -- release.** Version aligned to 6.0.0 across all six tracks (with a drift test),
+- **Licensed MIT.** The repository was previously all-rights-reserved, which made a
+  public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
+  SignPath Foundation's free code-signing track is open as well.
+- **W6 -- release.** Version aligned to 6.0.0 across all seven tracks (with a drift test),
   the release checklist, and the always-green gate. Owner runs the clean-VM matrix,
   then merges + tags `v6.0.0` and publishes the `.exe` + `SHA256SUMS.txt`.
 

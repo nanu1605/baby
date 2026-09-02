@@ -2,6 +2,8 @@
 name = "baby"
 version = "6.0.0"
 description = "Baby — local-first personal AI assistant for Windows 11"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.60",

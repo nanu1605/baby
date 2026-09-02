@@ -129,14 +129,50 @@ def test_install_doc_is_honest_about_smartscreen():
     assert _conf()["bundle"]["windows"]["nsis"].get("signCommand") is None
 
 
-def test_signing_doc_records_the_license_blocker():
-    """SignPath's free tier needs an OSI license. While the repo has none, that
-    has to stay written down where the release process will see it."""
+def _license_path() -> Path | None:
+    for name in ("LICENSE", "LICENSE.md", "LICENSE.txt"):
+        p = _ROOT / name
+        if p.exists():
+            return p
+    return None
+
+
+def test_signing_doc_tracks_the_license_state_both_ways():
+    """SignPath's free tier needs an OSI-approved license.
+
+    Two-way guard, because either half going stale misleads the release process:
+    with no LICENSE the blocker must stay written down, and WITH one the doc must
+    stop calling it a blocker -- a resolved blocker left in the docs is how a
+    project sits on a signing application it could already have made.
+    """
     signing = _SIGNING_DOC.read_text(encoding="utf-8")
     assert "SignPath" in signing
-    has_license = (_ROOT / "LICENSE").exists() or (_ROOT / "LICENSE.md").exists()
-    if not has_license:
+    if _license_path() is None:
         assert "Blocker" in signing, "the LICENSE blocker must stay documented"
+    else:
+        assert "Blocker" not in signing, (
+            "a LICENSE exists, but SIGNING.md still calls it a blocker"
+        )
+
+
+def test_the_license_is_osi_approved_and_attributed():
+    """An unattributed or non-OSI license fails a SignPath application, and MIT
+    is what the shipped EULA's no-warranty terms assume."""
+    path = _license_path()
+    assert path is not None, "public release needs a LICENSE"
+    text = path.read_text(encoding="utf-8")
+    assert "MIT License" in text
+    assert "Permission is hereby granted, free of charge" in text
+    assert 'THE SOFTWARE IS PROVIDED "AS IS"' in text
+    assert re.search(r"Copyright \(c\) \d{4} \S+", text), "no copyright holder line"
+
+
+def test_readme_and_packaging_state_the_license():
+    """A LICENSE nobody is pointed at does not tell a user what they may do."""
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "## License" in readme and "MIT" in readme
+    pyproject = (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'license = "MIT"' in pyproject
 
 
 # --- release version alignment ----------------------------------------------

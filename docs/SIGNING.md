@@ -33,10 +33,19 @@ signature at no cost.
 SignPath's free tier requires the project to be open source under an
 **OSI-approved license**.
 
-> **Blocker:** this repository has no `LICENSE` file, so it is currently
-> all-rights-reserved. A license (MIT or Apache-2.0) has to land before a
-> SignPath application can be made — and before a public release is meaningful
-> at all.
+That prerequisite is now met: the repository is **MIT licensed** (see
+[`LICENSE`](../LICENSE)), which is OSI-approved. A SignPath Foundation
+application can be made.
+
+What the application needs from you:
+
+- The public repository URL and its `LICENSE`.
+- A maintainer identity SignPath can verify.
+- A build that produces the artifact to be signed — the NSIS installer from
+  `npm --prefix ui/shell run build`.
+
+Approval is a manual review on their side, so it takes time. Until it lands,
+releases ship unsigned with checksums, as described above.
 
 ## The hook is already wired
 

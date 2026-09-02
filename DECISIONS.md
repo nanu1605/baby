@@ -1518,3 +1518,19 @@ Running log of non-obvious choices made during the build. Newest last.
        unsigned so SmartScreen warns, offline first-install out of scope, and a
        saved cloud key needing one restart because `.env` is read at boot. A release
        note that hides those just moves the surprise to the user.
+
+134. **MIT license -- the last release blocker, closed.** The repo shipped five
+     phases of installer work while still being all-rights-reserved, which made a
+     public release legally meaningless and blocked the only free code-signing
+     track (SignPath Foundation requires an OSI-approved license). MIT rather than
+     Apache-2.0: it is the shortest thing that actually grants use, it matches what
+     the shipped EULA already tells users about warranty and their own
+     responsibility for approved actions, and it carries no patent or NOTICE
+     machinery this project has any use for. Copyright is attributed to Tanishq
+     Jain -- the one judgement here made on the owner's behalf, flagged in the
+     release checklist for confirmation before publishing. `docs/SIGNING.md` no
+     longer calls it a blocker, and the test that pinned the blocker is now a
+     TWO-WAY guard: with no LICENSE the blocker must stay documented, and with one
+     the doc must stop claiming it, because a resolved blocker left in the docs is
+     how a project sits on an application it could already have made.
+

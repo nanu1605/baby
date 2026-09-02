@@ -350,3 +350,9 @@ Unit tests never touch the network — the agent loop is tested against a script
 | v3.0.0 ✅ | **The Brain** — living-graph UI (honest pulses, status gauge, node inspectors, "Search the brain…" omnibox) over a read-only graph data spine; speaker verification v2 (multi-centroid, session-trust, ships OFF); responsive + reconnect-resilient |
 | v4.0.0 ✅ | **Native app + 3D neural brain** — a thin Tauri desktop shell over the same FastAPI-served UI (attach-or-spawn, close-to-tray, single-instance, native tray); the living graph reborn as a 3D neural sphere (honest firing, mic/TTS amplitude gauge, router recolor, game-mode ghost); a 60 fps frame governor + VRAM watchdog; a CSS-first motion system; both rollback flags non-bricking (`ui.shell: browser`, `ui.brain: 2d`) |
 | v5.0.0 ✅ | **Chat history & default cloud mode** — a collapsible history sidebar over additive read endpoints (`/api/conversations[/{id}]`): browse, open read-only, resume (rehydrates within the per-brain budget), rename, archive, and delete (purges the RAG vectors so a deleted chat can't resurface in search); the omnibox conversation-hit now deep-links into the viewer; Baby boots in cloud (game) mode by default (local 9B idle, GPU free, privacy-pinned turns still local); rollbacks `ui.history: off` and `startup.cloud_mode: false` |
+
+## License
+
+MIT — see [LICENSE](LICENSE). Use it, fork it, ship it; it comes with no
+warranty, and you are responsible for the actions you approve it to take on
+your machine.
