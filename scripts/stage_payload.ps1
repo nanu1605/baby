@@ -79,7 +79,15 @@ if (-not (Test-Path (Join-Path $Root "ui\app\dist\index.html"))) {
 Copy-Tree "ui\app\dist" "ui\app\dist"
 
 # Optional: bundle uv.exe so first-run needs no pre-existing Python/uv.
-if ($UvExe -and (Test-Path $UvExe)) {
+# Asking for it and not getting it is an ERROR, not a warning: a release built from
+# a mistyped path stages cleanly, prints OK, and produces an installer that cannot
+# build a venv on a machine without uv -- a failure that only shows up on a
+# stranger's first launch. Skipping it entirely stays a warning, because dev builds
+# legitimately do that.
+if ($UvExe) {
+    if (-not (Test-Path $UvExe)) {
+        throw "BABY_UV_EXE/-UvExe points at '$UvExe', which does not exist. Find yours with: (Get-Command uv).Source"
+    }
     Copy-Item $UvExe (Join-Path $Dest "uv.exe") -Force
     Write-Step "Included uv.exe"
 } else {

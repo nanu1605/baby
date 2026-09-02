@@ -21,12 +21,23 @@ cannot prove.
 
 ## 1. Build the artifact
 
-- [ ] Bundle a real `uv.exe` — the staging script skips it unless told:
+- [ ] Bundle a real `uv.exe` — the staging script skips it unless told. Get your
+      own path first; the one below is a placeholder, not a real location:
       ```powershell
-      $env:BABY_UV_EXE = "C:\path\to\uv.exe"; npm --prefix ui/shell run build
+      (Get-Command uv).Source
       ```
-- [ ] Confirm the payload actually contains it (staging prints a warning if not):
-      `ui/shell/src-tauri/target/release/payload/uv.exe`
+      Then run the build from a PowerShell prompt. Both statements go in one
+      invocation, and do **not** put the word `powershell` in front of them — that
+      spawns a nested shell which sets the variable and exits before `npm` ever
+      sees it, and reports the confusing `The term '=' is not recognized`:
+      ```powershell
+      $env:BABY_UV_EXE = "<your path from above>"; npm --prefix ui/shell run build
+      ```
+      A path that does not exist now fails the build outright, so a typo cannot
+      quietly ship an installer with no `uv.exe` in it.
+- [ ] Confirm the payload actually contains it — staging prints `==> Included
+      uv.exe` and a size in the tens of MB rather than ~3 MB:
+      `ui/shell/src-tauri/payload/uv.exe`
 - [ ] Installer lands at
       `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.0_x64-setup.exe`
       — check the **filename says 6.0.0**, not 5.0.0.
