@@ -6,11 +6,16 @@ import argparse
 import asyncio
 import sys
 
-from core import paths
-from tools import register_all
-
-# Under pythonw.exe (autostart, hidden) stdout/stderr are None — Task
-# Scheduler can't redirect them, so Baby owns its log file instead.
+# Under pythonw.exe (autostart, hidden, and the v6 shell) stdout/stderr are None —
+# Task Scheduler can't redirect them, so Baby owns its log file instead.
+#
+# This runs BEFORE Baby's own imports on purpose. It used to sit after them, which
+# meant the one failure it existed to record — an import blowing up inside a windowed
+# process with nowhere to print — died before the file was ever created. An installed
+# build then had no logs directory at all, and a crashed backend left no trace of any
+# kind. faulthandler is here for the other half of that: a native crash in torch or
+# onnxruntime kills the process without a Python traceback, so without it the log
+# would simply stop mid-line.
 if sys.stdout is None or sys.stderr is None:
     import os
     from pathlib import Path
@@ -22,6 +27,18 @@ if sys.stdout is None or sys.stderr is None:
         sys.stdout = _log
     if sys.stderr is None:
         sys.stderr = _log
+    import faulthandler
+
+    faulthandler.enable(file=_log)
+
+    # The log is appended across runs, so mark where each boot begins -- otherwise
+    # "when did it die" is unanswerable from a file with no session boundaries.
+    from datetime import datetime
+
+    _log.write(f"\n--- baby start {datetime.now().isoformat(timespec='seconds')} ---\n")
+
+from core import paths  # noqa: E402 -- must not precede the log setup above
+from tools import register_all  # noqa: E402
 
 # Windows consoles may default to cp1252; Baby speaks UTF-8 (Hindi etc.).
 # stdin matters too: piped input would otherwise decode Devanagari as mojibake.

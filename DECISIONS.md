@@ -1534,3 +1534,38 @@ Running log of non-obvious choices made during the build. Newest last.
      the doc must stop claiming it, because a resolved blocker left in the docs is
      how a project sits on an application it could already have made.
 
+
+135. **A first run must never sit on "working" with no end condition.** An
+     installed build on a second machine showed "Memory embedder (e5-small) ...
+     working" for three hours. Nothing was downloading: the model was complete on
+     disk, the backend process was gone, and :8765 was refusing connections. Three
+     independent holes lined up, and each one alone would have made it diagnosable.
+     - **Nothing watched the backend.** `attach_or_spawn` probes :8765 once, at
+       startup, and never again. A backend that dies mid-run leaves the window
+       rendering whatever it last received, indefinitely. The shell now polls the
+       child it spawned and overlays a message naming the exit code and the log.
+       It cannot reuse `show_splash_message` -- that writes into the splash's
+       `.wrap`, which is gone once the window has navigated to the served UI, i.e.
+       exactly when this fires.
+     - **The hub steps reported nothing.** Whisper and e5 auto-download with no
+       byte callback, so each emitted ONE "working" event for a multi-GB fetch.
+       Healthy-but-slow, wedged, and dead all rendered identically. Progress is now
+       measured off the HF cache directory -- the only honest signal available --
+       with a stall message and a hard ceiling, so a row always resolves to done or
+       a retryable error. The ceiling does not kill the download: a blocking thread
+       cannot be cancelled, so what it ends is our claim to be working.
+     - **The crash left no trace.** `run.py` opened its logfile AFTER importing
+       `core.paths` and `tools.register_all` -- so the one failure the log existed
+       for, an import blowing up inside a windowed process with nowhere to print,
+       died before the file was created. An installed build had no logs directory
+       at all. The log now opens first, `faulthandler` is enabled so a native crash
+       in torch/onnxruntime leaves a stack instead of stopping mid-line, and each
+       boot is stamped so "when did it die" is answerable from an appended file.
+
+     The diagnosis took four probes against a machine that could report nothing,
+     which is the actual cost being paid here: a stranger hitting this gets a
+     permanent spinner and has no way to learn anything at all. Every gate above is
+     mutation-checked, and the cache-path derivation is verified against the real
+     HF cache rather than only its shape, because a drifted repo id would silently
+     measure an empty directory and report 0 MB forever -- the same blind state it
+     replaced.

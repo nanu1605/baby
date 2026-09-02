@@ -84,6 +84,7 @@ _NONET = re.compile(
 )
 _DISK = re.compile(r"no space left|disk full|enospc|not enough space", re.I)
 _CORRUPT = re.compile(r"hash mismatch|checksum|corrupt|incomplete", re.I)
+_STALLED = re.compile(r"made no progress", re.I)
 
 
 def classify_error(text: str) -> dict:
@@ -92,6 +93,17 @@ def classify_error(text: str) -> dict:
     corruption. A bare 'connect' token is treated as no-network, not proxy (the W0
     spike caught that misclassification)."""
     t = text or ""
+    # First: a step we gave up on ourselves. It reads like nothing else here, and the
+    # advice is different -- the transfer was reachable, it just stopped moving.
+    if _STALLED.search(t):
+        return {
+            "kind": "stalled",
+            "message": "That step stopped making progress, so it was given up on rather "
+            "than left hanging. Retry -- it resumes from what is already downloaded. If "
+            "it stalls in the same place again, suspect a proxy, a VPN, or antivirus "
+            "scanning the transfer.",
+            "retryable": True,
+        }
     if _PROXY.search(t):
         return {
             "kind": "proxy",
@@ -306,6 +318,114 @@ def _download_openwakeword() -> None:
     openwakeword.utils.download_models()
 
 
+# --- hub steps: progress for a loader that reports none ---------------------
+# The hub gives no byte callback, so these steps used to emit ONE "working" event and
+# then nothing for the whole multi-GB fetch. That made a healthy slow download, a
+# wedged one, and a backend that had died outright render identically -- a first run
+# sat on "Memory embedder ... working" for three hours after the process was already
+# gone. The cache directory is the one honest progress signal available, so poll it.
+
+_HB_S = 15  # heartbeat period
+_STALL_S = 600  # no new bytes this long -> say so in the row
+_HUB_TIMEOUT_S = 3600  # hard ceiling: a step must resolve one way or the other
+
+
+def _hub_asset(dep_key: str) -> tuple[str, int]:
+    """(hf repo id, approx MB) for a dep whose asset is a hub repo. Derived from the
+    manifest so sizes/urls stay single-sourced."""
+    asset = manifest.get(dep_key).assets[0]
+    return asset.url.split("huggingface.co/", 1)[-1].strip("/"), asset.approx_mb
+
+
+def _hub_cache_dir(repo: str) -> Path | None:
+    """Where huggingface_hub stores `repo`. None when the constant can't be read --
+    progress then degrades to elapsed-time only, never to an error."""
+    try:
+        from huggingface_hub.constants import HF_HUB_CACHE
+    except Exception:  # noqa: BLE001 -- progress reporting must never fail a download
+        return None
+    return Path(HF_HUB_CACHE) / ("models--" + repo.replace("/", "--"))
+
+
+def _dir_bytes(path: Path | None) -> int:
+    if path is None:
+        return 0
+    total = 0
+    try:
+        for p in path.rglob("*"):
+            try:
+                if p.is_file():
+                    total += p.stat().st_size
+            except OSError:  # vanished mid-walk (hub renames .incomplete blobs)
+                continue
+    except OSError:
+        return 0
+    return total
+
+
+def _hub_detail(seen: int, size_mb: int, elapsed_s: float, stalled_s: float) -> str:
+    """The row's text. Pure, so the wording is unit-tested without a download."""
+    got = seen / (1024 * 1024)
+    mins = int(elapsed_s // 60)
+    # Past the download the loader builds the model in memory and the cache stops
+    # growing. That is not a stall, so don't cry wolf at the one moment it's normal.
+    if size_mb and got >= size_mb * 0.95:
+        return f"loading the model ({mins}m)"
+    where = f"{got:.0f} of ~{size_mb} MB"
+    if stalled_s >= _STALL_S:
+        return f"{where} -- no new data for {int(stalled_s // 60)}m"
+    return f"downloading {where} ({mins}m)"
+
+
+async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEvent) -> None:
+    """Run a blocking hub loader, reporting progress measured from the cache dir.
+
+    The thread cannot be cancelled, so the timeout does not kill the download -- it
+    ends our claim to be working and lets the wizard show a real, retryable error
+    instead of a spinner with no end condition.
+    """
+    repo, size_mb = _hub_asset(dep)
+    cache = _hub_cache_dir(repo)
+    started = time.monotonic()
+    seen = last_seen = _dir_bytes(cache)
+    moved_at = started
+
+    on_event(_event(dep, "download", status="working",
+                    detail=_hub_detail(seen, size_mb, 0.0, 0.0), bytes=seen))
+
+    task = asyncio.ensure_future(asyncio.to_thread(loader))
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=_HB_S)
+            if done:
+                break
+            now = time.monotonic()
+            seen = _dir_bytes(cache)
+            if seen > last_seen:
+                last_seen, moved_at = seen, now
+            elapsed = now - started
+            if elapsed > _HUB_TIMEOUT_S:
+                raise TimeoutError(
+                    f"{manifest.get(dep).label} made no progress for "
+                    f"{int(elapsed // 60)} minutes -- giving up so this can be retried"
+                )
+            on_event(_event(dep, "download", status="working", bytes=seen,
+                            elapsed_s=int(elapsed),
+                            detail=_hub_detail(seen, size_mb, elapsed, now - moved_at)))
+        await task  # re-raise whatever the loader raised
+    except Exception as exc:  # noqa: BLE001 -- classify, never a raw HF/httpx trace
+        # A running executor thread ignores cancel(), so the loader may still finish
+        # (or raise) long after we stopped waiting. Swallow that result rather than
+        # letting asyncio log a bare "exception was never retrieved" into the log we
+        # just made people rely on. A retry starts a fresh loader; the hub's own file
+        # locks keep the two from corrupting the cache.
+        task.cancel()
+        task.add_done_callback(lambda t: None if t.cancelled() else t.exception())
+        on_event(_event(dep, "error", status="error", **classify_error(str(exc))))
+        raise
+    on_event(_event(dep, "download", status="done", detail="ready"))
+
+
 # --- the plan (what the wizard checklist shows, in walk order) --------------
 
 
@@ -370,18 +490,10 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
     await asyncio.to_thread(_download_openwakeword)
     on_event(_event("wakeword", "download", status="done", detail="wake-word models ready"))
 
-    # HF-cache auto-downloads (no live byte progress from the hub -- indeterminate).
-    for dep, size_mb, loader in (
-        ("whisper", 1600, _download_whisper),
-        ("embedder", 471, _download_embedder),
-    ):
-        on_event(_event(dep, "download", status="working", detail=f"downloading (~{size_mb} MB)"))
-        try:
-            await asyncio.to_thread(loader)
-        except Exception as exc:  # noqa: BLE001 -- classify, never a raw HF/httpx trace
-            on_event(_event(dep, "error", status="error", **classify_error(str(exc))))
-            raise
-        on_event(_event(dep, "download", status="done", detail="ready"))
+    # HF-cache auto-downloads. The hub reports no bytes of its own, so _run_hub_step
+    # measures the cache dir and enforces a ceiling -- see its docstring.
+    for dep, loader in (("whisper", _download_whisper), ("embedder", _download_embedder)):
+        await _run_hub_step(dep, loader, on_event=on_event)
 
     # Optional CAM++ speaker model -- best-effort; never fail the run.
     for asset in manifest.get("speaker").assets:

@@ -308,8 +308,74 @@ fn spawn_backend(app: &AppHandle, layout: &Layout) {
     match cmd.spawn() {
         Ok(child) => {
             *app.state::<AppState>().spawned.lock().unwrap() = Some(child);
+            watch_backend(app.clone());
         }
         Err(e) => show_splash_message(app, &format!("Failed to start Baby backend: {e}")),
+    }
+}
+
+/// Notice when the backend exits on its own, and say so.
+///
+/// attach_or_spawn runs ONCE, at startup. Nothing re-probes :8765 afterwards, so a
+/// backend that died mid-run left the window rendering whatever it had last received,
+/// with no error and no end condition -- a first-run wizard sat on "Memory embedder
+/// ... working" for three hours after the process was already gone. Polling the child
+/// handle is enough to turn that into a message.
+///
+/// Quit takes the handle out of the mutex before killing it, so an empty slot means
+/// "we are shutting down, or this was never ours" -- the watcher stops rather than
+/// reporting a deliberate kill as a crash.
+fn watch_backend(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(2));
+        let exited = {
+            let state = app.state::<AppState>();
+            let mut guard = state.spawned.lock().unwrap();
+            match guard.as_mut() {
+                None => return,
+                Some(child) => match child.try_wait() {
+                    Ok(Some(status)) => status.code(),
+                    Ok(None) => continue,
+                    Err(_) => return,
+                },
+            }
+        };
+        // Drop the reaped handle so quit doesn't try to kill a dead pid.
+        *app.state::<AppState>().spawned.lock().unwrap() = None;
+        show_backend_died(&app, exited);
+        return;
+    });
+}
+
+/// Overlay the live page with the bad news. Not show_splash_message: that writes into
+/// the splash's `.wrap`, which no longer exists once the window has navigated to the
+/// backend-served UI -- exactly the case this fires in.
+fn show_backend_died(app: &AppHandle, code: Option<i32>) {
+    let how = match code {
+        Some(c) => format!("exit code {c}"),
+        None => "it was terminated".to_string(),
+    };
+    let msg = format!(
+        "Baby's backend stopped ({how}). Nothing on this screen is live any more. \
+         Close Baby and open it again — setup resumes from whatever already finished. \
+         Details are in %LOCALAPPDATA%\\baby\\logs\\baby.log"
+    );
+    if let Some(w) = app.get_webview_window("main") {
+        let safe = msg.replace('\\', "\\\\").replace('\'', "\\'");
+        // textContent, not innerHTML: the message carries a path, and nothing here
+        // should ever be parsed as markup.
+        let js = format!(
+            "(function(){{if(document.getElementById('baby-backend-died'))return;\
+             var d=document.createElement('div');d.id='baby-backend-died';\
+             d.setAttribute('style','position:fixed;inset:0;z-index:2147483647;\
+             display:flex;align-items:center;justify-content:center;text-align:center;\
+             padding:2rem;background:rgba(9,9,11,0.94);color:#f87171;\
+             font:14px system-ui,sans-serif;line-height:1.6');\
+             d.textContent='{safe}';\
+             (document.body||document.documentElement).appendChild(d);}})();"
+        );
+        let _ = w.eval(&js);
+        let _ = w.show();
     }
 }
 

@@ -46,6 +46,16 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   report scrubs keys, usernames and owner details so it is safe to paste publicly. An
   in-app **setup & repair** panel replaces the Repair/Modify dialog NSIS lacks. Public
   install and signing docs explain the SmartScreen warning honestly.
+- **A stuck first run can no longer look like a working one.** Found by installing the
+  built `.exe` on a second machine, where the wizard sat on "Memory embedder --
+  working" for three hours against a backend that had already exited. Three holes
+  lined up: nothing watched the spawned backend (the port is probed once, at startup),
+  the two hub downloads emitted a single event for a multi-GB fetch so slow, wedged
+  and dead looked identical, and `run.py` opened its logfile *after* the imports that
+  can fail -- so the crash left no log at all. The shell now reports a backend that
+  exits, hub steps show progress read off the model cache and give up at a ceiling
+  instead of spinning forever, and the log opens first with `faulthandler` on, so a
+  native crash leaves a stack rather than stopping mid-line.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.
