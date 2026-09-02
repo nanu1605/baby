@@ -5,13 +5,15 @@ A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
 default, but privacy-pinned turns never leave the PC, and the warm local 9B
 keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **v5.0.0 — chat history & default cloud mode** ✅ — a collapsible history
-> sidebar (browse, open read-only, resume, rename, delete, archive) over additive read
-> endpoints, plus a search deep-link that finally lands on the matched conversation. And
-> Baby now boots in cloud mode with the local 9B idle, so the GPU is free from launch;
-> privacy-pinned turns still run local. The browser UI and every prior rollback flag
-> stay one line away.
-> Full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
+> Status: **v6.0.0 — public Windows installer** ✅ — Baby now ships as a
+> downloadable `.exe` a stranger can install: no Python, no Git, no repo. A first-run
+> wizard checks your GPU, picks Full or cloud-only, downloads what it needs with
+> resumable progress, validates your API key against the provider before accepting it,
+> and shows what Baby can do on your PC before you start. Per-user install, no admin,
+> and an in-app setup & repair panel. The app logic is unchanged — v6 is packaging
+> around a frozen assistant.
+> Install guide: [docs/INSTALL.md](docs/INSTALL.md) ·
+> full build plan: [BABY_PROJECT_PLAN.md](BABY_PROJECT_PLAN.md) ·
 > change spec: [NIM_MIGRATION_PLAN.md](NIM_MIGRATION_PLAN.md)
 
 ## What works right now

@@ -1,16 +1,21 @@
-"""v6 W5: the uninstaller must delete the data directory Baby actually uses.
+r"""v6: the installer contract -- the promises the shipped build has to keep.
 
-Tauri's NSIS template deletes %LOCALAPPDATA%\\<BUNDLEID> when the user ticks
-"delete application data" -- but Baby's state lives in %LOCALAPPDATA%\\baby, a
-name that predates the bundle id. Before the installer hook, ticking that box
-removed nothing: the user's .env (with their cloud API keys), baby.db with every
-conversation, the models and the venv all survived an uninstall the user believed
-had removed them, and the shipped EULA promised otherwise.
+Started as the uninstall fix and grew into the whole surface a release can break
+silently. Three groups, all DRIFT GUARDS rather than simulations:
 
-These tests are a DRIFT GUARD, not a simulation of NSIS. They pin the three
-things that can silently break the fix: the hook still exists and is wired into
-the bundle config, it targets the same directory the shell points BABY_HOME at,
-and it stays behind the user's explicit opt-in.
+  * The uninstaller must delete the directory Baby actually uses. Tauri's NSIS
+    template deletes %LOCALAPPDATA%\<BUNDLEID> when the user ticks "delete
+    application data", but Baby's state lives in %LOCALAPPDATA%\baby, a name that
+    predates the bundle id. Before the installer hook, ticking that box removed
+    nothing: the user's .env (with their cloud API keys), baby.db with every
+    conversation, the models and the venv all survived an uninstall the user
+    believed had removed them, and the shipped EULA promised otherwise.
+  * The public docs must describe the installer we actually ship -- the no-admin
+    claim, the uninstall checkbox, and the SmartScreen section against the real
+    (absent) signing config.
+  * The seven version tracks must agree, and match the CHANGELOG. They drifted
+    through v6 development, and a mismatched installer filename is the kind of
+    thing nobody notices until a bug report cites the wrong version.
 """
 
 from __future__ import annotations
@@ -132,3 +137,57 @@ def test_signing_doc_records_the_license_blocker():
     has_license = (_ROOT / "LICENSE").exists() or (_ROOT / "LICENSE.md").exists()
     if not has_license:
         assert "Blocker" in signing, "the LICENSE blocker must stay documented"
+
+
+# --- release version alignment ----------------------------------------------
+# Seven files carry the version. They drifted silently through v6 development (the
+# shell built and shipped installers stamped 5.0.0 while the project was on v6),
+# and a mismatched installer is the kind of thing nobody notices until a user
+# reports "I have 5.0.0" against a 6.0.0 bug.
+
+
+def _versions() -> dict[str, str]:
+    import re
+    import tomllib
+
+    out: dict[str, str] = {}
+    out["pyproject.toml"] = tomllib.loads(
+        (_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]["version"]
+    out["tauri.conf.json"] = _conf()["version"]
+
+    cargo = (_ROOT / "ui/shell/src-tauri/Cargo.toml").read_text(encoding="utf-8")
+    out["Cargo.toml"] = re.search(r'^version = "([^"]+)"', cargo, re.M).group(1)
+
+    lock = (_ROOT / "ui/shell/src-tauri/Cargo.lock").read_text(encoding="utf-8")
+    out["Cargo.lock"] = re.search(
+        r'name = "baby-shell"\nversion = "([^"]+)"', lock
+    ).group(1)
+
+    for pkg in ("ui/shell/package.json", "ui/app/package.json"):
+        out[pkg] = json.loads((_ROOT / pkg).read_text(encoding="utf-8"))["version"]
+
+    # uv restamps this from pyproject on any sync, so it drifts on its own if a
+    # bump lands without one.
+    uvlock = (_ROOT / "uv.lock").read_text(encoding="utf-8")
+    out["uv.lock"] = re.search(
+        r'name = "baby"\nversion = "([^"]+)"', uvlock
+    ).group(1)
+    return out
+
+
+def test_every_track_carries_the_same_version():
+    seen = _versions()
+    assert len(set(seen.values())) == 1, f"version drift: {seen}"
+
+
+def test_the_shipped_version_is_v6():
+    """The installer's filename comes from tauri.conf.json, so this is the number
+    a user actually sees on the .exe they download."""
+    assert _conf()["version"].startswith("6."), _conf()["version"]
+
+
+def test_changelog_documents_the_shipped_version():
+    version = _conf()["version"]
+    changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert f"## v{version}" in changelog, f"CHANGELOG.md has no entry for v{version}"

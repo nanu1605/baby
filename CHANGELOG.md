@@ -1,5 +1,60 @@
 # Changelog
 
+## v6.0.0 -- public Windows installer (2026-09-01)
+
+Baby becomes something a stranger can install. v6 is a **distribution** release, not
+a feature one: the app logic is frozen -- no router, provider, or safety changes --
+and everything here wraps packaging, a first-run wizard, conservative public
+defaults, and per-user state relocation *around* the unchanged assistant. Ships as
+an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
+
+- **W0 -- packaging spike.** Proved the unknowns before writing installer code: the
+  crux is shipping Python, not the wizard. Bundled `uv` + first-run `uv sync`, with a
+  **functional wheel probe** (import + a real op per native wheel) because a green
+  `uv sync` is not proof. Ollama `/api/pull` resume verified. Engine stays NSIS --
+  which has no MSI Repair/Modify dialog, so repair and mode-switch move in-app.
+- **W1 -- installer skeleton.** `core/paths.py` resolves `config.yaml` / `.env` /
+  `baby.db` under `BABY_HOME` when set, else cwd, so a dev checkout is byte-identical.
+  A conservative shipped template (`safety.mode: enforce`, empty `auto_allow_app_close`,
+  blank owner PII), the EULA as the NSIS license page, per-user install (no admin), and
+  an **allowlisted** payload that can never carry `config.yaml`, `.env`, or `baby.db`.
+  Review caught the template shipping `cloud_primary`, which hard-crashes a keyless
+  boot under `pythonw`; it ships `local_primary` now.
+- **W2 -- GPU pre-check + install-mode fork.** An 8 GB VRAM bar recommends Full or
+  cloud-only; the user still decides. Wizard choices live in a separate `setup.json`
+  overlay, never a rewrite of `config.yaml`. `paths.is_installed()` gates the wizard so
+  it can never appear in a dev checkout.
+- **W3 -- first-run dependency orchestration.** A declarative 16-dependency manifest
+  (what auto-downloads vs what must be fetched), **functional health probes** at two
+  levels that load each model and exercise it, and a resumable orchestrator with
+  classified failures (proxy / no network / disk full / corrupt). The venv is built on
+  **first launch, not during install** -- a silent installer doing a ~1.5 GB sync would
+  freeze with no progress and leave a half-install. Fixed a real segfault (sherpa-onnx
+  binding System32's stale onnxruntime) and a PowerShell 5.1 footgun where a
+  `2>`-redirected `uv` call aborted the happy path on its own success output.
+- **W4 -- validated API keys, locked-down `.env`.** Keys are proved against the vendor
+  before they are trusted (a `GET /models` auth probe -- no quota spent, key in a
+  header, never a URL). A wrong key reads as a wrong key; a network failure reads as a
+  network failure; a rate-limited key is **accepted**, since the vendor recognised it.
+  Keys are written only to `.env`, merged line by line, and locked to the owner.
+  `router.mode` follows the key state rather than the user's intent, so the wizard can
+  never stamp a mode that crashes at boot.
+- **W5 -- public hardening.** The uninstaller's "delete application data" box removed
+  **nothing** -- it targeted a directory that never existed, so a user who ticked it
+  kept their API keys and every conversation; fixed with an NSIS hook. The wizard now
+  ends on a capability disclosure and finally stamps `setup_complete`. A diagnostics
+  report scrubs keys, usernames and owner details so it is safe to paste publicly. An
+  in-app **setup & repair** panel replaces the Repair/Modify dialog NSIS lacks. Public
+  install and signing docs explain the SmartScreen warning honestly.
+- **W6 -- release.** Version aligned to 6.0.0 across all six tracks (with a drift test),
+  the release checklist, and the always-green gate. Owner runs the clean-VM matrix,
+  then merges + tags `v6.0.0` and publishes the `.exe` + `SHA256SUMS.txt`.
+
+**Known limitations.** The build is **unsigned**, so SmartScreen warns -- verify the
+published checksum (see `docs/INSTALL.md`). Offline first-install is out of scope: the
+first run needs a network connection. A saved cloud key takes effect on the next
+launch, since `.env` is read at boot.
+
 ## v5.0.0 — chat history & default cloud mode (2026-07-11)
 
 Baby learns to look back and boots lighter. A collapsible **chat-history sidebar**
