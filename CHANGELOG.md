@@ -56,6 +56,20 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   exits, hub steps show progress read off the model cache and give up at a ceiling
   instead of spinning forever, and the log opens first with `faulthandler` on, so a
   native crash leaves a stack rather than stopping mid-line.
+- **An installed build kept no log at all.** The logfile was opened only when
+  `sys.stdout is None` -- what a windowed CPython gives you, and never what an
+  install gets: uv's venv `pythonw.exe` is a trampoline that re-execs the base
+  console `python.exe` and hands it live streams whose output goes nowhere. The
+  check passed, the file was never created, and every crash since v6 shipped has
+  been invisible -- surfacing to one user as a bare Windows dialog reading
+  "Python-CFFI error", which is cffi's fallback for having no stderr to report
+  through. Baby now keeps the file unconditionally and tees a console run into it,
+  rolling it at 5 MB. Also fixes the previous entry's real reason for leaving no
+  trace.
+- **A healthy Ollama no longer looks like a stalled one.** The Full-mode walk
+  answered the "Ollama runtime" row only when the daemon was missing, so an Ollama
+  that was already running left a permanent grey circle beside a ticked 9B download
+  -- a finished install reading as one still in progress.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.

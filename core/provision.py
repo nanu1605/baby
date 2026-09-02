@@ -507,6 +507,12 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
     # pull only if it's already reachable, else report it as an installer step.
     if mode == "full":
         if await _ollama_healthy():
+            # Answer the row either way. This branch used to emit nothing at all, so
+            # an Ollama that was ALREADY running left "Ollama runtime" grey for the
+            # whole session -- a finished install rendering as one still in progress,
+            # right next to the 9B it had just pulled through that same daemon.
+            on_event(_event("ollama-daemon", "check", status="pass",
+                            detail="Ollama is running"))
             await pull_ollama_model(_DAILY_MODEL, on_event=on_event)
         else:
             on_event(_event("ollama-daemon", "check", status="needs_install",

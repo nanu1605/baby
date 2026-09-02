@@ -24,7 +24,10 @@ are re-introduced by an edit that moves a line, which is exactly what these catc
 from __future__ import annotations
 
 import asyncio
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -186,6 +189,90 @@ def test_each_boot_is_marked_in_the_appended_log():
     """One appended file across every run: without a session boundary, "when did it
     die" is unanswerable."""
     assert "--- baby start " in (_ROOT / "run.py").read_text(encoding="utf-8")
+
+
+def _run_entrypoint(tmp_path, timeout=300):
+    """`run.py` with no arguments: prints help, exits 0, touches nothing heavy.
+
+    LOCALAPPDATA is redirected so the log lands in tmp_path rather than the real one.
+    """
+    env = dict(os.environ, LOCALAPPDATA=str(tmp_path))
+    return subprocess.run(
+        [sys.executable, "run.py"],
+        cwd=_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def test_a_run_with_a_working_console_still_leaves_a_log(tmp_path):
+    """The log used to be opened only when `sys.stdout is None`.
+
+    That is what a windowed CPython hands you, and it is never what an INSTALLED
+    build gets: uv's venv pythonw.exe is a trampoline that re-execs the base CONSOLE
+    python.exe and gives it live stdio objects whose output goes nowhere. The check
+    passed, the file was never opened, and a whole install ran without producing a
+    single line -- which is also why cffi resorted to a "Python-CFFI error"
+    MessageBox instead of a traceback. Nothing about a usable stream is detectable
+    from in here, so the file is now kept unconditionally.
+
+    This runs with a real console (pytest has one) and demands BOTH halves: the
+    caller still sees the output, and the log has it too.
+    """
+    r = _run_entrypoint(tmp_path)
+    assert r.returncode == 0, r.stderr
+    assert "usage: baby" in r.stdout, "the tee swallowed the console it was teeing"
+
+    log = tmp_path / "baby" / "logs" / "baby.log"
+    assert log.exists(), "a run with a live console left no log at all"
+    body = log.read_text(encoding="utf-8", errors="replace")
+    assert "--- baby start " in body
+    assert "usage: baby" in body, "stdout never reached the log"
+
+
+def test_a_dead_console_does_not_take_the_log_with_it(tmp_path):
+    """The stream Baby tees into can be closed under it -- that is the whole reason
+    the file exists. A write that raises must be swallowed, not propagated, or the
+    log dies exactly when it is needed."""
+    r = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import runpy, sys\n"
+                "sys.argv = ['run.py']\n"
+                "import io\n"
+                "class Dead(io.StringIO):\n"
+                "    def write(self, s): raise OSError('console is gone')\n"
+                "    def flush(self): raise OSError('console is gone')\n"
+                "sys.stdout = Dead()\n"
+                "runpy.run_path('run.py', run_name='__main__')\n"
+            ),
+        ],
+        cwd=_ROOT,
+        env=dict(os.environ, LOCALAPPDATA=str(tmp_path)),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert r.returncode == 0, r.stderr
+    body = (tmp_path / "baby" / "logs" / "baby.log").read_text(encoding="utf-8", errors="replace")
+    assert "usage: baby" in body, "a dead console lost the output the log was for"
+
+
+def test_the_log_is_rolled_before_it_can_grow_without_bound(tmp_path):
+    """Teeing a console run in means download progress bars now land here too --
+    thousands of \\r updates per model. Appending forever with no ceiling would turn
+    the one diagnostic Baby owns into the thing filling the user's disk."""
+    logs = tmp_path / "baby" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "baby.log").write_bytes(b"OLD" + b"x" * 6_000_000)
+
+    assert _run_entrypoint(tmp_path).returncode == 0
+    assert (logs / "baby.log.1").read_bytes()[:3] == b"OLD", "the old log was not kept"
+    assert (logs / "baby.log").stat().st_size < 100_000, "the log was not rolled"
 
 
 # --- the shell must notice its backend exiting ------------------------------

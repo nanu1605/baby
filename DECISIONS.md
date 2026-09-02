@@ -1639,3 +1639,47 @@ Running log of non-obvious choices made during the build. Newest last.
      checked only the returned payload, which is built from a template and never
      includes the response body -- so it passed with the scrub deleted. It now
      spies on what the classifier actually receives.
+
+138. **An installed build produced no logs at all -- the gate that was supposed to
+     create them never fired.** Found by running the shipped `.exe`, not by reading
+     it. The wizard threw a Windows dialog titled "Python-CFFI error" reading
+     `Exception ignored from cffi callback <function FileLike.flush ...>:
+     MemoryError:`, and `%LOCALAPPDATA%\baby\logs\baby.log` had nothing from that
+     session -- last written seven hours before the backend booted.
+
+     `FileLike` turned out to be cffi's OWN internal stderr shim
+     (`cffi/_cffi_errors.h`), and the MessageBox its fallback for when it cannot
+     report through stderr at all. So the dialog was never the bug; it was the
+     symptom of Baby having nowhere to write.
+
+     `run.py` opened its log behind `if sys.stdout is None or sys.stderr is None:`.
+     That is what a windowed CPython hands you, and it is exactly what an INSTALLED
+     build never gets: uv's venv `pythonw.exe` is a 45 KB trampoline that re-execs
+     the base CONSOLE `python.exe` and gives it live stdio objects whose output goes
+     nowhere. Probed directly under a hidden spawn: `stdout_is_None=False`. The
+     check passed, the file was never opened, and every crash, traceback and stall
+     in every install has been invisible since v6 shipped -- including the
+     three-hour stall in #135, which I had wrongly written off as an artefact of my
+     own console.
+
+     There is nothing about a dead stream that is detectable from inside the
+     process, so the detection is gone: the log file is now kept unconditionally and
+     a console run is TEE'd into it. Console output still reaches the console; the
+     log gets a copy either way. The tee's writes to the real stream are
+     best-effort, because a dying console must never take the log down with it, and
+     the file rolls at 5 MB since download progress bars now land in it too.
+
+     The lesson is the same one as #137, one layer down: **a guard written for a
+     condition you never reproduce is not a guard.** The old behaviour had a test.
+     It asserted source ORDER -- that the log opened before Baby's imports -- which
+     stayed true the whole time the log was never opened at all. The new tests spawn
+     the entrypoint for real and demand the file exists.
+
+139. **A healthy Ollama left its own row grey forever.** The Full-mode walk emitted
+     an `ollama-daemon` event only when the daemon was DOWN. `plan()` lists that row
+     regardless, so an Ollama that was already running answered nothing and the
+     wizard drew a permanent empty circle next to "Ollama runtime" -- directly under
+     a ticked "Local 9B brain (6.4 GB)" that had been pulled through that very
+     daemon. A finished install rendering as one still in progress, which is exactly
+     the reading that sent a user to wait three hours on #135. It now reports
+     `status="pass"`, which is what the wizard counts as done.

@@ -91,6 +91,19 @@ for W3 and W5 — the dev box cannot fake any of it.
 - [ ] After finishing, **relaunch → the wizard does not reappear**.
 - [ ] Search the whole of `%LOCALAPPDATA%\baby\logs` for your API key. Expect
       zero hits.
+- [ ] **`baby.log` exists and its newest `--- baby start` line matches THIS
+      launch.** An installed build wrote no log at all before this fix: the gate was
+      `sys.stdout is None`, which uv's venv `pythonw.exe` never produces, so every
+      crash was invisible and the only thing a user ever saw was a bare
+      "Python-CFFI error" dialog. Check the timestamp, not just the file — a stale
+      log from a dev run lives at the same path:
+      ```powershell
+      Select-String "--- baby start" "$env:LOCALAPPDATA\baby\logs\baby.log" | Select-Object -Last 1
+      ```
+- [ ] Every provisioning row ends as a tick, a dash, or a named error. A row still
+      showing an empty circle on a finished install is a bug, not a slow step —
+      "Ollama runtime" did exactly that whenever Ollama was already running, next to
+      a ticked 9B.
 
 ## 4. Setup & repair panel
 

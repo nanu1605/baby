@@ -159,6 +159,27 @@ def test_provision_full_pulls_the_9b(monkeypatch, tmp_path):
     assert calls["pulls"] == 1
 
 
+def test_a_healthy_daemon_still_answers_its_own_row(monkeypatch, tmp_path):
+    """plan() lists "ollama-daemon" in Full, so the walk owes it an event whether or
+    not the daemon needed installing. It used to emit one only when Ollama was DOWN,
+    which left an already-running Ollama grey in the wizard for the whole session --
+    a finished install looking like one still in progress, right beside the 9B that
+    had just been pulled through that very daemon."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=True)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+
+    daemon = [e for e in events if e["dep"] == "ollama-daemon"]
+    assert daemon, "a healthy Ollama left its row unanswered"
+    # "pass" is what the wizard counts as done (_DONE in ui/app/src/lib/setup.ts);
+    # any other status would leave the row grey just the same.
+    assert daemon[-1]["status"] == "pass"
+    # And it has to land before the pull it enables, or the checklist ticks backwards.
+    deps = [e["dep"] for e in events]
+    assert deps.index("ollama-daemon") < deps.index("ollama-model"), " -> ".join(deps)
+
+
 def test_provision_full_reports_missing_daemon(monkeypatch, tmp_path):
     monkeypatch.setenv("BABY_HOME", str(tmp_path))
     calls = _mock_primitives(monkeypatch, ollama_up=False)
