@@ -1825,7 +1825,14 @@ Running log of non-obvious choices made during the build. Newest last.
      writing the 19 MB *inside its site-packages folder*, and `uv sync` reinstalling
      that wheel deletes the folder. First-run had been calling it with that default
      (`install_kind="download_models"`, `dest="venv"` in the manifest -- documented,
-     and wrong). So the models lived in the one directory an upgrade throws away.
+     and wrong). So the models lived in the one directory a venv rebuild throws away.
+
+     The trigger is narrower than "any upgrade", which is what this looked like when
+     it happened: `ensure_venv` gates on `.venv\.baby-ready`, so a reinstall over a
+     working install skips the bootstrap entirely and never re-syncs. The rebuild
+     comes when that sentinel is gone -- a data-deleting uninstall followed by a
+     reinstall (how this was found), an interrupted first run, or a wiped venv. Rare
+     enough to survive three phases of testing; permanent when it lands.
 
      The silence is the worse half. `setup_complete` was already true, so the wizard
      never re-ran; provisioning is the only thing that fetches these files, and
@@ -1846,7 +1853,9 @@ Running log of non-obvious choices made during the build. Newest last.
      the sync that destroys them. `first_run.ps1` lifts them out *before* `uv sync`
      (the ordering is the whole point, and is pinned by a test), and `load()` lifts
      any that are still there on boot. Both are copies, never overwrite, and need no
-     network.
+     network. The two cover different halves: the boot-time lift is what an existing
+     install actually hits, since the bootstrap it would otherwise pass through is
+     skipped while `.baby-ready` stands.
 
      The general lesson: `models_dir()` exists precisely because an installed build
      must keep its weights in a directory it owns. This dependency was the one that

@@ -94,12 +94,12 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   model the config points at is owner-trained and not in the installer. The wizard's
   disclosure step and `docs/INSTALL.md` now say so (and mention Ctrl+Alt+B), pinned by
   test to the shipped config so the two cannot drift.
-- **An upgrade no longer costs the user their wake word.** openWakeWord's downloader
+- **A rebuilt venv no longer costs the user their wake word.** openWakeWord's downloader
   defaults to writing its 19 MB of weights inside its own site-packages folder, and
-  `uv sync` reinstalling that wheel deletes the folder -- so installing over a working
-  Baby left it permanently deaf, with `setup_complete` already true so the wizard
-  never re-ran and nothing re-fetched them. Found by installing over a working copy
-  during the uninstall test. The models now live under
+  `uv sync` reinstalling that wheel deletes the folder -- so any rebuilt venv left
+  Baby permanently deaf, with `setup_complete` already true so the wizard never
+  re-ran and nothing re-fetched them. Found by reinstalling after a data-deleting
+  uninstall, which is one of the ways the venv gets rebuilt. The models now live under
   `%LOCALAPPDATA%\baby\models\openwakeword` beside the other weights, loaded by
   explicit path, so a rebuilt venv no longer touches them; an older install's
   copy is lifted out of the venv before the sync that would destroy it.

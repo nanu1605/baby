@@ -129,17 +129,19 @@ for W3 and W5 — the dev box cannot fake any of it.
       wake-word models that were not downloaded yet, and left the stream running for
       the garbage collector to race. The crash landed minutes later during the
       embedder step, so watch the whole provisioning run, not just the start.
-- [ ] **Install OVER a working Baby: it still hears you.** Reinstall onto a machine
-      that has already finished setup, launch, and confirm the readiness line says
-      `voice on (hey_jarvis)` and that the phrase wakes it. Then check the files are
-      where a venv rebuild cannot reach them:
+- [ ] **Rebuild the venv and Baby still hears you.** This is the case that broke:
+      `ensure_venv` skips the bootstrap while `.venv\.baby-ready` stands, so a plain
+      reinstall never re-syncs. Force the rebuild -- delete that sentinel (or
+      reinstall after a data-deleting uninstall) -- then launch, confirm the
+      readiness line says `voice on (hey_jarvis)` and that the phrase wakes it. Then
+      check the files are where a venv rebuild cannot reach them:
       ```powershell
       (Get-ChildItem "$env:LOCALAPPDATA\baby\models\openwakeword\*.onnx").Count
       ```
       Expect 9. Before this, openWakeWord's weights lived inside the venv's
-      site-packages, `uv sync` deleted them on every upgrade, and with setup already
-      marked complete the wizard never re-ran — the install went permanently deaf
-      with no message and no obvious way back.
+      site-packages, so the sync deleted them, and with setup already marked complete
+      the wizard never re-ran — the install went permanently deaf with no message
+      and no obvious way back.
 - [ ] Every provisioning row ends as a tick, a dash, or a named error. A row still
       showing an empty circle on a finished install is a bug, not a slow step —
       "Ollama runtime" did exactly that whenever Ollama was already running, next to
