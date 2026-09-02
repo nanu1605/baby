@@ -1569,3 +1569,32 @@ Running log of non-obvious choices made during the build. Newest last.
      HF cache rather than only its shape, because a drifted repo id would silently
      measure an empty directory and report 0 MB forever -- the same blind state it
      replaced.
+
+136. **The uninstall checkbox could take a dev checkout's caches with it.** Found
+     while checking whether Baby was installed on the dev box before a test
+     reinstall: it was not, but `%LOCALAPPDATA%\baby` already held 102 MB of
+     browser profile, logs, screenshots and file index. `core/paths.py` says so
+     outright -- the data caches resolve there "untouched" by `BABY_HOME`, so a
+     source checkout writes to the same directory an installed build calls its
+     data home. The W5 hook's `RmDir /r "$LOCALAPPDATA\baby"` cannot tell them
+     apart, and release checklist section 5 instructs the owner to tick that box.
+     Following the checklist on a development machine destroys development state.
+     The same class as the original W5 bug -- a delete aimed at a path whose
+     ownership was assumed rather than checked -- and it points the other way.
+
+     The hook now deletes only a directory an install actually provisioned, proven
+     by the venv `installer/first_run.ps1` builds there (a checkout keeps its own
+     in the repo). **This does not make the shared case safe**, and the comment and
+     the test both say so: once an install exists the venv is present and
+     everything still goes. Nothing visible to an uninstaller distinguishes "an
+     install owns this" from "an install and a checkout share this". What the guard
+     removes is an uninstaller wiping a directory no install ever owned; the
+     checklist carries a backup command and a warning for the rest, which is the
+     honest split rather than a guard that only looks complete.
+
+     A mutation caught the first version of the checklist test passing on the wrong
+     occurrence of its own search string -- the phrase appears in both the warning
+     and a checklist item, so deleting the warning left it green. It now asserts
+     against the blockquote specifically. The pre-existing ordering test also had
+     to start stripping `;` comments before comparing offsets, since the comments
+     name the instructions they explain.

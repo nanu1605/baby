@@ -35,6 +35,14 @@ def _conf() -> dict:
     return json.loads(_CONF.read_text(encoding="utf-8"))
 
 
+def _hook_code() -> str:
+    """The hook with its `;` comments stripped. Ordering assertions below compare
+    offsets, and the comments discuss the very instructions they gate -- so without
+    this a comment mentioning RmDir reads as a delete that precedes its own guard."""
+    hook = _HOOKS.read_text(encoding="utf-8")
+    return "\n".join(ln for ln in hook.splitlines() if not ln.lstrip().startswith(";"))
+
+
 def test_hook_is_wired_into_the_bundle():
     """An unreferenced .nsh is dead code -- the box would go back to lying."""
     nsis = _conf()["bundle"]["windows"]["nsis"]
@@ -71,9 +79,11 @@ def test_removal_stays_behind_the_users_opt_in():
     hook = _HOOKS.read_text(encoding="utf-8")
     assert "$DeleteAppDataCheckboxState = 1" in hook
     assert "$UpdateMode <> 1" in hook
-    # The delete is inside the guard, not before it.
-    guard = hook.index("$DeleteAppDataCheckboxState")
-    assert guard < hook.index("RmDir")
+    # The delete is inside the guard, not before it. Code only: the comments name
+    # these instructions while explaining them, which is not an ordering violation.
+    code = _hook_code()
+    guard = code.index("$DeleteAppDataCheckboxState")
+    assert guard < code.index("RmDir")
 
 
 def test_hook_only_removes_babys_own_directory():
@@ -227,3 +237,38 @@ def test_changelog_documents_the_shipped_version():
     version = _conf()["version"]
     changelog = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert f"## v{version}" in changelog, f"CHANGELOG.md has no entry for v{version}"
+
+
+def test_removal_is_gated_on_a_directory_an_install_provisioned():
+    r"""%LOCALAPPDATA%\baby is not exclusive to an installed build.
+
+    core/paths.py resolves the logs, browser profile and screenshot caches there for
+    a DEV checkout too, "untouched" by BABY_HOME. An unguarded RmDir /r therefore
+    takes a developer's browser profile and file index with it on any machine that
+    also runs Baby from source. The venv is the one marker only an install creates in
+    that directory -- a checkout keeps its own in the repo.
+
+    This cannot make the shared case safe (with both present the venv exists and
+    everything still goes); it removes the case where an uninstaller wipes a
+    directory no install ever owned. The manual checklist carries the rest.
+    """
+    hook = _HOOKS.read_text(encoding="utf-8")
+    marker = re.search(r'IfFileExists\s+"([^"]+)"', hook)
+    assert marker, "the deletion is not gated on an install marker"
+    assert marker.group(1).lower().startswith(r"$localappdata\baby\.venv")
+    # The gate must precede the delete, not sit after it.
+    code = _hook_code()
+    assert code.index("IfFileExists") < code.index("RmDir")
+
+
+def test_the_checklist_warns_where_the_hook_cannot_help():
+    """The ticked branch is a checklist instruction. On a dev box it destroys the
+    shared caches, and the hook cannot detect that -- so the warning is the only
+    thing standing between the owner and their own browser profile."""
+    doc = (_ROOT / "tests" / "manual" / "v6_release_checklist.md").read_text(encoding="utf-8")
+    section = doc.split("## 5. Uninstall", 1)[1].split("## 6.", 1)[0]
+    # The blockquote specifically -- the phrase also occurs in a checklist item
+    # below, which would let the warning itself be deleted unnoticed.
+    warning = "\n".join(ln for ln in section.splitlines() if ln.lstrip().startswith(">"))
+    assert "from source" in warning, "no warning about a shared data dir"
+    assert "robocopy" in warning, "the warning gives no backup command"

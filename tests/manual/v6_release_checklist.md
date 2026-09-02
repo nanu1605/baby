@@ -95,10 +95,27 @@ for W3 and W5 — the dev box cannot fake any of it.
 
 The W5 fix. Verify both branches.
 
+> **Do not run the ticked branch on a machine that also runs Baby from source
+> without backing up first.** `%LOCALAPPDATA%\baby` is not exclusive to an installed
+> build: a dev checkout resolves its `logs`, `browser` profile, `shots` and file
+> index there too, regardless of `BABY_HOME`. The uninstaller cannot tell the two
+> apart, so ticking the box on your dev box takes those with it. The hook refuses
+> when no install ever provisioned the directory (no `.venv` in it), which is not
+> the same as being safe here — once you have installed, the venv is present and
+> everything goes.
+>
+> Back up first, and restore afterwards:
+> ```powershell
+> robocopy "$env:LOCALAPPDATA\baby" "$env:USERPROFILE\baby-localappdata-backup" /E
+> ```
+> Prefer a clean VM for this section — that is what it is written for.
+
 - [ ] Uninstall with **"Delete application data" ticked** → `%LOCALAPPDATA%\baby`
       is **gone** (keys, conversations, models, venv).
 - [ ] Reinstall, set up, uninstall with the box **unticked** → the folder
       **survives**; reinstalling resumes with history intact.
+- [ ] On a box where Baby was only ever run **from source** (no install), the
+      uninstaller leaves `%LOCALAPPDATA%\baby` alone — the dev caches survive.
 
 ## 6. Regression on the real box
 
