@@ -85,6 +85,29 @@ function Invoke-Uv([string[]]$uvArgs, [string]$errFile) {
     }
 }
 
+# Rescue openWakeWord's weights from the venv before `uv sync` can delete them.
+# Baby v6.0.0 and earlier let openWakeWord download them into its OWN site-packages
+# folder, which a wheel reinstall wipes -- an upgrade left the install permanently
+# deaf, and with setup already marked complete nothing ever re-fetched them. They now
+# live under $BabyHome\models\openwakeword, so this copy only matters once, for a
+# machine provisioned by an older build. No network, and it never overwrites.
+function Save-WakeWordModels {
+    $src = Join-Path $VenvDir "Lib\site-packages\openwakeword\resources\models"
+    if (-not (Test-Path $src)) { return }
+    $dst = Join-Path $BabyHome "models\openwakeword"
+    $files = @(Get-ChildItem (Join-Path $src "*.onnx") -ErrorAction SilentlyContinue)
+    if ($files.Count -eq 0) { return }
+    if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Force -Path $dst | Out-Null }
+    $copied = 0
+    foreach ($f in $files) {
+        $target = Join-Path $dst $f.Name
+        if (Test-Path $target) { continue }
+        Copy-Item $f.FullName $target
+        $copied++
+    }
+    if ($copied -gt 0) { Write-Step "Kept $copied wake-word model file(s) out of the venv" }
+}
+
 # The MSVC 2015-2022 x64 runtime that every native wheel dlopens (vcruntime140.dll /
 # vcruntime140_1.dll / msvcp140.dll). A clean image may lack it, and without it the
 # wheels probe fails with an opaque "DLL load failed". Detect via the load-relevant
@@ -142,6 +165,9 @@ if (-not $ProbeOnly) {
     $capturedErr = Get-Content $errFile.FullName -Raw -ErrorAction SilentlyContinue
     Remove-Item $errFile.FullName -ErrorAction SilentlyContinue
     if ($code -ne 0) { Write-Fail (Resolve-SyncError $capturedErr) ; exit 1 }
+
+    # Before the sync, not after: the sync is what destroys them.
+    Save-WakeWordModels
 
     $attempt = 0
     while ($true) {

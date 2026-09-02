@@ -142,7 +142,8 @@ if (-not (Test-Path "models\voices-v1.0.bin")) {
     Invoke-WebRequest "$kokoroBase/voices-v1.0.bin" -OutFile "models\voices-v1.0.bin" -TimeoutSec 300
 }
 Write-Host "Downloading openWakeWord feature models..."
-uv run python -c "import openwakeword.utils; openwakeword.utils.download_models()"
+# Into models/openwakeword, not site-packages: the default target dies with the venv.
+uv run python -c "import openwakeword.utils; from core import paths; d = paths.wakeword_dir(); d.mkdir(parents=True, exist_ok=True); openwakeword.utils.download_models(target_directory=str(d))"
 Write-Host "Verifying bundled espeak-ng (espeakng-loader)..."
 uv run python -c "import espeakng_loader; print('espeak-ng:', espeakng_loader.get_library_path())"
 if ($LASTEXITCODE -ne 0) {

@@ -28,7 +28,7 @@ from dataclasses import dataclass
 #   managed_python : `uv python install` (Astral python-build-standalone)
 #   hf_cache       : auto-downloads to the per-user HuggingFace hub cache on first load
 #   explicit_url   : first-run must download the file(s) to models_dir()
-#   download_models: openWakeWord's own downloader, into venv site-packages
+#   download_models: openWakeWord's own downloader, aimed at models_dir()
 #   ollama_pull    : POST /api/pull streaming (resumable), Full mode only
 #   winget         : silent winget/installer (Ollama daemon, LHM)
 #   vc_redist      : Microsoft redist installer -- needs admin/elevation
@@ -177,10 +177,14 @@ MANIFEST: tuple[Dep, ...] = (
         probe="wakeword",
         note="openWakeWord ships NO model files in its wheel; `uv sync` leaves "
         "resources/models empty and Model() raises. First-run must run "
-        "openwakeword.utils.download_models() (into the per-user venv site-packages). "
+        "openwakeword.utils.download_models(). NOT into its own site-packages dir "
+        "(the default) -- that is disposable, and an upgrade's `uv sync` wiping it "
+        "left an install permanently deaf; they go to models_dir()/openwakeword and "
+        "are loaded by path (core.paths.wakeword_dir). "
         "hey_jarvis is the OOTB fallback; the custom jarvis.onnx is optional/absent.",
         assets=(
-            Asset("feature + VAD + wake models (17 files)", 19, auto_downloads=False, dest="venv",
+            Asset("feature + VAD + wake models (17 files)", 19, auto_downloads=False,
+                  dest="models_dir",
                   url="github.com/dscripka/openWakeWord/releases/download/v0.5.1"),
         ),
     ),

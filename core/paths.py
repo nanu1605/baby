@@ -58,10 +58,23 @@ def models_dir() -> Path:
     can't hold them. Dev (BABY_HOME unset) resolves to cwd/models, unchanged.
 
     Note: whisper + e5 do NOT live here -- they auto-download into the per-user HF
-    hub cache; openWakeWord lands in the venv site-packages. This dir is only for
-    the assets first-run must fetch explicitly and the app loads by path.
+    hub cache. This dir is only for the assets first-run must fetch explicitly and
+    the app loads by path.
     """
     return baby_home() / "models"
+
+
+def wakeword_dir() -> Path:
+    """openWakeWord's own model files -- a SUBDIR of models_dir(), not the venv.
+
+    openWakeWord's wheel ships no weights, and its download_models() defaults to
+    writing them inside its own site-packages folder. That folder is disposable: any
+    `uv sync` that reinstalls the wheel wipes it, so an upgrade left a working
+    install permanently deaf -- and because setup was already marked complete, the
+    wizard never re-ran and nothing re-fetched them. Keeping them beside the other
+    downloaded weights means a rebuilt venv no longer costs the user their wake word.
+    """
+    return models_dir() / "openwakeword"
 
 
 def resolve_model(path: str | Path) -> Path:

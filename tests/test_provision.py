@@ -7,6 +7,7 @@ clean-VM matrix, not in unit tests."""
 from __future__ import annotations
 
 import asyncio
+import pathlib
 
 from fastapi.testclient import TestClient
 
@@ -119,7 +120,13 @@ def _mock_primitives(monkeypatch, *, ollama_up=True):
         return ollama_up
 
     def _bump(key):
-        return lambda: calls.__setitem__(key, 1)
+        # *a: the wake-word loader takes its target dir; the hub ones take nothing.
+        def _record(*a):
+            calls[key] = 1
+            if a:
+                calls[key + "_target"] = a[0]
+
+        return _record
 
     monkeypatch.setattr(provision, "download_file", fake_download)
     monkeypatch.setattr(provision, "pull_ollama_model", fake_pull)
@@ -157,6 +164,33 @@ def test_provision_full_pulls_the_9b(monkeypatch, tmp_path):
     calls = _mock_primitives(monkeypatch, ollama_up=True)
     asyncio.run(provision.provision("full", on_event=lambda e: None))
     assert calls["pulls"] == 1
+
+
+def test_wake_models_are_fetched_outside_the_venv(monkeypatch, tmp_path):
+    """openWakeWord's downloader defaults to writing inside site-packages, where the
+    next `uv sync` deletes them. First-run must aim it at models_dir instead."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    calls = _mock_primitives(monkeypatch)
+    asyncio.run(provision.provision("cloud_only", on_event=lambda e: None))
+    assert calls["owakeword_target"] == paths.wakeword_dir()
+    assert paths.wakeword_dir() == tmp_path / "models" / "openwakeword"
+
+
+def test_the_wake_downloader_is_pointed_at_the_given_dir(monkeypatch, tmp_path):
+    """The loader itself -- proves the target reaches openWakeWord, not just our call."""
+    import openwakeword.utils
+
+    seen: dict = {}
+
+    def _fake(target_directory=None, **kw):
+        seen["target"] = target_directory
+        seen["existed"] = pathlib.Path(target_directory).is_dir()
+
+    monkeypatch.setattr(openwakeword.utils, "download_models", _fake)
+    target = tmp_path / "models" / "openwakeword"
+    provision._download_openwakeword(target)
+    assert seen["target"] == str(target)
+    assert seen["existed"] is True  # created BEFORE the fetch, or it writes nowhere
 
 
 def test_a_healthy_daemon_still_answers_its_own_row(monkeypatch, tmp_path):

@@ -1814,3 +1814,41 @@ Running log of non-obvious choices made during the build. Newest last.
      only cffi user in the stack. That was the crash pointing straight at itself,
      three fixes ago, and it read as noise because an installed build kept no log to
      put it next to (#138).
+
+145. **An upgrade wiped the wake-word models, and nothing ever put them back.**
+     Found by installing over a working Baby during the uninstall test, not by
+     reading code: the reinstall came up healthy, cloud router intact, history
+     intact, and `openWakeWord model files: 0`. Voice was dead, the readiness line
+     said "text only", and there was no path back.
+
+     openWakeWord's wheel ships no weights. Its own `download_models()` defaults to
+     writing the 19 MB *inside its site-packages folder*, and `uv sync` reinstalling
+     that wheel deletes the folder. First-run had been calling it with that default
+     (`install_kind="download_models"`, `dest="venv"` in the manifest -- documented,
+     and wrong). So the models lived in the one directory an upgrade throws away.
+
+     The silence is the worse half. `setup_complete` was already true, so the wizard
+     never re-ran; provisioning is the only thing that fetches these files, and
+     nothing re-checks them at boot. A load failure fails soft to text-only by
+     design (#144), which is right for a missing microphone and wrong here -- the
+     user is simply never told their wake word stopped existing. Re-running
+     provisioning by hand restored it (17 files, `verify=pass`), which is the proof
+     it was only ever a missing-file problem.
+
+     Fixed by moving them out of the venv: `paths.wakeword_dir()` is
+     `models_dir()/openwakeword`, beside kokoro and CAM++, and `WakeWord.load()`
+     hands openWakeWord explicit paths for the wake model and both feature models
+     rather than bare names. A rebuilt venv now costs nothing. Absent a durable
+     copy, every helper degrades to openWakeWord's own default, so a dev checkout
+     that never provisioned behaves exactly as before.
+
+     Two migrations, because an existing install's files are still in the venv until
+     the sync that destroys them. `first_run.ps1` lifts them out *before* `uv sync`
+     (the ordering is the whole point, and is pinned by a test), and `load()` lifts
+     any that are still there on boot. Both are copies, never overwrite, and need no
+     network.
+
+     The general lesson: `models_dir()` exists precisely because an installed build
+     must keep its weights in a directory it owns. This dependency was the one that
+     downloaded itself somewhere else, and the manifest recorded that fact for three
+     phases without anyone reading it as a bug.

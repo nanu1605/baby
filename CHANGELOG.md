@@ -94,6 +94,15 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   model the config points at is owner-trained and not in the installer. The wizard's
   disclosure step and `docs/INSTALL.md` now say so (and mention Ctrl+Alt+B), pinned by
   test to the shipped config so the two cannot drift.
+- **An upgrade no longer costs the user their wake word.** openWakeWord's downloader
+  defaults to writing its 19 MB of weights inside its own site-packages folder, and
+  `uv sync` reinstalling that wheel deletes the folder -- so installing over a working
+  Baby left it permanently deaf, with `setup_complete` already true so the wizard
+  never re-ran and nothing re-fetched them. Found by installing over a working copy
+  during the uninstall test. The models now live under
+  `%LOCALAPPDATA%\baby\models\openwakeword` beside the other weights, loaded by
+  explicit path, so a rebuilt venv no longer touches them; an older install's
+  copy is lifted out of the venv before the sync that would destroy it.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.

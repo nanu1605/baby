@@ -312,10 +312,14 @@ def _download_embedder() -> None:
     asyncio.run(Embedder().warmup())
 
 
-def _download_openwakeword() -> None:
+def _download_openwakeword(target: Path) -> None:
+    """Fetch openWakeWord's 17 files into `target` rather than its own site-packages
+    dir -- the default lands them in the venv, where the next `uv sync` deletes them
+    (see core.paths.wakeword_dir). Skips any file already there."""
     import openwakeword.utils
 
-    openwakeword.utils.download_models()
+    target.mkdir(parents=True, exist_ok=True)
+    openwakeword.utils.download_models(target_directory=str(target))
 
 
 # --- hub steps: progress for a loader that reports none ---------------------
@@ -485,9 +489,9 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
         dest = md / _dest_name(asset.url)
         await _fetch_if_absent(asset.url, dest, on_event=on_event, dep="kokoro")
 
-    # openWakeWord assets (into the venv; download_models skips any already present).
+    # openWakeWord assets (into models_dir, NOT the venv; skips any already present).
     on_event(_event("wakeword", "download", status="working", detail="fetching wake-word models"))
-    await asyncio.to_thread(_download_openwakeword)
+    await asyncio.to_thread(_download_openwakeword, paths.wakeword_dir())
     on_event(_event("wakeword", "download", status="done", detail="wake-word models ready"))
 
     # HF-cache auto-downloads. The hub reports no bytes of its own, so _run_hub_step

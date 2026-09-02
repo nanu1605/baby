@@ -830,7 +830,21 @@ def test_prerender_writes_valid_riff(tmp_path, monkeypatch):
 # -- 10. wake fallback -------------------------------------------------------------
 
 
-def test_wakeword_falls_back_to_builtin(tmp_path):
+def _isolate_wake_models(monkeypatch, tmp_path):
+    """Point BABY_HOME and openWakeWord's package dir at empty tmp dirs, so a test
+    sees neither a provisioned durable copy nor the dev venv's files."""
+    from voice import wakeword
+
+    monkeypatch.setenv("BABY_HOME", str(tmp_path / "home"))
+    empty = tmp_path / "site-packages"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.setattr(wakeword, "_package_dir", lambda: empty)
+
+
+def test_wakeword_falls_back_to_builtin(tmp_path, monkeypatch):
+    # BABY_HOME here so the one-time lift out of site-packages lands in tmp, not the
+    # checkout. This is a REAL load: it proves the durable copy actually runs.
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
     from voice.wakeword import WakeWord
 
     ww = WakeWord(model_path=tmp_path / "jarvis.onnx")  # absent
@@ -846,8 +860,9 @@ def test_wakeword_loads_custom_alongside_builtin(tmp_path, monkeypatch):
     captured = {}
 
     class _FakeModel:
-        def __init__(self, wakeword_models, inference_framework="onnx"):
+        def __init__(self, wakeword_models, inference_framework="onnx", **kwargs):
             captured["models"] = list(wakeword_models)
+            captured["kwargs"] = dict(kwargs)
 
         def predict(self, chunk):
             return {}
@@ -855,6 +870,7 @@ def test_wakeword_loads_custom_alongside_builtin(tmp_path, monkeypatch):
         def reset(self):
             pass
 
+    _isolate_wake_models(monkeypatch, tmp_path)
     monkeypatch.setattr(owm, "Model", _FakeModel)
     custom = tmp_path / "jarvis.onnx"
     custom.write_bytes(b"stub")  # load() only checks existence before handing to Model
@@ -876,8 +892,82 @@ def test_wakeword_empty_fallback_never_loads_all(tmp_path, monkeypatch):
     captured = {}
 
     class _FakeModel:
-        def __init__(self, wakeword_models, inference_framework="onnx"):
+        def __init__(self, wakeword_models, inference_framework="onnx", **kwargs):
             captured["models"] = list(wakeword_models)
+            captured["kwargs"] = dict(kwargs)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    _isolate_wake_models(monkeypatch, tmp_path)
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    ww = WakeWord(model_path=tmp_path / "absent.onnx", builtin_fallback="")
+    ww.load()
+    assert captured["models"] == ["hey_jarvis"]  # never [] (which loads all)
+
+
+# -- 10b. the wake models outlive the venv ------------------------------------------
+# openWakeWord's downloader defaults to writing its weights INSIDE site-packages.
+# An upgrade's `uv sync` deleted them, and because setup was already marked complete
+# the wizard never re-ran -- the install went permanently deaf with no message. The
+# files now live under models_dir(), which a venv rebuild does not touch.
+
+
+def _fake_openwakeword_dir(root):
+    """A stand-in for site-packages/openwakeword/resources/models."""
+    root.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "hey_jarvis_v0.1.onnx",
+        "melspectrogram.onnx",
+        "embedding_model.onnx",
+        "alexa_v0.1.onnx",
+    ):
+        (root / name).write_bytes(b"stub-" + name.encode())
+    (root / "hey_jarvis_v0.1.tflite").write_bytes(b"tflite")  # we never load these
+    return root
+
+
+def test_the_wake_models_are_lifted_out_of_the_disposable_venv_copy(tmp_path, monkeypatch):
+    from core import paths
+    from voice import wakeword
+
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    pkg = _fake_openwakeword_dir(tmp_path / "site-packages")
+    monkeypatch.setattr(wakeword, "_package_dir", lambda: pkg)
+
+    assert wakeword.adopt_package_models() == 4  # the .onnx files, not the .tflite
+    durable = paths.wakeword_dir()
+    assert (durable / "hey_jarvis_v0.1.onnx").read_bytes() == b"stub-hey_jarvis_v0.1.onnx"
+    assert not (durable / "hey_jarvis_v0.1.tflite").exists()
+    # Idempotent, and never clobbers a file already there.
+    (durable / "alexa_v0.1.onnx").write_bytes(b"mine")
+    assert wakeword.adopt_package_models() == 0
+    assert (durable / "alexa_v0.1.onnx").read_bytes() == b"mine"
+
+
+def test_load_lifts_the_venv_copy_before_it_resolves_anything(tmp_path, monkeypatch):
+    """An install provisioned by an older build has its files only in site-packages.
+    load() must move them across BEFORE resolving, or the next `uv sync` is the last
+    time this machine ever hears its wake word."""
+    import openwakeword.model as owm
+
+    from core import paths
+    from voice import wakeword
+    from voice.wakeword import WakeWord
+
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    pkg = _fake_openwakeword_dir(tmp_path / "site-packages")
+    monkeypatch.setattr(wakeword, "_package_dir", lambda: pkg)
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx", **kwargs):
+            captured["models"] = list(wakeword_models)
+            captured["kwargs"] = dict(kwargs)
 
         def predict(self, chunk):
             return {}
@@ -886,9 +976,84 @@ def test_wakeword_empty_fallback_never_loads_all(tmp_path, monkeypatch):
             pass
 
     monkeypatch.setattr(owm, "Model", _FakeModel)
-    ww = WakeWord(model_path=tmp_path / "absent.onnx", builtin_fallback="")
-    ww.load()
-    assert captured["models"] == ["hey_jarvis"]  # never [] (which loads all)
+    WakeWord(model_path=tmp_path / "absent.onnx").load()
+
+    durable = paths.wakeword_dir()
+    assert (durable / "hey_jarvis_v0.1.onnx").exists()
+    # And the lift happened first, so this load already used the durable copy.
+    assert captured["models"] == [str(durable / "hey_jarvis_v0.1.onnx")]
+    assert captured["kwargs"]["melspec_model_path"] == str(durable / "melspectrogram.onnx")
+
+
+def test_a_venv_rebuild_cannot_take_the_wake_models_with_it(tmp_path, monkeypatch):
+    """The regression: with the venv copy GONE, load() still resolves real files."""
+    import openwakeword.model as owm
+
+    from core import paths
+    from voice import wakeword
+    from voice.wakeword import WakeWord
+
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    # What first-run wrote, under models_dir().
+    durable = paths.wakeword_dir()
+    durable.mkdir(parents=True, exist_ok=True)
+    for name in ("hey_jarvis_v0.1.onnx", "melspectrogram.onnx", "embedding_model.onnx"):
+        (durable / name).write_bytes(b"stub")
+    # What `uv sync` left behind: an empty package dir.
+    empty = tmp_path / "site-packages"
+    empty.mkdir()
+    monkeypatch.setattr(wakeword, "_package_dir", lambda: empty)
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx", **kwargs):
+            captured["models"] = list(wakeword_models)
+            captured["kwargs"] = dict(kwargs)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    assert WakeWord(model_path=tmp_path / "absent.onnx").load() == "hey_jarvis"
+    # Loaded BY PATH out of models_dir -- not by the bare name, which would send
+    # openWakeWord back to the site-packages dir the rebuild just emptied.
+    assert captured["models"] == [str(durable / "hey_jarvis_v0.1.onnx")]
+    assert captured["kwargs"] == {
+        "melspec_model_path": str(durable / "melspectrogram.onnx"),
+        "embedding_model_path": str(durable / "embedding_model.onnx"),
+    }
+
+
+def test_an_unprovisioned_checkout_still_uses_openwakewords_own_copy(tmp_path, monkeypatch):
+    """No durable files yet: hand over the bare name and no feature paths, so
+    openWakeWord resolves inside its own package exactly as it always did."""
+    import openwakeword.model as owm
+
+    from voice.wakeword import WakeWord
+
+    _isolate_wake_models(monkeypatch, tmp_path)
+
+    captured = {}
+
+    class _FakeModel:
+        def __init__(self, wakeword_models, inference_framework="onnx", **kwargs):
+            captured["models"] = list(wakeword_models)
+            captured["kwargs"] = dict(kwargs)
+
+        def predict(self, chunk):
+            return {}
+
+        def reset(self):
+            pass
+
+    monkeypatch.setattr(owm, "Model", _FakeModel)
+    WakeWord(model_path=tmp_path / "absent.onnx").load()
+    assert captured["models"] == ["hey_jarvis"]
+    assert captured["kwargs"] == {}
 
 
 # -- 11. markdown never reaches the speaker -----------------------------------------
