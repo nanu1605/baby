@@ -1491,3 +1491,30 @@ Running log of non-obvious choices made during the build. Newest last.
        where the release process will trip over it: SignPath's free OSS signing
        requires an OSI-approved license, and this repo still has none. Four tests
        pin the docs to the build so they cannot drift into fiction.
+
+133. **v6 W6 -- release: one version, seven files, and an owner-run acceptance.**
+     - **The version had already drifted.** Every installer built during v6
+       development came out stamped `Baby_5.0.0_x64-setup.exe` while the project was
+       on v6, because the number lives in seven places (pyproject, Cargo.toml,
+       Cargo.lock, tauri.conf.json, two package.json files, and uv.lock, which uv
+       restamps on any sync). Nobody notices a wrong version on an installer until a
+       bug report cites it. All seven now read 6.0.0, and a drift test pins them to
+       each other and to the CHANGELOG so a future bump cannot land half-done --
+       mutation-checked by moving one track to 6.0.1.
+     - **The bump was verified by building, not by reading.** `tauri build` now emits
+       `Baby_6.0.0_x64-setup.exe`, with the W5 uninstall hook still included in the
+       generated NSIS script. The filename is what a user actually sees, so it is
+       what had to be checked.
+     - **The release checklist is owner-run by construction**, and it leads with the
+       blocker rather than burying it: the repo has no `LICENSE`, which makes a
+       public release meaningless and blocks SignPath's free OSS signing. Everything
+       after that assumes it is resolved. The rest is what this machine cannot
+       prove -- the clean-VM matrix (no VC++, declined UAC, no GPU, non-admin,
+       antivirus, non-English locale, low disk, network drop mid-sync and mid-pull),
+       the wizard walkthrough including an `icacls` check on `.env` and a log scan
+       for the key, both uninstall branches, and the real-box regression that the
+       assistant itself still behaves.
+     - **The CHANGELOG states the limitations plainly** rather than only the wins:
+       unsigned so SmartScreen warns, offline first-install out of scope, and a
+       saved cloud key needing one restart because `.env` is read at boot. A release
+       note that hides those just moves the surprise to the user.
