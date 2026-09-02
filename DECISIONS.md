@@ -1735,3 +1735,20 @@ Running log of non-obvious choices made during the build. Newest last.
      `installer/config.default.yaml`, so changing the shipped phrase without changing
      what the user is told fails the build. Same doctrine as the "it asks first" line:
      **a promise in prose has to be pinned to the config that keeps it.**
+
+142. **The installer could ship a stale UI, silently.** Hit while building the
+     installer for #140: the wizard string had changed in `ui/app/src`, and the
+     staged bundle still carried the previous one. Nothing in the shell's build
+     rebuilds the SPA -- `tauri.conf.json`'s `beforeBuildCommand` IS the staging
+     script, and that script only checked `ui/app/dist/index.html` for EXISTENCE.
+     Built once, ever, is not the same as built from this source.
+
+     Staging now refuses a `dist` older than the newest file under `ui/app/src`, so
+     a forgotten `npm --prefix ui/app run build` fails the build with the offending
+     filename instead of producing an installer that looks correct and carries the
+     wrong wizard. Same shape as the mistyped-`uv.exe` fix: **the build must fail
+     where the mistake is made, not on a stranger's first launch.**
+
+     The script had no test coverage at all, which is how it accumulated three of
+     these. It has some now, including the PS 5.1 BOM/non-ASCII trap that has broken
+     a release build before.

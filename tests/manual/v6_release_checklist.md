@@ -21,6 +21,15 @@ cannot prove.
 
 ## 1. Build the artifact
 
+- [ ] **Build the SPA first.** Nothing in the shell's build does it —
+      `tauri.conf.json`'s `beforeBuildCommand` is the staging script, which only
+      copies `ui/app/dist`. Skip this and the installer ships whatever UI was last
+      built, silently:
+      ```powershell
+      npm --prefix ui/app run build
+      ```
+      Staging now refuses a `dist` older than anything in `ui/app/src`, so a
+      forgotten rebuild fails the build instead of shipping the old wizard.
 - [ ] Bundle a real `uv.exe` — the staging script skips it unless told. Get your
       own path first; the one below is a placeholder, not a real location:
       ```powershell

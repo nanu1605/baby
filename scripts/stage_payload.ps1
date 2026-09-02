@@ -73,8 +73,22 @@ foreach ($f in "__init__.py", "server.py", "tray.py", "gamewatch.py") {
     Copy-Item (Join-Path $Root "ui\$f") (Join-Path $Dest "ui\$f") -Force
 }
 Copy-Tree "ui\web" "ui\web"
-if (-not (Test-Path (Join-Path $Root "ui\app\dist\index.html"))) {
+$distIndex = Join-Path $Root "ui\app\dist\index.html"
+if (-not (Test-Path $distIndex)) {
     throw "ui/app/dist is not built -- run 'npm --prefix ui/app run build' first"
+}
+# "Built once, ever" is not the same as "built from this source". Nothing in the
+# shell's build rebuilds the SPA -- tauri.conf.json's beforeBuildCommand is THIS
+# script -- so an edit to ui/app/src that was never rebuilt ships the previous UI,
+# silently, in an installer that otherwise looks correct. Caught exactly that way:
+# a wizard string changed here and the staged bundle still carried the old one.
+$distTime = (Get-Item $distIndex).LastWriteTimeUtc
+$newer = Get-ChildItem (Join-Path $Root "ui\app\src") -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTimeUtc -gt $distTime } |
+    Select-Object -First 1
+if ($newer) {
+    throw ("ui/app/dist is STALE -- '{0}' is newer than dist/index.html. " -f $newer.Name) +
+          "Run 'npm --prefix ui/app run build' first, or the installer ships the old UI."
 }
 Copy-Tree "ui\app\dist" "ui\app\dist"
 
