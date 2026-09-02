@@ -169,6 +169,9 @@ class UIContext:
     orchestrator: object | None = None  # workers.orchestrator.Orchestrator
     scheduler: object | None = None  # workers.scheduler.Scheduler, attached in run_ui
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
+    # Voice was asked for and could not load. Distinct from `voice is None`, which
+    # also covers "never requested" -- see _restart_needed_to_apply.
+    voice_failed: bool = False
     session_start: str = ""  # P5: SQLite-format ts marking this process's boot
 
     def turn_running(self) -> bool:
@@ -220,27 +223,41 @@ def _gpu_recommendation() -> dict:
 RESTART_EXIT_CODE = 86
 
 
-def _restart_needed_to_apply(state: dict, provider: object) -> bool:
-    """True when the wizard just stamped a router mode THIS process cannot honour.
+def _restart_needed_to_apply(
+    state: dict, provider: object, *, voice_failed: bool = False
+) -> bool:
+    """True when the wizard has made THIS process's boot state obsolete.
 
-    `router.mode` is read once, at boot, and `build_provider` runs once against it. A
-    wizard that validates a cloud key mid-session upgrades the stamp to cloud_primary
-    -- and the provider built minutes earlier from the pre-wizard config stays a
-    local-only ladder for the rest of the process's life. Observed on a real install:
-    setup.json said cloud_primary, the key was live and working, and /stats carried no
-    `router` and no `game_mode` at all, because the provider was a bare OllamaProvider.
-    The cloud badge never lit and the game-mode button POSTed to a provider with no
-    set_game_mode. Both read as broken features; the only thing saying otherwise was a
-    single line of text on the wizard's last screen.
+    Baby boots before the wizard runs, so on a first install it starts against a
+    machine that has none of what the wizard is about to fetch. Two things it cannot
+    pick up afterwards, both seen on real installs:
 
-    Restarting is the only way this process picks the mode up. The shell can do that
-    only for a backend IT spawned -- an always-on service must never be taken down by
-    a wizard -- and BABY_SHELL_TRAY is set on exactly those children.
+    * `router.mode` is read once, at boot, and `build_provider` runs once against it.
+      A wizard that validates a cloud key stamps cloud_primary onto a process whose
+      provider is already a local-only ladder. Observed: a live, working key, a
+      stamped cloud_primary, and `/stats` with no `router` and no `game_mode` at all,
+      because the provider was a bare OllamaProvider. The cloud badge never lit and
+      the game-mode button POSTed to a provider with no set_game_mode.
+
+    * Voice loads at boot, and on a first install the wake-word models it needs have
+      not been downloaded yet. Observed, in this exact order:
+          voice: voice unavailable: NoSuchFile ... hey_jarvis_v0.1.onnx ... doesn't exist
+          Baby ready (text only) -- voice failed to load
+      and only THEN openWakeWord's downloads. Nothing re-attaches voice once
+      provisioning finishes, so a fresh install stays deaf for its whole first
+      session -- on a build whose headline feature is a wake word.
+
+    Restarting is the only way this process picks either up, and it happens once,
+    when the wizard finishes. The shell can do it only for a backend IT spawned -- an
+    always-on service must never be taken down by a wizard -- and BABY_SHELL_TRAY is
+    set on exactly those children.
     """
-    if state.get("router_mode") != "cloud_primary":
-        return False
     if os.environ.get("BABY_SHELL_TRAY") != "1":
         return False  # an attached service or a bare dev run: not ours to restart
+    if voice_failed:
+        return True
+    if state.get("router_mode") != "cloud_primary":
+        return False
     from core.router import CloudRouter
 
     return not isinstance(provider, CloudRouter)
@@ -851,7 +868,9 @@ def create_app(ctx: UIContext) -> FastAPI:
 
         state = paths.write_setup({"disclosure_ack": True, "setup_complete": True})
         ctx.bus.publish("status", "setup", text="first-run setup finished")
-        restarting = _restart_needed_to_apply(state, ctx.agent.provider)
+        restarting = _restart_needed_to_apply(
+            state, ctx.agent.provider, voice_failed=ctx.voice_failed
+        )
         if restarting:
             app.state.restart_requested = True
             app.state.restart_event.set()  # run_ui stops uvicorn once this response is out
@@ -1372,6 +1391,10 @@ async def run_ui(config: dict, with_voice: bool = False) -> int:
         else:
             voice_pipeline = None
         ctx.voice = voice_pipeline
+        # On a first install the wake-word models do not exist yet -- the wizard
+        # fetches them minutes after this runs. Record the failure so finishing the
+        # wizard can restart into a machine that finally has them.
+        ctx.voice_failed = not voice_ok
 
     # Phase 4: notifications + background worker pool. Voice/telegram tiers
     # are injected as they come up; the pool works with toast-only too.

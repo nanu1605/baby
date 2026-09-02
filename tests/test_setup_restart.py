@@ -11,10 +11,16 @@ button POSTed to a provider with no `set_game_mode` and silently did nothing, wh
 Ollama held the 9B in VRAM the whole time. The only thing in the product that knew
 better was one line of text on the wizard's last screen.
 
+The same shape bit voice. The pipeline loads at boot, and on a first install the
+wake-word models do not exist yet -- the wizard fetches them minutes later. The log
+says so in order: "voice unavailable: NoSuchFile ... hey_jarvis_v0.1.onnx", then
+"Baby ready (text only)", and only THEN the openWakeWord downloads. Nothing
+re-attaches voice, so a fresh install stayed deaf for its whole first session.
+
 So the backend now asks to be restarted, and the shell -- which spawned it and is
-already watching the handle -- brings it straight back on the stamped mode. The
-contract is a single magic number crossing a language boundary, which is what most
-of these tests are about:
+already watching the handle -- brings it straight back against the machine the
+wizard has finished setting up. The contract is a single magic number crossing a
+language boundary, which is what most of these tests are about:
 
   * `_restart_needed_to_apply` fires ONLY when a restart would actually change
     something, and never for a backend the shell does not own.
@@ -65,6 +71,44 @@ def test_a_process_already_on_the_stamped_mode_is_left_alone(monkeypatch):
     assert server._restart_needed_to_apply({"router_mode": "cloud_primary"}, provider) is False
 
 
+def test_a_first_install_whose_voice_died_for_want_of_models_restarts(monkeypatch):
+    """Voice loads at boot; the wizard downloads its models minutes later.
+
+    Straight off a real first-run log, in this order:
+        voice: voice unavailable: NoSuchFile ... hey_jarvis_v0.1.onnx ... doesn't exist
+        Baby ready (text only) -- voice failed to load
+        <openWakeWord downloads start here>
+    Nothing re-attaches voice afterwards, so a fresh install was deaf for its entire
+    first session -- on a build whose headline feature is a wake word. No cloud key
+    is involved, so the router check alone would let this through.
+    """
+    monkeypatch.setenv("BABY_SHELL_TRAY", "1")
+    assert server._restart_needed_to_apply({}, object(), voice_failed=True) is True
+    assert (
+        server._restart_needed_to_apply(
+            {"router_mode": "local_primary"}, object(), voice_failed=True
+        )
+        is True
+    )
+
+
+def test_working_voice_is_not_bounced(monkeypatch):
+    """Voice that loaded is not a reason to restart anything."""
+    monkeypatch.setenv("BABY_SHELL_TRAY", "1")
+    assert (
+        server._restart_needed_to_apply(
+            {"router_mode": "local_primary"}, object(), voice_failed=False
+        )
+        is False
+    )
+
+
+def test_an_always_on_service_is_not_restarted_for_voice_either(monkeypatch):
+    """The ownership gate holds for every reason, not only the router one."""
+    monkeypatch.delenv("BABY_SHELL_TRAY", raising=False)
+    assert server._restart_needed_to_apply({}, object(), voice_failed=True) is False
+
+
 def test_a_local_only_install_is_not_restarted(monkeypatch):
     """Nothing to apply: the mode the wizard stamped is the one already running."""
     monkeypatch.setenv("BABY_SHELL_TRAY", "1")
@@ -95,6 +139,57 @@ def test_finishing_the_wizard_arms_the_restart(tmp_path, monkeypatch):
         assert app.state.restart_event.is_set(), "run_ui would never stop uvicorn"
     finally:
         _close(db)
+
+
+def _client_with_ctx(tmp_path, monkeypatch, *, voice_failed: bool):
+    """Like tests.test_keys._client, but hands back the ctx so the voice flag the
+    endpoint reads can actually be set."""
+    import asyncio as _asyncio
+
+    from fastapi.testclient import TestClient
+
+    from core.agent import AgentCore
+    from core.bus import EventBus
+    from core.safety import SafetyConfig, SafetyGate
+    from db.database import Database
+    from tests.conftest import FakeProvider
+    from ui.server import UIContext, create_app
+
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    db = Database(tmp_path / "s.db")
+
+    async def _boot():
+        await db.connect()
+        return await db.create_conversation("ui")
+
+    conv = _asyncio.run(_boot())
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    agent = AgentCore(FakeProvider([]), db, conv, channel="ui", bus=bus, gate=gate)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config={})
+    ctx.voice_failed = voice_failed
+    return TestClient(create_app(ctx)), db
+
+
+def test_finishing_the_wizard_after_voice_died_arms_the_restart(tmp_path, monkeypatch):
+    """End to end: a Full install, no cloud key, voice dead at boot."""
+    monkeypatch.setenv("BABY_SHELL_TRAY", "1")
+    client, db = _client_with_ctx(tmp_path, monkeypatch, voice_failed=True)
+    try:
+        paths.write_setup({"install_mode": "full", "router_mode": "local_primary"})
+        body = client.post("/api/setup/complete", json={"acknowledged": True}).json()
+        assert body["restarting"] is True
+        assert client.app.state.restart_event.is_set()
+    finally:
+        _close(db)
+
+
+def test_the_boot_records_whether_voice_came_up():
+    """`ctx.voice is None` also means "never asked for", so the endpoint cannot read
+    the failure off it. run_ui has to record the outcome explicitly."""
+    src = (_ROOT / "ui" / "server.py").read_text(encoding="utf-8")
+    assert "ctx.voice_failed = not voice_ok" in src, "the failure is never recorded"
+    assert "voice_failed=ctx.voice_failed" in src, "the endpoint never reads it"
 
 
 def test_finishing_without_a_mode_change_arms_nothing(tmp_path, monkeypatch):

@@ -104,8 +104,14 @@ for W3 and W5 — the dev box cannot fake any of it.
       `/stats` carries a `router` and a `game_mode` key, and the cloud badge lights.
       Before this, the wizard stamped `cloud_primary` and the running process stayed
       local-only for its whole life with a valid key sitting unused in `.env`.
-- [ ] **Without a cloud key (Full install): finishing does NOT restart.** A bounce
-      here would be an outage for nothing.
+- [ ] **Without a cloud key (Full install): finishing still restarts if voice died
+      at boot.** On a first run the wake-word models do not exist yet, so voice fails
+      and the log says `Baby ready (text only)`. After the restart, confirm the log
+      instead says `voice on (hey_jarvis)` and that **"Hey Jarvis" actually wakes it
+      in that same session** — before this, a fresh install was deaf until the user
+      happened to restart on their own.
+- [ ] **A second launch, with everything already provisioned, does NOT restart.** A
+      bounce there is an outage for nothing.
 - [ ] After finishing, **relaunch → the wizard does not reappear**.
 - [ ] Search the whole of `%LOCALAPPDATA%\baby\logs` for your API key. Expect
       zero hits.

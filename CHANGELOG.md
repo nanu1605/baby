@@ -70,13 +70,18 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   answered the "Ollama runtime" row only when the daemon was missing, so an Ollama
   that was already running left a permanent grey circle beside a ticked 9B download
   -- a finished install reading as one still in progress.
-- **The wizard's cloud key now takes effect immediately.** `router.mode` is read once
-  at boot, so a wizard that validated a cloud key mid-session left the running process
-  on the local-only ladder it started with: the cloud badge never lit and the
-  game-mode button did nothing, on an install whose key was valid and working. The
-  backend now exits with a restart code and the shell — which spawned it and already
-  watches the handle — brings it straight back on the stamped mode. Never applies to
-  an always-on service, which has nobody to restart it.
+- **The first run no longer ends on a half-configured Baby.** The backend boots
+  *before* the wizard runs, against a machine that has none of what the wizard is
+  about to fetch — and it could pick up neither of the two things that changed under
+  it. `router.mode` is read once at boot, so a validated cloud key left the process on
+  its local-only ladder: the cloud badge never lit and the game-mode button did
+  nothing, on an install whose key was valid and working. Voice loads at boot too, so
+  on a first install it failed for want of wake-word models the wizard downloads
+  minutes later, and nothing re-attached it — a fresh install answered no wake word
+  for its entire first session. Finishing the wizard now exits with a restart code and
+  the shell — which spawned the backend and already watches the handle — brings it
+  straight back against the finished machine. Never applies to an always-on service,
+  which has nobody to restart it.
 - **Baby says which wake phrase it answers to.** A public install wakes on
   **"Hey Jarvis"**: openWakeWord ships no phrase for Baby's own name, and the custom
   model the config points at is owner-trained and not in the installer. The wizard's

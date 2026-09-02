@@ -1752,3 +1752,28 @@ Running log of non-obvious choices made during the build. Newest last.
      The script had no test coverage at all, which is how it accumulated three of
      these. It has some now, including the PS 5.1 BOM/non-ASCII trap that has broken
      a release build before.
+
+143. **A fresh install was deaf for its whole first session.** Found in the first-run
+     log of an installed build -- readable at all only because #138 finally made
+     installed builds keep one. In order:
+
+         voice: voice unavailable: NoSuchFile ... hey_jarvis_v0.1.onnx ... doesn't exist
+         Baby ready (text only) -- voice failed to load
+         <openWakeWord's downloads start here>
+
+     Voice loads at boot. The wizard fetches the models voice needs minutes later.
+     Nothing re-attaches the pipeline afterwards, so a first install answered no wake
+     word until the user happened to restart -- on a build whose headline feature is
+     a wake word, and right after #141 taught the user which phrase to say.
+
+     Same shape as #140 one layer over: **Baby boots BEFORE the wizard runs, so its
+     whole boot state is built against a machine that has none of what the wizard is
+     about to fetch.** The router mode was the first symptom of that, not the whole
+     of it. So the trigger generalises rather than gaining a special case: restart
+     when the boot state is stale, whether that is a router mode the process cannot
+     honour or a voice pipeline that died for want of files that now exist.
+
+     `ctx.voice is None` could not carry it -- that also means "voice was never asked
+     for" -- so the boot records the outcome explicitly in `ctx.voice_failed`. The
+     ownership gate is unchanged and now covers both reasons: only a backend the
+     shell spawned is ever restarted, and it happens once, when the wizard finishes.
