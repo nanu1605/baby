@@ -124,6 +124,11 @@ for W3 and W5 — the dev box cannot fake any of it.
       ```powershell
       Select-String "--- baby start" "$env:LOCALAPPDATA\baby\logs\baby.log" | Select-Object -Last 1
       ```
+- [ ] **The backend survives the whole first run.** It used to die partway through
+      with `exit code -1073741819` (0xC0000005) — voice opened the mic, failed on
+      wake-word models that were not downloaded yet, and left the stream running for
+      the garbage collector to race. The crash landed minutes later during the
+      embedder step, so watch the whole provisioning run, not just the start.
 - [ ] Every provisioning row ends as a tick, a dash, or a named error. A row still
       showing an empty circle on a finished install is a bug, not a slow step —
       "Ollama runtime" did exactly that whenever Ollama was already running, next to

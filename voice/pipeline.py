@@ -163,8 +163,34 @@ class VoicePipeline:
                 notes.append(f"{name} ready in {elapsed:.1f}s" + (f" ({detail})" if detail else ""))
         except Exception as exc:  # noqa: BLE001 — voice must fail soft to text-only
             notes.append(f"voice unavailable: {type(exc).__name__}: {exc}")
+            self._unwind_partial_load()
             return False, notes
         return True, notes
+
+    def _unwind_partial_load(self) -> None:
+        """Close whatever a failed load had already opened.
+
+        The mic is step ONE, and it opens a PortAudio InputStream whose callback is
+        a cffi trampoline holding a reference to this pipeline. Any later step can
+        fail -- on a first install the wake-word models have not been downloaded
+        yet, so _load_wake raises NoSuchFile -- and this used to return straight to
+        run_ui, which drops the pipeline on the floor. The stream was then left to
+        the garbage collector, with PortAudio's real-time thread still calling a
+        callback whose Python side was being freed underneath it.
+
+        That took the whole backend down with an access violation in a thread with
+        no Python frame (0xC0000005, faulting module "unknown") -- minutes later,
+        during the next allocation-heavy phase, which happened to be the embedder
+        load. Two fresh installs, same stack, and neither one looked like voice.
+
+        Only the mic holds a native callback; the model stages are plain objects
+        with nothing to release.
+        """
+        if self.audio is not None:
+            try:
+                self.audio.close()
+            except Exception:  # noqa: BLE001 — tearing down an already-failed load
+                pass
 
     def _load_audio(self) -> str:
         if self.audio is None:

@@ -56,6 +56,13 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   exits, hub steps show progress read off the model cache and give up at a ceiling
   instead of spinning forever, and the log opens first with `faulthandler` on, so a
   native crash leaves a stack rather than stopping mid-line.
+- **A first run could crash the backend outright.** Voice loads the mic first and the
+  wake word second; on a first install the wake-word models are not downloaded yet, so
+  the load failed — and returned without closing the PortAudio stream it had already
+  opened. Dropping that still-running stream left the real-time audio thread calling a
+  callback the garbage collector was freeing underneath it, killing the process with
+  an access violation minutes later, during the embedder load. Two installs, same
+  stack, and nothing in it mentioned voice. A failed load now closes what it opened.
 - **An installed build kept no log at all.** The logfile was opened only when
   `sys.stdout is None` -- what a windowed CPython gives you, and never what an
   install gets: uv's venv `pythonw.exe` is a trampoline that re-execs the base

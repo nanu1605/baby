@@ -1777,3 +1777,40 @@ Running log of non-obvious choices made during the build. Newest last.
      for" -- so the boot records the outcome explicitly in `ctx.voice_failed`. The
      ownership gate is unchanged and now covers both reasons: only a backend the
      shell spawned is ever restarted, and it happens once, when the wizard finishes.
+
+144. **A failed voice load left the mic running, and the process died minutes later
+     with no apparent connection to voice.** Two fresh installs, identical stack,
+     exit code -1073741819 (0xC0000005), Windows Error Reporting naming no module at
+     all. faulthandler put the crash in a thread with `<no Python frame>` while
+     `sentence_transformers` was building its tokenizer, so it read as a torch or
+     transformers problem. It was neither.
+
+     `VoicePipeline.load()` loads six stages in order, and the mic is FIRST --
+     `AudioIO.start()` opens a PortAudio InputStream whose callback is a cffi
+     trampoline holding a reference to the pipeline. The wake word is SECOND, and on
+     a first install its models have not been downloaded yet, so it raises
+     NoSuchFile. The `except` returned `(False, notes)` without closing anything,
+     `run_ui` then set `voice_pipeline = None`, and the last reference to a RUNNING
+     audio stream went away. PortAudio's real-time thread kept calling a callback
+     whose Python side the collector was freeing underneath it.
+
+     Which is why it landed during the embedder load: that is the next
+     allocation-heavy phase, so that is when the collector ran and the freed memory
+     got reused. The delay is what made it look unrelated.
+
+     Demonstrated rather than argued -- drop a running InputStream and churn memory:
+     8/8 crashed, exit -1073741819 among them; close it first: 0/8. `load()` now
+     unwinds what it opened.
+
+     Two hypotheses died on the way, both killed by measurement rather than
+     reasoning. The stale System32 `onnxruntime.dll` (ORT 1.17, a real conflict this
+     repo has fixed once for sherpa) is not involved: ORT's Python module statically
+     links, and a module enumeration shows nothing binds `onnxruntime.dll` by name on
+     the boot path. Nor is it the two `libiomp5md.dll` copies torch and ctranslate2
+     ship: no OpenMP module loads in any load order, and all four orders survived.
+
+     The lesson is in the first symptom of this whole session. The original report
+     was a Windows dialog titled **"Python-CFFI error"**, and `sounddevice` is the
+     only cffi user in the stack. That was the crash pointing straight at itself,
+     three fixes ago, and it read as noise because an installed build kept no log to
+     put it next to (#138).

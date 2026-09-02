@@ -258,6 +258,76 @@ async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None,
     return pipeline, provider, bus
 
 
+# -- 3b. a failed load must not leave the mic open ------------------------------
+
+
+class _CountingAudio(FakeAudio):
+    """FakeAudio that records start/close, so a leak is visible."""
+
+    def __init__(self):
+        super().__init__()
+        self.started = 0
+        self.closed = 0
+
+    def start(self):
+        self.started += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class _BrokenWake:
+    """What a first install really hits: the wake-word model is not downloaded yet."""
+
+    def load(self):
+        raise OSError(
+            "NoSuchFile: [ONNXRuntimeError] : 3 : NO_SUCHFILE : Load model from "
+            "hey_jarvis_v0.1.onnx failed. File doesn't exist"
+        )
+
+
+async def test_a_failed_load_closes_the_mic_it_already_opened(db):
+    """The mic loads FIRST and opens a PortAudio stream with a cffi callback; the
+    wake word loads second and, on a fresh install, raises. load() used to return
+    right then, run_ui dropped the pipeline, and the still-running stream was left
+    to the garbage collector -- PortAudio calling into a callback being freed under
+    it. That is a 0xC0000005 in a thread with no Python frame, and it landed minutes
+    later during the embedder load, so it never looked like voice. Twice."""
+    pipeline, _, _ = await _make_pipeline(db, [])
+    audio = _CountingAudio()
+    pipeline.audio = audio
+    pipeline.wake = _BrokenWake()
+
+    ok, notes = pipeline.load()
+
+    assert ok is False, "a missing wake-word model must still fail soft"
+    assert any("voice unavailable" in n for n in notes)
+    assert audio.started == 1, "test premise: the mic was opened before the failure"
+    assert audio.closed == 1, "the mic stream was left open for the GC to race"
+
+
+class _LoadableStage:
+    """Every stage after the mic is loaded by calling .load() on it."""
+
+    def load(self):
+        return ""
+
+
+async def test_a_successful_load_leaves_the_mic_running(db):
+    """The unwind must fire only on failure -- closing a good stream would make
+    voice silently deaf instead of crashing, which is not an improvement."""
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over={"speaker_verify": {"enabled": False}})
+    audio = _CountingAudio()
+    pipeline.audio = audio
+    for stage in ("wake", "vad", "stt", "tts"):
+        setattr(pipeline, stage, _LoadableStage())
+
+    ok, notes = pipeline.load()
+
+    assert ok is True, notes
+    assert audio.started == 1 and audio.closed == 0
+
+
 # -- 4. bridge -----------------------------------------------------------------
 
 
