@@ -1598,3 +1598,44 @@ Running log of non-obvious choices made during the build. Newest last.
      against the blockquote specifically. The pre-existing ordering test also had
      to start stripping `;` comments before comparing offsets, since the comments
      name the instructions they explain.
+
+137. **Key validation accepted any string, because /models is not an auth check.**
+     Found by typing a deliberately invalid key into the installed wizard: it
+     answered "OpenRouter key works." W4's probe was one shared
+     `GET {base_url}/models` for all three providers, on the theory that an
+     OpenAI-compatible listing endpoint proves auth without spending quota. It
+     does not. OpenRouter answers **200 with no Authorization header at all**, and
+     NVIDIA's `/models` and `/models/{id}` are both public too. Only Gemini
+     authenticated -- and it rejects with **400**, which the classifier did not map
+     to invalid_key, so even the one working probe gave the wrong message.
+
+     The consequence was worst exactly where it mattered most: OPENROUTER_API_KEY
+     is the PRIMARY, the key a cloud-only install cannot finish without. A stranger
+     with a typo got a green tick, finished setup, and had every cloud turn fail
+     later with nothing connecting the two. Setup validated a non-functional app.
+
+     The probe is now per-provider (`KeySpec.probe_url` / `probe_body`), which is
+     the actual lesson: **never assume a vendor's endpoint authenticates -- confirm
+     it 401s unauthenticated.** OpenRouter uses `/api/v1/key`; Gemini keeps
+     `/models` plus a 400-body check; NVIDIA has no authenticated GET anywhere
+     under /v1, so its probe POSTs a one-token completion.
+
+     It survived because every key test mocks the network -- the mock returned
+     whatever status the test asked for, so it could never notice the real endpoint
+     ignored the key. The release checklist listed "validate against a REAL
+     provider" as an owner task precisely because of this gap, and it went unrun.
+
+     Two things fell out of the fix:
+     - A pinned probe model can be retired, and NVIDIA answers 410 for one BEFORE
+       checking auth, so a GOOD key comes back unverified. That is now
+       `probe_unavailable` -- explicitly NOT "rejected", so nobody hunts a key that
+       is fine. This is not theoretical: the first model chosen here was already
+       retired, and this branch is what surfaced it.
+     - `installer/config.default.yaml` shipped `nim_heavy: z-ai/glm-5.2`, which
+       NVIDIA retired on 2026-08-21 and no longer lists. Every user who added an
+       NVIDIA key got a dead heavy brain. Now `openai/gpt-oss-120b`, verified live.
+
+     One mutation exposed a vacuous test of my own: the key-scrubbing assertion
+     checked only the returned payload, which is built from a template and never
+     includes the response body -- so it passed with the scrub deleted. It now
+     spies on what the classifier actually receives.

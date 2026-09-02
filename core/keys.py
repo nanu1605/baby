@@ -16,9 +16,14 @@ SECURITY POSTURE -- the reason this module exists rather than a few inline lines
     setup.json. Only `.env` holds key material. Everything this module returns to
     a caller is either a boolean, a classification, or a `mask()`ed form.
   * Validation is a REAL network call before the key is trusted, so a typo is
-    caught in the wizard instead of at the first cloud escalation. It is a
-    GET /models auth check (the same probe NvidiaProvider.probe already uses):
-    it proves DNS + TLS + auth without spending generation quota.
+    caught in the wizard instead of at the first cloud escalation. The probe is
+    chosen PER PROVIDER (KeySpec.probe_url), and that is the whole point: this
+    started as one shared GET {base_url}/models, which turned out to be a public
+    endpoint on OpenRouter and NVIDIA -- both answered 200 to a garbage key, and
+    OpenRouter answers 200 with no Authorization header at all. Every key the
+    wizard collected was reported "works" without being checked. Never take a
+    vendor's /models as an auth check without confirming it 401s unauthenticated.
+    NVIDIA has no authenticated GET, so its probe spends exactly one token.
   * The key travels in an Authorization header, never a query string.
   * `.env` is written with inheritance stripped and a single owner-only grant, so
     a loosened parent ACL cannot widen it after the fact.
@@ -52,16 +57,34 @@ class KeySpec:
     env: str
     label: str
     role: str  # primary | backstop | heavy
-    base_url: str  # OpenAI-compatible root; {base_url}/models is the auth probe
+    base_url: str  # OpenAI-compatible root the provider itself will call
     signup_url: str  # "get a key" deep link shown in the wizard
     prefix: str  # expected leading marker, "" when the vendor has none
     required_for: tuple[str, ...]  # install modes that cannot finish without it
     note: str
+    # The endpoint that ACTUALLY requires the key. Per-provider on purpose: a
+    # single shared {base_url}/models probe passed every string it was ever given
+    # on two of these three hosts. Never assume; check the vendor.
+    probe_url: str
+    # None -> GET the probe_url. Otherwise POST this JSON, for a vendor with no
+    # authenticated GET at all.
+    probe_body: dict | None = None
 
+
+# The NVIDIA probe has to spend one token, so keep the model small and the reply
+# to a single token. Pinned rather than taken from config: nim_heavy is the
+# user's choice and may be swapped for something huge or (as happened) retired.
+#
+# A retired probe model is the failure mode to watch: NVIDIA answers 410/404 for
+# one BEFORE it ever looks at the key, so a good key would come back unverified.
+# _classify_status maps that to probe_unavailable rather than "rejected", which is
+# how this exact staleness was caught -- but the model still needs replacing when
+# it happens. tests/manual/v6_release_checklist.md asks for a live check.
+_NVIDIA_PROBE_MODEL = "openai/gpt-oss-20b"
 
 # Ordered: the wizard asks for the primary first, then the optional extras.
-# base_url mirrors installer/config.default.yaml so the probe hits the same host
-# the provider will.
+# base_url mirrors installer/config.default.yaml so the provider hits the same
+# host; probe_url is chosen separately, per the note on KeySpec.
 KEYS: tuple[KeySpec, ...] = (
     KeySpec(
         env="OPENROUTER_API_KEY",
@@ -73,6 +96,10 @@ KEYS: tuple[KeySpec, ...] = (
         required_for=("cloud_only",),
         note="The main cloud brain. Required for a cloud-only install; optional "
         "on a Full install, which can run entirely on your own GPU.",
+        # /models is PUBLIC here -- it answers 200 with no Authorization header at
+        # all. /key returns the calling key's own metadata, so it is 401 for a bad
+        # key and for no key.
+        probe_url="https://openrouter.ai/api/v1/key",
     ),
     KeySpec(
         env="GEMINI_API_KEY",
@@ -84,6 +111,8 @@ KEYS: tuple[KeySpec, ...] = (
         required_for=(),
         note="Optional free-tier backstop used when the main brain is rate "
         "limited or down.",
+        # This one does authenticate its /models -- but answers 400, not 401.
+        probe_url="https://generativelanguage.googleapis.com/v1beta/openai/models",
     ),
     KeySpec(
         env="NVIDIA_API_KEY",
@@ -94,6 +123,15 @@ KEYS: tuple[KeySpec, ...] = (
         prefix="nvapi-",
         required_for=(),
         note="Optional heavier model for planning-grade requests.",
+        # Nothing NVIDIA serves under /v1 authenticates on GET -- /models and
+        # /models/{id} are both public. A one-token completion is the cheapest
+        # request that actually checks the key.
+        probe_url="https://integrate.api.nvidia.com/v1/chat/completions",
+        probe_body={
+            "model": _NVIDIA_PROBE_MODEL,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 1,
+        },
     ),
 )
 
@@ -159,15 +197,44 @@ def looks_like(env: str, key: str) -> bool:
     return True
 
 
-def _classify_status(code: int, label: str) -> dict:
+# Only ever matched against a response body to tell a 400 "your key is wrong"
+# apart from a 400 "your request is malformed".
+_BAD_KEY_BODY = re.compile(
+    r"api[ _-]?key|unautheni?ticated|unauthorized|invalid credential|permission denied",
+    re.I,
+)
+
+
+def _classify_status(code: int, label: str, body: str = "") -> dict:
     """Map an auth-probe HTTP status onto an actionable outcome.
 
     401/403 is the case that matters: the key is wrong, and saying so plainly is
     the entire value of validating. 429 means the key is GOOD but throttled -- it
     must not be rejected, or a rate-limited user can never finish the wizard.
+
+    `body` is consulted ONLY to disambiguate a 400, because Gemini rejects a bad
+    key with 400 "Please pass a valid API key" rather than 401. It is never put in
+    a message and arrives with the key already scrubbed out of it.
     """
     if code == 200:
         return {"ok": True, "kind": "valid", "message": f"{label} key works."}
+    if code in (404, 410):
+        # The probe endpoint or its model is gone -- says nothing about the key.
+        # Reporting this as a rejection would send someone hunting a fine key.
+        return {
+            "ok": False,
+            "kind": "probe_unavailable",
+            "message": f"Couldn't check this key: {label}'s verification endpoint is "
+            "no longer available, so the key was NOT confirmed. This is a Baby bug, "
+            "not a problem with your key -- please report it.",
+        }
+    if code == 400 and _BAD_KEY_BODY.search(body or ""):
+        return {
+            "ok": False,
+            "kind": "invalid_key",
+            "message": f"{label} rejected this key. Check for a truncated paste or "
+            "a key that was revoked, then try again.",
+        }
     if code in (401, 403):
         return {
             "ok": False,
@@ -211,8 +278,9 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
     valid | rate_limited (both ok) | empty | invalid_key | no_credit |
     server_error | unexpected | network | unknown_key.
 
-    The probe is GET {base_url}/models with a Bearer header -- auth-only, so it
-    costs no tokens and works identically for all three OpenAI-compatible hosts.
+    The probe is per-provider (KeySpec.probe_url / probe_body), because the hosts
+    do NOT behave alike: a shared GET {base_url}/models accepted any string at all
+    on two of the three. The key always travels in a Bearer header.
     """
     s = spec(env)
     if s is None:
@@ -222,10 +290,11 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
         return {"ok": False, "kind": "empty", "message": "Paste a key first."}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(
-                f"{s.base_url.rstrip('/')}/models",
-                headers={"Authorization": f"Bearer {k}"},
-            )
+            headers = {"Authorization": f"Bearer {k}"}
+            if s.probe_body is None:
+                resp = await client.get(s.probe_url, headers=headers)
+            else:
+                resp = await client.post(s.probe_url, headers=headers, json=s.probe_body)
     except httpx.HTTPError as exc:
         # Reuse the provisioning classifier so "no internet" reads the same here
         # as it does during the download step. The key lives in a header, not the
@@ -240,7 +309,14 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
             "kind": "network",
             "message": f"Couldn't reach {s.label}. {detail['message']}",
         }
-    return _classify_status(resp.status_code, s.label)
+    # A body is read only so a 400 can be told apart from a malformed-request 400.
+    # Scrub the key out first: a vendor echoing the request back is exactly the
+    # kind of thing that turns a diagnostic into a leak.
+    try:
+        body = (resp.text or "")[:400].replace(k, "<key>")
+    except Exception:  # noqa: BLE001 -- classification must not fail on decoding
+        body = ""
+    return _classify_status(resp.status_code, s.label, body)
 
 
 # --- .env persistence -------------------------------------------------------

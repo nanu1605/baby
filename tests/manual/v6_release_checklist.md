@@ -72,6 +72,17 @@ for W3 and W5 — the dev box cannot fake any of it.
       rather than restarting.
 - [ ] **Bad API key** is rejected with "that key was rejected" — not a generic
       failure, and it is **not** written to `.env`.
+- [ ] **Key validation against the LIVE vendors, both directions.** Every unit
+      test here mocks the network, which is exactly how a probe that accepted any
+      string shipped. In each of the three wizard rows, press **Test** with a
+      deliberately mangled key and confirm it is **rejected**, then with a real
+      key and confirm it **works**. Six results; any "works" on a mangled key
+      means the probe is hitting an endpoint that does not authenticate.
+- [ ] A `probe_unavailable` result means **Baby's own check model was retired**,
+      not that the key is bad. If you see it, the probe model in `core/keys.py`
+      (and possibly `nim_heavy` in `installer/config.default.yaml`) needs
+      replacing with one NVIDIA still serves. `z-ai/glm-5.2` shipped dead once
+      already.
 - [ ] **Good API key** is accepted; `.env` exists in `%LOCALAPPDATA%\baby`.
 - [ ] `icacls "%LOCALAPPDATA%\baby\.env"` shows a **single user grant**, with
       SYSTEM and Administrators absent.

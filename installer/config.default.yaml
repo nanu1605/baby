@@ -37,7 +37,7 @@ models:
   nim_heavy:
     provider: nvidia
     base_url: https://integrate.api.nvidia.com/v1
-    model: z-ai/glm-5.2                 # optional heavy planning brain; needs NVIDIA_API_KEY
+    model: openai/gpt-oss-120b          # optional heavy planning brain; needs NVIDIA_API_KEY
     max_history_tokens: 28000
     temperature: 0.5
   embedder: intfloat/multilingual-e5-small

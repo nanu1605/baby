@@ -91,12 +91,23 @@ def test_looks_like_is_advisory_only():
 # --- validation -------------------------------------------------------------
 
 
-def _probe(monkeypatch, *, status: int | None = None, exc: Exception | None = None):
-    """Stand in for the network, capturing how the key was actually sent."""
+def _probe(
+    monkeypatch,
+    *,
+    status: int | None = None,
+    exc: Exception | None = None,
+    body: str = "",
+):
+    """Stand in for the network, capturing how the key was actually sent.
+
+    Records the METHOD too: one provider has no authenticated GET, so its probe is
+    a POST, and a mock that only understood GET would hide that entirely.
+    """
     seen: dict = {}
 
     class _Resp:
         status_code = status
+        text = body
 
     class _Client:
         def __init__(self, *a, **kw):
@@ -109,8 +120,13 @@ def _probe(monkeypatch, *, status: int | None = None, exc: Exception | None = No
             return False
 
         async def get(self, url, headers=None):
-            seen["url"] = url
-            seen["headers"] = headers or {}
+            seen.update(method="GET", url=url, headers=headers or {})
+            if exc is not None:
+                raise exc
+            return _Resp()
+
+        async def post(self, url, headers=None, json=None):
+            seen.update(method="POST", url=url, headers=headers or {}, json=json)
             if exc is not None:
                 raise exc
             return _Resp()
@@ -125,9 +141,10 @@ def test_valid_key_sends_a_bearer_header_and_no_query_string(monkeypatch):
     assert out["ok"] is True and out["kind"] == "valid"
     # The key travels in a header...
     assert seen["headers"]["Authorization"] == f"Bearer {_FAKE_KEY}"
-    # ...never in the URL, and the probe is the auth-only /models endpoint.
+    # ...never in the URL, and the probe is the endpoint the spec names.
     assert _FAKE_KEY not in seen["url"]
-    assert "?" not in seen["url"] and seen["url"].endswith("/models")
+    assert "?" not in seen["url"]
+    assert seen["url"] == keys.spec("OPENROUTER_API_KEY").probe_url
     # And the outcome carries no key material.
     assert _FAKE_KEY not in str(out)
 
@@ -704,3 +721,107 @@ def test_no_key_material_reaches_logs_bus_or_disk(tmp_path, monkeypatch, caplog)
         assert holders == [".env"], f"key material found in {holders}"
     finally:
         _close(db)
+
+
+# --- the probe must actually authenticate -----------------------------------
+# Every test above this line mocks the network, which is exactly how the original
+# bug survived: the probe was a shared GET {base_url}/models, and that endpoint is
+# PUBLIC on OpenRouter and NVIDIA. Both answered 200 to a garbage key -- OpenRouter
+# answers 200 with no Authorization header at all -- so the wizard told every user
+# their key "works" without ever checking it. On a cloud-only install that shipped
+# a non-functional app past its own validation step. A mock can never catch that,
+# so these pin the properties that made it possible.
+
+
+def test_no_probe_is_a_bare_models_listing():
+    """A vendor's /models is a catalogue, not an auth check. Two of the three serve
+    it unauthenticated. If a probe drifts back to one, validation silently becomes
+    a no-op again -- the single highest-value assertion in this file."""
+    for s in keys.KEYS:
+        assert not s.probe_url.rstrip("/").endswith("/models") or s.env == "GEMINI_API_KEY", (
+            f"{s.env} probes a /models listing; confirm it 401s unauthenticated first"
+        )
+
+
+def test_openrouter_probes_the_key_endpoint_not_the_catalogue():
+    """Named explicitly because it is the PRIMARY key -- the one a cloud-only
+    install cannot finish without, and the one the original bug always passed."""
+    s = keys.spec("OPENROUTER_API_KEY")
+    assert s.probe_url == "https://openrouter.ai/api/v1/key"
+
+
+def test_nvidia_probe_posts_because_it_has_no_authenticated_get(monkeypatch):
+    """NVIDIA serves /models AND /models/{id} publicly, so only a completion checks
+    the key. It costs one token; keep the request minimal."""
+    s = keys.spec("NVIDIA_API_KEY")
+    assert s.probe_body is not None
+    assert s.probe_body["max_tokens"] == 1
+
+    seen = _probe(monkeypatch, status=200)
+    asyncio.run(keys.validate_key("NVIDIA_API_KEY", _FAKE_KEY))
+    assert seen["method"] == "POST"
+    assert seen["json"]["model"] == s.probe_body["model"]
+    assert _FAKE_KEY not in seen["url"]
+    assert seen["headers"]["Authorization"] == f"Bearer {_FAKE_KEY}"
+
+
+def test_gemini_rejection_arrives_as_400_not_401(monkeypatch):
+    """Gemini answers 400 "Please pass a valid API key". Before the body was
+    consulted this fell through to the generic "unexpected HTTP" message, so a
+    plain wrong key read as a Baby problem."""
+    _probe(monkeypatch, status=400, body='{"error":{"message":"Please pass a valid API key"}}')
+    out = asyncio.run(keys.validate_key("GEMINI_API_KEY", _FAKE_KEY))
+    assert out["kind"] == "invalid_key" and out["ok"] is False
+
+
+def test_a_malformed_request_400_is_not_blamed_on_the_key(monkeypatch):
+    """The 400 branch keys off the body, so it must not swallow every 400."""
+    _probe(monkeypatch, status=400, body='{"error":{"message":"messages: field required"}}')
+    out = asyncio.run(keys.validate_key("GEMINI_API_KEY", _FAKE_KEY))
+    assert out["kind"] == "unexpected"
+
+
+def test_a_retired_probe_model_does_not_read_as_a_bad_key(monkeypatch):
+    """NVIDIA answers 410 for an end-of-life model BEFORE checking auth, so a good
+    key comes back unverified. Reporting that as a rejection would send someone
+    hunting a key that is fine. This is not hypothetical: the first probe model
+    chosen here was retired, and this branch is what surfaced it."""
+    _probe(monkeypatch, status=410, body='{"detail":"model has reached its end of life"}')
+    out = asyncio.run(keys.validate_key("NVIDIA_API_KEY", _FAKE_KEY))
+    assert out["kind"] == "probe_unavailable"
+    assert out["ok"] is False
+    assert "not" in out["message"].lower()  # says the key was NOT confirmed
+
+
+def test_a_probe_body_echoing_the_key_is_scrubbed_before_use(monkeypatch):
+    """The body is read to classify a 400, so a vendor that echoes the request back
+    hands us the key. Asserting only on the returned payload proves nothing here --
+    the message is built from a template and never includes the body, so that
+    version of this test passed with the scrub deleted. Assert on what the
+    classifier actually receives.
+    """
+    seen: dict = {}
+    real = keys._classify_status
+
+    def spy(code, label, body=""):
+        seen["body"] = body
+        return real(code, label, body)
+
+    monkeypatch.setattr(keys, "_classify_status", spy)
+    _probe(monkeypatch, status=400, body=f'{{"error":"bad api key {_FAKE_KEY}"}}')
+    out = asyncio.run(keys.validate_key("GEMINI_API_KEY", _FAKE_KEY))
+
+    assert _FAKE_KEY not in seen["body"], "the key reached the classifier unscrubbed"
+    assert "<key>" in seen["body"]
+    assert _FAKE_KEY not in str(out)
+
+
+def test_the_shipped_heavy_model_is_not_the_retired_one():
+    """installer/config.default.yaml shipped z-ai/glm-5.2 after NVIDIA retired it,
+    so every user who added an NVIDIA key got a dead heavy brain."""
+    import yaml
+
+    from core import paths
+
+    cfg = yaml.safe_load(paths._TEMPLATE.read_text(encoding="utf-8"))
+    assert cfg["models"]["nim_heavy"]["model"] != "z-ai/glm-5.2"
