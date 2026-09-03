@@ -119,6 +119,15 @@ for W3 and W5 — the dev box cannot fake any of it.
       key (not just list it), and Baby must restart itself and come back on cloud.
       Before this the panel was read-only and told the user to hand-edit `.env` --
       which stamps no `router_mode`, so even a correct edit left Baby local-only.
+- [ ] **Game mode on == GPU free, checked on the bar not the badge.** Right after
+      the wizard restarts, the header must show game mode on AND the VRAM bar low.
+      The wizard's verify step loads the 9B on purpose, so this is where a first
+      run showed game mode on next to 8.0 of 9 GB. Confirm with Ollama itself:
+      ```powershell
+      (Invoke-RestMethod http://127.0.0.1:11434/api/ps).models
+      ```
+      Expect nothing resident. Then press "Run a check" in setup & repair and look
+      again -- that probe loads the model too, and must give it back.
 - [ ] **A second launch, with everything already provisioned, does NOT restart.** A
       bounce there is an outage for nothing.
 - [ ] After finishing, **relaunch → the wizard does not reappear**.

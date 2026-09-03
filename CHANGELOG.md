@@ -113,6 +113,13 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   too, instead of listing them read-only and pointing at a text editor; and a key
   saved once setup is finished now restarts the backend to apply itself, since the
   router is built once at boot and would otherwise ignore it until the next launch.
+- **Game mode now actually frees the GPU.** A first run reached the desktop with
+  game mode on, the cloud badge lit, and the VRAM bar at 8.0 of 9 GB -- all three
+  true at once. Boot set the game-mode flag but never evicted anything, and the
+  wizard's own verify step loads the 9B on purpose to prove it answers, so the
+  restart landed in game mode on top of a resident model. The same probe runs
+  behind the repair panel's "Run a check", which cost 5 GB mid-game until Ollama's
+  keep_alive expired. All three paths now hand the VRAM back.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.

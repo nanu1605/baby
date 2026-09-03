@@ -223,6 +223,36 @@ def _gpu_recommendation() -> dict:
 RESTART_EXIT_CODE = 86
 
 
+# A hung unload must not hold the boot. Ollama frees a 9B in ~2s; this is slack.
+_EVICT_TIMEOUT_S = 15
+
+
+async def _evict_local_brain(provider: object) -> bool:
+    """Free the local model's VRAM when the router is in game/cloud mode.
+
+    The flag and the GPU are two different things. `health.check_ollama_model`
+    loads the 9B on purpose -- "1 token loads the weights into VRAM" is its own
+    comment -- so the wizard's verify step, every press of "Run a check", and any
+    earlier warm session all leave weights resident with nothing to evict them.
+    A first run reached the desktop with game mode ON, the badge lit, and 7.6 GB
+    of 8.5 held by a brain that was never going to answer anything.
+
+    Best-effort by design: an unload POST against an Ollama holding nothing is a
+    no-op, and failing to free VRAM must never take the app down. Returns whether
+    the eviction was actually attempted and completed.
+    """
+    if not getattr(provider, "game_mode", False):
+        return False
+    unload = getattr(getattr(provider, "daily", None), "unload", None)
+    if unload is None:
+        return False
+    try:
+        await asyncio.wait_for(unload(), timeout=_EVICT_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 -- freeing VRAM is never worth a failed boot
+        return False
+    return True
+
+
 def _restart_needed_to_apply(
     state: dict, provider: object, *, voice_failed: bool = False
 ) -> bool:
@@ -670,6 +700,9 @@ def create_app(ctx: UIContext) -> FastAPI:
             finally:
                 app.state.provisioning = False
                 app.state.provision_task = None
+                # provision() finishes with the functional re-verify, which loads
+                # the 9B. Same deal as the health endpoint.
+                await _evict_local_brain(ctx.agent.provider)
 
         # Hold a strong reference: a bare create_task can be GC'd at an await point
         # mid-run, silently halting the multi-GB provisioning.
@@ -708,6 +741,10 @@ def create_app(ctx: UIContext) -> FastAPI:
 
         mode = paths.read_setup().get("install_mode") or "cloud_only"
         results = await asyncio.to_thread(health.run_all, mode, "full", False)
+        # The Full-mode probe loads the 9B to prove it answers. Hand the VRAM back
+        # if the user is in game mode -- pressing "Run a check" mid-game should not
+        # cost them 5 GB until Ollama's keep_alive happens to expire.
+        await _evict_local_brain(ctx.agent.provider)
         return {
             "ok": health.overall_ok(results),
             "summary": health.readiness_summary(results),
@@ -1300,6 +1337,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> int:
     # toggle re-warms local + re-announces "Baby ready" when the owner turns it off.
     if cloud_mode and hasattr(provider, "game_mode"):
         provider.game_mode = True
+        # Setting the flag does not free the GPU, and on a first run the weights
+        # ARE loaded by this point: the wizard's verify step warm-pings the 9B and
+        # the backend then restarts into game mode on top of it.
+        if await _evict_local_brain(provider):
+            print("game mode: local brain evicted from VRAM")
 
     gamewatch = None
     if config.get("game_mode", {}).get("auto_detect") and hasattr(provider, "set_game_mode"):

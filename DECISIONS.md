@@ -1898,3 +1898,36 @@ Running log of non-obvious choices made during the build. Newest last.
      `restart_required: true` had been hardcoded in that response since W4 and read
      by nothing. It now means what it says: a restart is needed and nobody else is
      going to do it.
+
+147. **Game mode was on, the badge was lit, and the GPU was full.** Reported with a
+     screenshot of a first run: `game mode on`, cloud badge green, VRAM 8.0 of 9 GB.
+     Every one of those was telling the truth.
+
+     `run_ui` boots into cloud mode by setting `provider.game_mode = True` directly
+     and deliberately NOT calling `set_game_mode`, whose own comment explains why:
+     it "would try to unload a model that was never warmed + publish a spurious
+     status". On a first run that assumption is exactly backwards. The wizard's
+     last act is the functional re-verify, and `health.check_ollama_model` warm-pings
+     the 9B on purpose -- "1 token loads the weights into VRAM" is its own comment,
+     and loading it is the point of the check. The backend then restarts (#143) into
+     game mode on top of a model Ollama is already holding, and nothing evicts it.
+
+     Measured rather than argued, on the reporting machine: 1841 MiB before the
+     probe, 7785 MiB after, `/api/ps` showing qwen3.5:9b-q4_K_M resident at 5.31 GB,
+     `/stats` reporting `game_mode: true` throughout. A single `unload()` gave it
+     back in 2.2 seconds.
+
+     The flag and the GPU were two different things and only one of them was being
+     set. `_evict_local_brain` now runs wherever a model can end up resident behind
+     game mode's back: at boot, after the repair panel's "Run a check", and when
+     provisioning finishes -- all three run that same warm-ping. It changes no
+     routing logic; it only hands VRAM back.
+
+     Best-effort throughout, with a timeout: freeing memory must never be the reason
+     a launch fails or hangs. An unload against an Ollama holding nothing is a no-op,
+     so the call is safe to make unconditionally once game mode is on.
+
+     Worth noting what made this survive testing: it self-heals. Ollama's own default
+     keep_alive is 5 minutes and the verify ping does not override it, so the symptom
+     evaporates a few minutes after the first launch -- which is roughly how long it
+     takes to finish reading the wizard's last screen and go looking at the header.
