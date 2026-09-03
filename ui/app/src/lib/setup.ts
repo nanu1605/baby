@@ -121,6 +121,23 @@ export function rowBar(
   return { pct: ev.pct, label: ev.human ?? `${ev.pct}%` };
 }
 
+/**
+ * The words beside a row that has no byte bar.
+ *
+ * The steps with no Content-Length -- the two huggingface loaders and the
+ * wake-word download -- rendered as the bare word "working" for their whole run,
+ * because `rowBar` needs a `pct` they cannot produce and nothing else showed the
+ * `detail` the backend was already sending. Six minutes of that on the wake-word
+ * row was reported as a hung install. The detail says how many MB have landed and
+ * for how long nothing has moved, which is the entire difference between a slow
+ * download and a wedged one.
+ */
+export function rowNote(status: string, ev: SetupProgressEvent | undefined): string {
+  if (status === "pending") return "";
+  if (status === "working" && ev?.detail) return ev.detail;
+  return status;
+}
+
 /** Glyph for a row status (checklist icon). */
 export function stepGlyph(status: string): string {
   if (_DONE.has(status)) return "✓";

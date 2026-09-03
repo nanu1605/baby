@@ -31,6 +31,7 @@ import {
   recommendedMode,
   savedFileName,
   rowBar,
+  rowNote,
   unsavedKeyLabels,
   unsavedKeysWarning,
   rowStatus,
@@ -438,5 +439,32 @@ describe("savedFileName", () => {
   it("handles posix paths and junk", () => {
     expect(savedFileName("/home/x/logs/r.txt")).toBe("r.txt");
     expect(savedFileName("")).toBe("the report");
+  });
+});
+
+describe("rowNote", () => {
+  // The wake-word row read "Wake-word models (openWakeWord) · 19 MB   working"
+  // for six minutes and was reported as a hung install. It was downloading the
+  // whole time. Steps with no Content-Length get no bar, so this text is the only
+  // place their progress can appear.
+  it("shows the step's own detail while it is working", () => {
+    expect(rowNote("working", { dep: "wakeword", phase: "download", status: "working", detail: "downloading 8 of ~19 MB (2m)" })).toBe(
+      "downloading 8 of ~19 MB (2m)",
+    );
+  });
+
+  it("falls back to the status when a step sends no detail", () => {
+    expect(rowNote("working", { dep: "kokoro", phase: "download", status: "working" })).toBe("working");
+    expect(rowNote("working", undefined)).toBe("working");
+  });
+
+  it("says nothing at all for a row that has not started", () => {
+    expect(rowNote("pending", undefined)).toBe("");
+  });
+
+  it("never dresses up a finished or failed row", () => {
+    const ev = { dep: "wakeword", phase: "download", status: "done", detail: "wake-word models ready" };
+    expect(rowNote("done", ev)).toBe("done");
+    expect(rowNote("error", { ...ev, status: "error" })).toBe("error");
   });
 });

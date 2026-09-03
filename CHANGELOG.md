@@ -120,6 +120,15 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   restart landed in game mode on top of a resident model. The same probe runs
   behind the repair panel's "Run a check", which cost 5 GB mid-game until Ollama's
   keep_alive expired. All three paths now hand the VRAM back.
+- **Long downloads say how far along they are.** The wake-word step was reported as
+  a hung install: the row sat on "Wake-word models (openWakeWord) - 19 MB" for six
+  minutes with no other sign of life. It was downloading the whole time. The step
+  emitted a single event and then nothing, and even the text it did send was never
+  rendered -- the wizard row draws a bar when an event carries a percentage, and
+  falls back to the word "working" otherwise, which is every download without a
+  Content-Length. The wake-word, Whisper and embedder rows now count up in MB, say
+  when nothing has moved for a while, and give up at a ceiling instead of spinning
+  forever.
 - **An upgrade can no longer delete your data.** A double-clicked newer setup.exe
   makes NSIS run the OLD uninstaller first, so the uninstaller's "Delete application
   data" checkbox is shown -- live and destructive -- in the middle of what the user

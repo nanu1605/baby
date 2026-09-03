@@ -1979,3 +1979,41 @@ Running log of non-obvious choices made during the build. Newest last.
      deletes `%APPDATA%` and `%LOCALAPPDATA%` under the bundle id before any hook
      runs. For Baby that is the WebView2 cache, not user data -- %LOCALAPPDATA%\baby is where
      everything that matters lives, and that is the directory this guard protects.
+
+149. **A healthy six-minute download and a wedged one looked identical.** Reported
+     as "the installation is stuck at Wake-word models (openWakeWord) - 19 MB". It
+     was not stuck; it finished three minutes later. 19 MB of GitHub release assets
+     took 369s on the reporting machine, arriving as one file every 30-60s, and the
+     step said nothing at all for the whole of it.
+
+     Two separate holes, either of which alone produced the symptom.
+
+     The backend emitted one `working` event and then nothing until done, because
+     the wake-word download was written as a bare `await asyncio.to_thread(...)`.
+     #139 had already solved exactly this for the two huggingface loaders -- measure
+     the directory the loader fills, heartbeat off it, distinguish a stall from
+     normal quiet, give up at a ceiling -- and had left a test to stop it recurring.
+     That test named the two loaders it knew about, so the wake-word step was added
+     beside them and inherited the bug the test existed to prevent. It now enumerates
+     every `asyncio.to_thread` in the walk instead of listing the ones it remembers,
+     and permits only the bounded verify.
+
+     The runner was also welded to huggingface: it resolved a repo id from the
+     manifest and derived the cache path from `HF_HUB_CACHE`. openWakeWord is a
+     GitHub release, not a hub repo. Splitting the measuring loop (`_run_watched_step`)
+     from where the bytes are (`probe`) and how they read (`detail`) made the
+     wake-word step three lines, and it only became possible because #144 moved
+     those models into a directory we choose rather than the venv's site-packages.
+
+     The second hole was that none of that detail was ever displayed. The wizard row
+     renders a progress bar when the event carries a `pct`, and otherwise the bare
+     status word. Only downloads with a Content-Length produce a `pct`, so the hub
+     steps and the wake-word step have shown the word "working" and nothing else
+     since W3 -- their carefully-worded `detail` went to the event stream and the log
+     and was read by nobody. `rowNote` now puts the detail in the row's own text
+     slot when there is no bar, which is the actual fix for the thing the user saw.
+
+     Deliberately no `pct` for these steps: the bar is 160px with a centred label,
+     and "downloading 8 of ~19 MB (2m)" does not fit in it. A number carrying a `~`
+     is also more honest than a bar, since the total is the manifest's estimate
+     rather than a server's Content-Length.

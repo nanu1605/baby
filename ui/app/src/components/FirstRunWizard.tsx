@@ -26,6 +26,7 @@ import {
   restartHint,
   rowBar,
   rowStatus,
+  rowNote,
   stepGlyph,
   unsavedKeyLabels,
   unsavedKeysWarning,
@@ -241,7 +242,9 @@ function ProvisionStep({ onDone }: { onDone: () => void }) {
                   <span className="wizard-step-pct">{bar.label}</span>
                 </span>
               ) : (
-                <span className="wizard-step-state">{st === "pending" ? "" : st}</span>
+                <span className="wizard-step-state">
+                  {rowNote(st, progress[s.key])}
+                </span>
               )}
             </li>
           );

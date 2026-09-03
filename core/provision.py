@@ -331,7 +331,7 @@ def _download_openwakeword(target: Path) -> None:
 
 _HB_S = 15  # heartbeat period
 _STALL_S = 600  # no new bytes this long -> say so in the row
-_HUB_TIMEOUT_S = 3600  # hard ceiling: a step must resolve one way or the other
+_STEP_TIMEOUT_S = 3600  # hard ceiling: a step must resolve one way or the other
 
 
 def _hub_asset(dep_key: str) -> tuple[str, int]:
@@ -367,35 +367,52 @@ def _dir_bytes(path: Path | None) -> int:
     return total
 
 
-def _hub_detail(seen: int, size_mb: int, elapsed_s: float, stalled_s: float) -> str:
-    """The row's text. Pure, so the wording is unit-tested without a download."""
+def _bytes_detail(seen: int, size_mb: int, elapsed_s: float, stalled_s: float) -> str:
+    """The row's text for anything measured in bytes on disk. Pure, so the wording is
+    unit-tested without a download."""
     got = seen / (1024 * 1024)
-    mins = int(elapsed_s // 60)
-    # Past the download the loader builds the model in memory and the cache stops
-    # growing. That is not a stall, so don't cry wolf at the one moment it's normal.
-    if size_mb and got >= size_mb * 0.95:
-        return f"loading the model ({mins}m)"
     where = f"{got:.0f} of ~{size_mb} MB"
     if stalled_s >= _STALL_S:
         return f"{where} -- no new data for {int(stalled_s // 60)}m"
-    return f"downloading {where} ({mins}m)"
+    return f"downloading {where} ({int(elapsed_s // 60)}m)"
 
 
-async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEvent) -> None:
-    """Run a blocking hub loader, reporting progress measured from the cache dir.
+def _hub_detail(seen: int, size_mb: int, elapsed_s: float, stalled_s: float) -> str:
+    """As above, plus the phase only a hub loader has."""
+    got = seen / (1024 * 1024)
+    # Past the download the loader builds the model in memory and the cache stops
+    # growing. That is not a stall, so don't cry wolf at the one moment it's normal.
+    if size_mb and got >= size_mb * 0.95:
+        return f"loading the model ({int(elapsed_s // 60)}m)"
+    return _bytes_detail(seen, size_mb, elapsed_s, stalled_s)
+
+
+async def _run_watched_step(
+    dep: str,
+    loader: Callable[[], None],
+    *,
+    probe: Callable[[], int],
+    detail: Callable[[int, float, float], str],
+    done_detail: str = "ready",
+    on_event: OnEvent,
+) -> None:
+    """Run a blocking loader that reports nothing, and narrate it from `probe`.
+
+    `probe` returns bytes on disk; `detail(seen, elapsed_s, stalled_s)` turns that
+    into the row's text. Every downloader we do not control goes through here --
+    they all share the same failure mode, which is a step that looks identical
+    whether it is working or wedged.
 
     The thread cannot be cancelled, so the timeout does not kill the download -- it
     ends our claim to be working and lets the wizard show a real, retryable error
     instead of a spinner with no end condition.
     """
-    repo, size_mb = _hub_asset(dep)
-    cache = _hub_cache_dir(repo)
     started = time.monotonic()
-    seen = last_seen = _dir_bytes(cache)
+    seen = last_seen = probe()
     moved_at = started
 
     on_event(_event(dep, "download", status="working",
-                    detail=_hub_detail(seen, size_mb, 0.0, 0.0), bytes=seen))
+                    detail=detail(seen, 0.0, 0.0), bytes=seen))
 
     task = asyncio.ensure_future(asyncio.to_thread(loader))
     try:
@@ -404,18 +421,18 @@ async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEve
             if done:
                 break
             now = time.monotonic()
-            seen = _dir_bytes(cache)
+            seen = probe()
             if seen > last_seen:
                 last_seen, moved_at = seen, now
             elapsed = now - started
-            if elapsed > _HUB_TIMEOUT_S:
+            if elapsed > _STEP_TIMEOUT_S:
                 raise TimeoutError(
                     f"{manifest.get(dep).label} made no progress for "
                     f"{int(elapsed // 60)} minutes -- giving up so this can be retried"
                 )
             on_event(_event(dep, "download", status="working", bytes=seen,
                             elapsed_s=int(elapsed),
-                            detail=_hub_detail(seen, size_mb, elapsed, now - moved_at)))
+                            detail=detail(seen, elapsed, now - moved_at)))
         await task  # re-raise whatever the loader raised
     except Exception as exc:  # noqa: BLE001 -- classify, never a raw HF/httpx trace
         # A running executor thread ignores cancel(), so the loader may still finish
@@ -427,7 +444,43 @@ async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEve
         task.add_done_callback(lambda t: None if t.cancelled() else t.exception())
         on_event(_event(dep, "error", status="error", **classify_error(str(exc))))
         raise
-    on_event(_event(dep, "download", status="done", detail="ready"))
+    on_event(_event(dep, "download", status="done", detail=done_detail))
+
+
+async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEvent) -> None:
+    """A hub loader, narrated from the huggingface cache directory it fills."""
+    repo, size_mb = _hub_asset(dep)
+    cache = _hub_cache_dir(repo)
+    await _run_watched_step(
+        dep,
+        loader,
+        probe=lambda: _dir_bytes(cache),
+        detail=lambda seen, elapsed, stalled: _hub_detail(seen, size_mb, elapsed, stalled),
+        on_event=on_event,
+    )
+
+
+async def _run_wakeword_step(target: Path, *, on_event: OnEvent) -> None:
+    """openWakeWord's 19 MB, narrated from the directory we now own.
+
+    Reported as a hang: the row sat on "Wake-word models (openWakeWord) - 19 MB"
+    for six minutes with no other sign of life, because the step emitted one
+    `working` event and then nothing until it finished. It was not stuck -- 19 MB
+    of GitHub release assets took 369s on the reporting machine, arriving as one
+    file every 30-60s -- but a healthy six minutes and a wedged one looked exactly
+    the same. The downloader reports no bytes of its own; the target directory does,
+    now that the models live somewhere we choose (core.paths.wakeword_dir) instead
+    of inside the venv.
+    """
+    size_mb = sum(a.approx_mb for a in manifest.get("wakeword").assets)
+    await _run_watched_step(
+        "wakeword",
+        lambda: _download_openwakeword(target),
+        probe=lambda: _dir_bytes(target),
+        detail=lambda seen, elapsed, stalled: _bytes_detail(seen, size_mb, elapsed, stalled),
+        done_detail="wake-word models ready",
+        on_event=on_event,
+    )
 
 
 # --- the plan (what the wizard checklist shows, in walk order) --------------
@@ -490,12 +543,10 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
         await _fetch_if_absent(asset.url, dest, on_event=on_event, dep="kokoro")
 
     # openWakeWord assets (into models_dir, NOT the venv; skips any already present).
-    on_event(_event("wakeword", "download", status="working", detail="fetching wake-word models"))
-    await asyncio.to_thread(_download_openwakeword, paths.wakeword_dir())
-    on_event(_event("wakeword", "download", status="done", detail="wake-word models ready"))
+    await _run_wakeword_step(paths.wakeword_dir(), on_event=on_event)
 
-    # HF-cache auto-downloads. The hub reports no bytes of its own, so _run_hub_step
-    # measures the cache dir and enforces a ceiling -- see its docstring.
+    # HF-cache auto-downloads. The hub reports no bytes of its own, so the step
+    # measures the cache dir and enforces a ceiling -- see _run_watched_step.
     for dep, loader in (("whisper", _download_whisper), ("embedder", _download_embedder)):
         await _run_hub_step(dep, loader, on_event=on_event)
 

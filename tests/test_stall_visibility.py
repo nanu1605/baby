@@ -113,7 +113,7 @@ def test_hub_step_gives_up_at_the_ceiling(monkeypatch, tmp_path):
     """A loader that never returns must not hold the wizard open forever. The thread
     cannot be killed, so the contract is only that WE stop claiming to be working."""
     monkeypatch.setattr(provision, "_HB_S", 0.01)
-    monkeypatch.setattr(provision, "_HUB_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(provision, "_STEP_TIMEOUT_S", 0.05)
     monkeypatch.setattr(provision, "_hub_cache_dir", lambda repo: tmp_path)
 
     stop = asyncio.Event()
@@ -152,15 +152,101 @@ def test_hub_step_reports_a_loader_failure_classified(monkeypatch, tmp_path):
     assert "Traceback" not in events[-1]["message"]
 
 
+# --- the wake-word step ------------------------------------------------------
+# Reported as "the installation is stuck at Wake-word models (openWakeWord) - 19 MB".
+# It was not stuck. 19 MB of GitHub release assets took 369s on the reporting machine,
+# one file every 30-60s, and the step said nothing for the whole of it -- so a healthy
+# six minutes and a wedged one rendered identically. Unlike the hub steps this one now
+# writes into a directory we chose (core.paths.wakeword_dir), so the bytes are ours to
+# count.
+
+
+def test_the_wake_word_step_reports_progress_while_it_downloads(monkeypatch, tmp_path):
+    monkeypatch.setattr(provision, "_HB_S", 0.01)
+    target = tmp_path / "openwakeword"
+    target.mkdir()
+
+    def drip() -> None:
+        import time as _t
+
+        for i in range(4):
+            (target / f"m{i}.onnx").write_bytes(b"x" * 200_000)
+            _t.sleep(0.05)
+
+    monkeypatch.setattr(provision, "_download_openwakeword", lambda t: drip())
+    events: list = []
+    asyncio.run(provision._run_wakeword_step(target, on_event=events.append))
+
+    working = [e for e in events if e["status"] == "working"]
+    assert len(working) > 1, "no heartbeat -- the row would look stuck again"
+    assert [e["bytes"] for e in working] == sorted(e["bytes"] for e in working)
+    assert working[-1]["bytes"] > working[0]["bytes"], "the bytes never moved"
+    assert events[-1]["status"] == "done"
+    assert events[-1]["detail"] == "wake-word models ready"
+
+
+def test_the_wake_word_row_says_how_far_along_it_is(monkeypatch, tmp_path):
+    """The row's text has to carry the number. "working" is what it said before."""
+    monkeypatch.setattr(provision, "_HB_S", 0.01)
+    target = tmp_path / "openwakeword"
+    target.mkdir()
+
+    def drip() -> None:
+        import time as _t
+
+        (target / "a.onnx").write_bytes(b"x" * (8 * 1024 * 1024))
+        _t.sleep(0.08)
+
+    monkeypatch.setattr(provision, "_download_openwakeword", lambda t: drip())
+    events: list = []
+    asyncio.run(provision._run_wakeword_step(target, on_event=events.append))
+    details = [e["detail"] for e in events if e["status"] == "working"]
+    assert any(re.search(r"\d+ of ~\d+ MB", d) for d in details), details
+
+
+def test_the_wake_word_step_gives_up_at_the_ceiling(monkeypatch, tmp_path):
+    """Shared with the hub steps, but pinned here too: this is the row a user sat in
+    front of for six minutes, and an unbounded one has no end condition at all."""
+    monkeypatch.setattr(provision, "_HB_S", 0.01)
+    monkeypatch.setattr(provision, "_STEP_TIMEOUT_S", 0.05)
+
+    stop = asyncio.Event()
+
+    def never_returns() -> None:
+        import time as _t
+
+        for _ in range(200):  # bounded so a failing test can't hang the suite
+            if stop.is_set():
+                return
+            _t.sleep(0.01)
+
+    monkeypatch.setattr(provision, "_download_openwakeword", lambda target: never_returns())
+    events: list = []
+    with pytest.raises(TimeoutError):
+        asyncio.run(provision._run_wakeword_step(tmp_path, on_event=events.append))
+    stop.set()
+
+    err = [e for e in events if e["status"] == "error"]
+    assert err and err[-1]["retryable"] is True
+
+
 def test_every_indeterminate_step_goes_through_the_guarded_runner():
-    """The two hub loaders are the only steps with no byte progress of their own. If
-    a future one is added straight to an `await asyncio.to_thread(...)`, it inherits
-    the original bug, so pin that the walk calls the guarded path."""
+    """No step in the walk may block on a loader nobody is narrating.
+
+    This test used to name the two hub loaders it knew about, and the wake-word
+    download was added straight to an `await asyncio.to_thread(...)` beside them --
+    inheriting the exact bug the list was written to prevent, and reported months
+    later as a six-minute hang. So enumerate instead of listing: every threaded call
+    in the walk has to be either the guarded runner or the bounded verify.
+    """
     src = (_ROOT / "core" / "provision.py").read_text(encoding="utf-8")
     walk = src.split("async def provision(", 1)[1]
-    assert "_run_hub_step" in walk
-    for loader in ("_download_whisper", "_download_embedder"):
-        assert f"asyncio.to_thread({loader})" not in walk, f"{loader} bypasses the guard"
+    threaded = re.findall(r"asyncio\.to_thread\(\s*([\w.]+)", walk)
+    # health.run_all is the verify step: bounded, and it owns its own row.
+    assert threaded == ["health.run_all"], (
+        f"{threaded} runs unwatched in the walk -- see provision._run_watched_step"
+    )
+    assert "_run_hub_step" in walk and "_run_wakeword_step" in walk
 
 
 # --- run.py must be able to record its own death ----------------------------

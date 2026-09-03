@@ -175,6 +175,16 @@ for W3 and W5 — the dev box cannot fake any of it.
 - [ ] "Create report" — confirm **no API key, no username, no owner name** in the
       output before you post it anywhere.
 
+### Progress is legible while it runs
+
+- [ ] During the first run, the **Wake-word models**, **Whisper** and **Memory
+      embedder** rows count up ("downloading 8 of ~19 MB (2m)") rather than showing
+      the bare word "working". These three have no Content-Length, so this text is
+      the only progress they can show; the wake-word row reading "working" for six
+      minutes is what got reported as a hung install.
+- [ ] Pull the network mid-download and leave it: within ten minutes the row says
+      "no new data for Nm" rather than continuing to look busy.
+
 ## 5. Uninstall
 
 The W5 fix. Verify both branches.

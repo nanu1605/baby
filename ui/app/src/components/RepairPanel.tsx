@@ -12,6 +12,7 @@ import {
   firstError,
   provisionOutcome,
   savedFileName,
+  rowNote,
   stepGlyph,
   type InstallMode,
 } from "../lib/setup";
@@ -198,7 +199,11 @@ export default function RepairPanel() {
               {Object.keys(progress).map((k) => (
                 <li key={k}>
                   {stepGlyph(progress[k].status)} {k}
-                  {progress[k].human ? ` — ${progress[k].human}` : ""}
+                  {progress[k].human
+                    ? ` — ${progress[k].human}`
+                    : rowNote(progress[k].status, progress[k])
+                      ? ` — ${rowNote(progress[k].status, progress[k])}`
+                      : ""}
                 </li>
               ))}
             </ul>
