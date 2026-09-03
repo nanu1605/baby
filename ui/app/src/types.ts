@@ -145,6 +145,8 @@ export interface Stats {
   /** V3 sphere gate — ui.brain (code-defaulted "3d"; "2d" = v3 canvas rollback).
    *  v5 adds ui.history ("on"/"off") — the chat-history sidebar rollback flag. */
   ui?: { brain: string; history?: string };
+  /** v6 first-run wizard state (core/paths.py setup.json + is_installed). */
+  setup?: SetupState;
   /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
   local_model_loaded?: boolean;
   tokens?: {
@@ -161,6 +163,145 @@ export interface Stats {
       by_brain?: Record<string, number>;
     };
   };
+}
+
+/** v6 first-run wizard state off /stats. `installed` is the dev-vs-installed gate
+ *  (false in a checkout → the wizard never shows); `complete` flips only when the
+ *  whole wizard finishes (W5); `provisioned` (W3) = deps fetched + verified. */
+export interface SetupState {
+  complete: boolean;
+  install_mode: string | null;
+  installed: boolean;
+  provisioned: boolean;
+}
+
+/** GET /api/setup/plan — the ordered provisioning checklist for the chosen mode. */
+export interface SetupStep {
+  key: string;
+  label: string;
+  required: boolean;
+  size_mb: number;
+}
+export interface SetupPlan {
+  mode: string;
+  steps: SetupStep[];
+}
+
+/** One provisioning progress event (bus `setup_progress` / GET /api/setup/status). */
+export interface SetupProgressEvent {
+  dep: string;
+  phase: string;
+  status: string; // working|done|present|skip|pass|fail|error|needs_install
+  detail?: string;
+  message?: string;
+  pct?: number;
+  human?: string;
+  bytes_done?: number;
+  bytes_total?: number;
+}
+export interface SetupStatus {
+  provisioning: boolean;
+  progress: Record<string, SetupProgressEvent>;
+}
+
+/** GET /api/setup/keys — one row per API key Baby can use.
+ *  `masked` is the ONLY rendering of a key that ever reaches the client: the
+ *  server never returns key material, so the UI has nothing to leak. */
+export interface SetupKeyRow {
+  env: string;
+  label: string;
+  role: "primary" | "backstop" | "heavy";
+  signup_url: string;
+  prefix: string;
+  note: string;
+  required: boolean;
+  present: boolean;
+  masked: string;
+}
+/** Whether the wizard is allowed to finish, and what is missing if not. */
+export interface SetupCanFinish {
+  ok: boolean;
+  missing: string | null;
+  message: string;
+}
+export interface SetupKeys {
+  mode: string;
+  keys: SetupKeyRow[];
+  can_finish: SetupCanFinish;
+}
+
+/** POST /api/setup/keys{,/validate} — the outcome of a real vendor auth probe.
+ *  kind: valid | rate_limited | cleared (ok) · invalid_key | no_credit |
+ *  network | server_error | unexpected | empty | unknown_key (not ok). */
+export interface SetupKeyResult {
+  env: string;
+  ok?: boolean;
+  saved?: boolean;
+  kind: string;
+  message: string;
+  secured?: boolean;
+  router_mode?: string;
+  /** A restart is needed for this key to take effect and nobody is doing it for you. */
+  restart_required?: boolean;
+  /** The shell owns this backend and is restarting it now — no user action needed. */
+  restarting?: boolean;
+  keys?: SetupKeyRow[];
+  can_finish?: SetupCanFinish;
+}
+
+/** GET /api/setup/disclosure — what Baby can do, in the user's words. Wording
+ *  follows the install mode (a cloud-only build must not claim chats stay local). */
+export interface SetupDisclosureItem {
+  key: string;
+  title: string;
+  detail: string;
+}
+export interface SetupDisclosure {
+  mode: string;
+  items: SetupDisclosureItem[];
+  acknowledged: boolean;
+}
+
+/** POST /api/setup/complete — the wizard's terminal stamp. */
+export interface SetupComplete {
+  complete: boolean;
+  install_mode: string | null;
+  router_mode?: string;
+  restart_recommended?: boolean;
+  /** The shell owns this backend and is restarting it now — no user action needed. */
+  restarting?: boolean;
+}
+
+/** GET /api/setup/health — the re-runnable functional probe behind repair. */
+export interface SetupHealthResult {
+  name: string;
+  required: boolean;
+  ok: boolean;
+  status: string; // pass | fail | skip
+  detail: string;
+}
+export interface SetupHealth {
+  ok: boolean;
+  summary: string;
+  results: SetupHealthResult[];
+}
+
+/** GET /api/diagnostics — already scrubbed server-side; safe to show and share. */
+export interface DiagnosticsReport {
+  report: Record<string, unknown>;
+  text: string;
+  saved_to: string | null;
+}
+
+/** GET /api/setup/gpu — VRAM snapshot + the Full-vs-cloud-only recommendation. */
+export interface SetupGpu {
+  has_nvidia: boolean;
+  gpu_name: string | null;
+  vram_total_gb: number | null;
+  vram_used_gb?: number;
+  meets_full_bar: boolean;
+  recommend: "full" | "cloud_only";
+  full_bar_gb: number;
 }
 
 export interface TaskRow {

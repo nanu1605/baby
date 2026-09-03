@@ -5,12 +5,21 @@
  */
 import type {
   ChatMessage,
+  DiagnosticsReport,
   ConversationDetail,
   ConversationList,
   GraphData,
   MemoryFact,
   NodeStats,
   SearchResponse,
+  SetupComplete,
+  SetupDisclosure,
+  SetupGpu,
+  SetupHealth,
+  SetupKeyResult,
+  SetupKeys,
+  SetupPlan,
+  SetupStatus,
   Stats,
 } from "../types";
 
@@ -37,6 +46,68 @@ async function patchJSON(url: string, body: unknown): Promise<Response> {
 }
 
 export const getStats = () => getJSON<Stats>("/stats");
+
+// -- v6 first-run wizard -----------------------------------------------------
+
+/** GPU pre-check: detected VRAM + Full/cloud-only recommendation. */
+export const getSetupGpu = () => getJSON<SetupGpu>("/api/setup/gpu");
+
+/** Record the chosen install mode. Gates the first-run 9B download (W3).
+ *  Changing it after setup clears `provisioned`, because the other mode's
+ *  dependency set is different — the repair panel then re-provisions. */
+export const postSetupMode = (mode: "full" | "cloud_only") =>
+  postJSON("/api/setup/mode", { mode });
+
+/** Re-runnable functional health check (wheels + real model loads). Heavy. */
+export const getSetupHealth = () => getJSON<SetupHealth>("/api/setup/health");
+
+/** Scrubbed diagnostics report, safe to paste into a public issue. */
+export const getDiagnostics = (save = false) =>
+  getJSON<DiagnosticsReport>(`/api/diagnostics${save ? "?save=true" : ""}`);
+
+/** The ordered provisioning checklist for the chosen mode (W3). */
+export const getSetupPlan = () => getJSON<SetupPlan>("/api/setup/plan");
+
+/** Kick off first-run dependency provisioning (background task on the server). */
+export const postSetupProvision = () => postJSON("/api/setup/provision");
+
+/** Latest per-dependency provisioning snapshot (poll while it runs). */
+export const getSetupStatus = () => getJSON<SetupStatus>("/api/setup/status");
+
+/** Which API keys Baby can use, which are set (masked), and whether we may finish. */
+export const getSetupKeys = () => getJSON<SetupKeys>("/api/setup/keys");
+
+/** Test a key against its vendor WITHOUT saving it, so a bad paste never lands
+ *  on disk. The key goes in the POST body — never a query string. */
+export const postSetupKeyValidate = async (
+  env: string,
+  key: string,
+): Promise<SetupKeyResult> => {
+  const r = await postJSON("/api/setup/keys/validate", { env, key });
+  return (await r.json()) as SetupKeyResult;
+};
+
+/** Validate and persist a key to .env (empty string clears it). A rejected key
+ *  comes back 400 with a reason and is NOT written. */
+export const postSetupKey = async (
+  env: string,
+  key: string,
+): Promise<SetupKeyResult> => {
+  const r = await postJSON("/api/setup/keys", { env, key });
+  return (await r.json()) as SetupKeyResult;
+};
+
+/** What Baby can do on this machine, worded for the chosen install mode. */
+export const getSetupDisclosure = () =>
+  getJSON<SetupDisclosure>("/api/setup/disclosure");
+
+/** Finish the wizard. Refused without an explicit acknowledgement, and refused
+ *  for a cloud-only install that still has no working key. */
+export const postSetupComplete = async (): Promise<SetupComplete> => {
+  const r = await postJSON("/api/setup/complete", { acknowledged: true });
+  if (!r.ok) throw new Error(String(r.status));
+  return (await r.json()) as SetupComplete;
+};
 
 export const getGraph = () => getJSON<GraphData>("/api/graph");
 

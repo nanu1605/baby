@@ -14,10 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from core import paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.safety import SafetyGate
@@ -168,6 +169,9 @@ class UIContext:
     orchestrator: object | None = None  # workers.orchestrator.Orchestrator
     scheduler: object | None = None  # workers.scheduler.Scheduler, attached in run_ui
     voice: object | None = None  # voice.pipeline.VoicePipeline (None when off)
+    # Voice was asked for and could not load. Distinct from `voice is None`, which
+    # also covers "never requested" -- see _restart_needed_to_apply.
+    voice_failed: bool = False
     session_start: str = ""  # P5: SQLite-format ts marking this process's boot
 
     def turn_running(self) -> bool:
@@ -179,8 +183,123 @@ class UIContext:
         return bool(voice_running and voice_running())
 
 
+# v6 W2: the local-model bar for "Full" install mode. The daily 9B (q4) needs
+# ~6.6 GB resident + headroom; below this we recommend cloud-only (still runs,
+# just no local fallback). The user always makes the final call.
+_FULL_MODE_MIN_VRAM_GB = 8.0
+
+
+def _gpu_recommendation() -> dict:
+    """GPU/VRAM snapshot + a Full-vs-cloud-only recommendation for the first-run
+    wizard. Fail-soft: no NVIDIA GPU (or NVML unavailable) => cloud-only."""
+    from tools.system_stats import _gpu
+
+    gpu = _gpu()
+    if gpu is None:
+        return {
+            "has_nvidia": False,
+            "gpu_name": None,
+            "vram_total_gb": None,
+            "meets_full_bar": False,
+            "recommend": "cloud_only",
+            "full_bar_gb": _FULL_MODE_MIN_VRAM_GB,
+        }
+    total = gpu["vram_total_gb"]
+    meets = total >= _FULL_MODE_MIN_VRAM_GB
+    return {
+        "has_nvidia": True,
+        "gpu_name": gpu["name"],
+        "vram_total_gb": total,
+        "vram_used_gb": gpu["vram_used_gb"],
+        "meets_full_bar": meets,
+        "recommend": "full" if meets else "cloud_only",
+        "full_bar_gb": _FULL_MODE_MIN_VRAM_GB,
+    }
+
+
+# Handed to the shell as this process's exit status when the wizard has stamped a
+# router mode only a fresh boot can honour. Mirrored by RESTART_EXIT_CODE in
+# ui/shell/src-tauri/src/main.rs, which brings the backend straight back.
+RESTART_EXIT_CODE = 86
+
+
+# A hung unload must not hold the boot. Ollama frees a 9B in ~2s; this is slack.
+_EVICT_TIMEOUT_S = 15
+
+
+async def _evict_local_brain(provider: object) -> bool:
+    """Free the local model's VRAM when the router is in game/cloud mode.
+
+    The flag and the GPU are two different things. `health.check_ollama_model`
+    loads the 9B on purpose -- "1 token loads the weights into VRAM" is its own
+    comment -- so the wizard's verify step, every press of "Run a check", and any
+    earlier warm session all leave weights resident with nothing to evict them.
+    A first run reached the desktop with game mode ON, the badge lit, and 7.6 GB
+    of 8.5 held by a brain that was never going to answer anything.
+
+    Best-effort by design: an unload POST against an Ollama holding nothing is a
+    no-op, and failing to free VRAM must never take the app down. Returns whether
+    the eviction was actually attempted and completed.
+    """
+    if not getattr(provider, "game_mode", False):
+        return False
+    unload = getattr(getattr(provider, "daily", None), "unload", None)
+    if unload is None:
+        return False
+    try:
+        await asyncio.wait_for(unload(), timeout=_EVICT_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 -- freeing VRAM is never worth a failed boot
+        return False
+    return True
+
+
+def _restart_needed_to_apply(
+    state: dict, provider: object, *, voice_failed: bool = False
+) -> bool:
+    """True when the wizard has made THIS process's boot state obsolete.
+
+    Baby boots before the wizard runs, so on a first install it starts against a
+    machine that has none of what the wizard is about to fetch. Two things it cannot
+    pick up afterwards, both seen on real installs:
+
+    * `router.mode` is read once, at boot, and `build_provider` runs once against it.
+      A wizard that validates a cloud key stamps cloud_primary onto a process whose
+      provider is already a local-only ladder. Observed: a live, working key, a
+      stamped cloud_primary, and `/stats` with no `router` and no `game_mode` at all,
+      because the provider was a bare OllamaProvider. The cloud badge never lit and
+      the game-mode button POSTed to a provider with no set_game_mode.
+
+    * Voice loads at boot, and on a first install the wake-word models it needs have
+      not been downloaded yet. Observed, in this exact order:
+          voice: voice unavailable: NoSuchFile ... hey_jarvis_v0.1.onnx ... doesn't exist
+          Baby ready (text only) -- voice failed to load
+      and only THEN openWakeWord's downloads. Nothing re-attaches voice once
+      provisioning finishes, so a fresh install stays deaf for its whole first
+      session -- on a build whose headline feature is a wake word.
+
+    Restarting is the only way this process picks either up, and it happens once,
+    when the wizard finishes. The shell can do it only for a backend IT spawned -- an
+    always-on service must never be taken down by a wizard -- and BABY_SHELL_TRAY is
+    set on exactly those children.
+    """
+    if os.environ.get("BABY_SHELL_TRAY") != "1":
+        return False  # an attached service or a bare dev run: not ours to restart
+    if voice_failed:
+        return True
+    if state.get("router_mode") != "cloud_primary":
+        return False
+    from core.router import CloudRouter
+
+    return not isinstance(provider, CloudRouter)
+
+
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
+    # Set when the first-run wizard stamps a router mode this process cannot honour;
+    # run_ui watches the event and exits with RESTART_EXIT_CODE so the shell can bring
+    # the backend straight back on the stamped mode. See _restart_needed_to_apply.
+    app.state.restart_requested = False
+    app.state.restart_event = asyncio.Event()
     # Vanilla UI assets — always mounted so /classic keeps working regardless of
     # the ui.frontend flag (config-first rollback for the whole v3 branch).
     app.mount("/static", _NoCacheStatic(directory=WEB_DIR), name="static")
@@ -337,6 +456,17 @@ def create_app(ctx: UIContext) -> FastAPI:
         data["ui"] = {
             "brain": _ui_brain(ctx.config),  # V3 sphere gate (code-defaulted 3d)
             "history": _ui_history(ctx.config),  # v5 history sidebar (code-defaulted on)
+        }
+        _setup = paths.read_setup()  # v6 first-run wizard state ({} until installed)
+        data["setup"] = {
+            "complete": bool(_setup.get("setup_complete")),
+            "install_mode": _setup.get("install_mode"),
+            # The wizard only shows in an installed build -- never in a dev checkout,
+            # where setup.json is absent and `complete` would read false forever.
+            "installed": paths.is_installed(),
+            # W3: dependencies fetched + functionally verified (skips the dep step on
+            # a re-entry after a completed provision).
+            "provisioned": bool(_setup.get("provisioned")),
         }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
@@ -508,6 +638,328 @@ def create_app(ctx: UIContext) -> FastAPI:
             result["new_conversation_id"] = ctx.agent.conversation_id
         ctx.bus.publish("status", "ui", text="conversation deleted")
         return result
+
+    @app.get("/api/setup/gpu")
+    async def api_setup_gpu():
+        """First-run GPU pre-check: detected VRAM + a Full/cloud-only recommendation.
+        Pure read; NVML runs off-thread so a slow driver can't stall the loop."""
+        return await asyncio.to_thread(_gpu_recommendation)
+
+    @app.post("/api/setup/mode")
+    async def api_setup_mode(body: dict):
+        """Record the chosen install mode (Full local+cloud, or cloud-only). Gates
+        the first-run 9B download (W3). Does NOT set router.mode -- keys do that in
+        W4 -- so a keyless boot stays on the safe local_primary default."""
+        mode = body.get("mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse(
+                {"error": "mode must be 'full' or 'cloud_only'"}, status_code=400
+            )
+        current = paths.read_setup()
+        updates: dict = {"install_mode": mode}
+        changed = current.get("install_mode") not in (None, mode)
+        if changed:
+            # W5 mode switch: the new mode's dependency set is different (Full
+            # needs Ollama + the 9B that cloud-only never downloaded), so the old
+            # "provisioned" flag no longer describes this machine. Clearing it is
+            # what makes the repair panel actually re-provision instead of
+            # reporting a readiness it has not re-checked.
+            updates["provisioned"] = False
+        state = paths.write_setup(updates)
+        return {
+            "install_mode": state.get("install_mode"),
+            "changed": changed,
+            "provisioned": bool(state.get("provisioned")),
+        }
+
+    @app.post("/api/setup/provision")
+    async def api_setup_provision():
+        """Kick off first-run dependency provisioning for the chosen mode (W3). Runs
+        as a background task; progress streams on the bus (kind=setup_progress,
+        channel=setup) and a per-dep snapshot is kept for a reconnecting wizard."""
+        from core import provision
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        if getattr(app.state, "provisioning", False):
+            return {"status": "already running"}
+        app.state.provisioning = True
+        app.state.setup_progress = {}
+
+        def on_event(ev: dict) -> None:
+            app.state.setup_progress[ev.get("dep", "?")] = ev
+            ctx.bus.publish("setup_progress", "setup", **ev)
+
+        async def _run() -> None:
+            try:
+                await provision.provision(mode, on_event=on_event)
+            except Exception as exc:  # noqa: BLE001 -- surface, never crash the server
+                on_event({"dep": "provision", "phase": "error", "status": "error",
+                          "detail": str(exc)[:200]})
+            finally:
+                app.state.provisioning = False
+                app.state.provision_task = None
+                # provision() finishes with the functional re-verify, which loads
+                # the 9B. Same deal as the health endpoint.
+                await _evict_local_brain(ctx.agent.provider)
+
+        # Hold a strong reference: a bare create_task can be GC'd at an await point
+        # mid-run, silently halting the multi-GB provisioning.
+        app.state.provision_task = asyncio.create_task(_run())
+        return {"status": "started", "mode": mode}
+
+    @app.get("/api/setup/plan")
+    async def api_setup_plan():
+        """The ordered provisioning checklist for the chosen mode -- so the wizard can
+        show every step (incl. not-yet-started ones) upfront, not just live events."""
+        from core import provision
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        return {"mode": mode, "steps": provision.plan(mode)}
+
+    @app.get("/api/setup/status")
+    async def api_setup_status():
+        """Latest per-dependency provisioning snapshot (for a wizard that reconnects
+        mid-run and missed the live bus events)."""
+        return {
+            "provisioning": getattr(app.state, "provisioning", False),
+            "progress": getattr(app.state, "setup_progress", {}),
+        }
+
+    @app.get("/api/setup/health")
+    async def api_setup_health():
+        """Re-runnable FUNCTIONAL health check: imports + a real op per wheel, then
+        each model load (whisper/kokoro/e5/wake; +9B in Full). Returns a plain-language
+        readiness report that names any broken dep + its fix. Feeds the post-install
+        report and a later repair flow (W5). Off-thread -- the model loads are heavy."""
+        from dataclasses import asdict
+
+        from core import health
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        results = await asyncio.to_thread(health.run_all, mode, "full", False)
+        # The Full-mode probe loads the 9B to prove it answers. Hand the VRAM back
+        # if the user is in game mode -- pressing "Run a check" mid-game should not
+        # cost them 5 GB until Ollama's keep_alive happens to expire.
+        await _evict_local_brain(ctx.agent.provider)
+        return {
+            "ok": health.overall_ok(results),
+            "summary": health.readiness_summary(results),
+            "results": [asdict(r) for r in results],
+        }
+
+    # --- API keys (W4) ------------------------------------------------------
+    # These three handlers are the only place a raw key crosses the wire, so they
+    # are deliberately narrow: a key arrives in a POST body (never a query string,
+    # never a path), is proved against the vendor before it is trusted, and is
+    # written only to .env. Nothing here returns, logs, or stores a raw key --
+    # every response goes through keys.mask().
+    #
+    # They take a raw Request and parse the JSON themselves rather than declaring
+    # `body: dict`. FastAPI's validation error for a malformed body ECHOES that
+    # body back in `detail[].input` -- so a client that posted a bare string or a
+    # list containing the key would get the key reflected in a 422 (verified: it
+    # does). Parsing by hand means a malformed body can only ever produce a fixed
+    # message with nothing of the request in it.
+
+    async def _key_body(request: Request) -> tuple[str, str] | None:
+        """(env, key) from a POST body, or None when the body is not usable.
+
+        Never raises and never reports what it saw -- the caller answers with a
+        constant message, because anything derived from the body could be a key.
+        """
+        try:
+            data = await request.json()
+        except Exception:  # noqa: BLE001 -- malformed JSON must not echo the body
+            return None
+        if not isinstance(data, dict):
+            return None
+        env = data.get("env")
+        key = data.get("key")
+        if not isinstance(env, str) or (key is not None and not isinstance(key, str)):
+            return None
+        return env, key or ""
+
+    @app.get("/api/setup/keys")
+    async def api_setup_keys():
+        """Which keys Baby can use, which are already set (masked), and whether the
+        wizard is allowed to finish. Pure read -- no network, no key material."""
+        from core import keys as keymod
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        return {
+            "mode": mode,
+            "keys": keymod.key_status(mode),
+            "can_finish": keymod.can_finish(mode),
+        }
+
+    @app.post("/api/setup/keys/validate")
+    async def api_setup_keys_validate(request: Request):
+        """Test a key against its vendor WITHOUT saving it.
+
+        Lets the wizard show a red/green result while the user is still typing,
+        so a bad paste never reaches disk. The response carries a classification
+        and a plain message -- never the key, and never a raw exception string.
+        """
+        from core import keys as keymod
+
+        parsed = await _key_body(request)
+        if parsed is None or keymod.spec(parsed[0]) is None:
+            return JSONResponse({"error": "unknown key"}, status_code=400)
+        env, raw = parsed
+        result = await keymod.validate_key(env, raw)
+        return {"env": env, **result}
+
+    @app.post("/api/setup/keys")
+    async def api_setup_keys_save(request: Request):
+        """Validate a key and, only if it works, persist it to BABY_HOME/.env.
+
+        Then re-stamp router.mode from the resulting key state: with the primary
+        key present the wizard upgrades to cloud_primary; without it the mode
+        stays local_primary, which boots keyless instead of raising (the crash
+        this whole step exists to prevent). An empty key clears that entry.
+        """
+        from core import keys as keymod
+
+        parsed = await _key_body(request)
+        if parsed is None or keymod.spec(parsed[0]) is None:
+            return JSONResponse({"error": "unknown key"}, status_code=400)
+        env, raw = parsed
+        raw = raw.strip()
+
+        if raw:
+            result = await keymod.validate_key(env, raw)
+            if not result.get("ok"):
+                # Rejected keys are never written -- the wizard shows why instead.
+                return JSONResponse(
+                    {"env": env, "saved": False, **result}, status_code=400
+                )
+        else:
+            result = {"ok": True, "kind": "cleared", "message": "Key removed."}
+
+        receipt = await asyncio.to_thread(keymod.write_keys, {env: raw})
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        router_mode = keymod.router_mode_for(mode)
+        paths.write_setup({"router_mode": router_mode})
+        # A key added AFTER setup is finished has no wizard behind it to bring the
+        # backend back, and the provider was built at boot from the key state as it
+        # was then -- so the key lands in .env and changes nothing until the user
+        # happens to reopen Baby. Apply it here instead.
+        #
+        # Only once setup is complete. During the wizard /api/setup/complete owns
+        # the restart, and bouncing here would take the user's own screen away
+        # mid-flow, several steps before they have finished with it.
+        state = paths.read_setup()
+        restarting = bool(state.get("setup_complete")) and _restart_needed_to_apply(
+            state, ctx.agent.provider
+        )
+        if restarting:
+            app.state.restart_requested = True
+            app.state.restart_event.set()
+        ctx.bus.publish(
+            "status", "setup", text=f"{keymod.spec(env).label} key saved"
+        )
+        return {
+            "env": env,
+            "saved": True,
+            "kind": result.get("kind"),
+            "message": result.get("message"),
+            "secured": receipt["secured"],
+            "router_mode": router_mode,
+            # Honest now: "you must reopen Baby" ONLY when nothing is going to do it
+            # for you. It used to be hardcoded True and read by nothing at all.
+            "restart_required": not restarting,
+            "restarting": restarting,
+            "keys": keymod.key_status(mode),
+            "can_finish": keymod.can_finish(mode),
+        }
+
+    # --- disclosure + completion (W5) ---------------------------------------
+
+    @app.get("/api/setup/disclosure")
+    async def api_setup_disclosure():
+        """What Baby can do on this machine, in the user's words, at the moment it
+        matters. The EULA said it at install time, when nobody reads; this is the
+        same substance shown once the app is actually about to be used."""
+        from core import disclosure
+
+        mode = paths.read_setup().get("install_mode") or "cloud_only"
+        return {
+            "mode": mode,
+            "items": disclosure.items(mode),
+            "acknowledged": bool(paths.read_setup().get("disclosure_ack")),
+        }
+
+    @app.post("/api/setup/complete")
+    async def api_setup_complete(request: Request):
+        """Finish the wizard: record the acknowledgement and stamp setup_complete.
+
+        Two things are refused rather than papered over. Without an explicit
+        acknowledgement there is nothing to record -- the point is that the user
+        saw it. And a cloud-only install with no working key would stamp "done"
+        onto a build whose next boot has no brain to answer with, so the same
+        can_finish gate that holds the key step holds here too.
+        """
+        from core import keys as keymod
+
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 -- a malformed body is just "not acknowledged"
+            body = {}
+        if not isinstance(body, dict) or body.get("acknowledged") is not True:
+            return JSONResponse(
+                {"error": "acknowledgement required"}, status_code=400
+            )
+
+        mode = paths.read_setup().get("install_mode")
+        if mode not in ("full", "cloud_only"):
+            return JSONResponse({"error": "choose an install mode first"}, status_code=400)
+        gate = keymod.can_finish(mode)
+        if not gate["ok"]:
+            return JSONResponse({"error": gate["message"], **gate}, status_code=400)
+
+        state = paths.write_setup({"disclosure_ack": True, "setup_complete": True})
+        ctx.bus.publish("status", "setup", text="first-run setup finished")
+        restarting = _restart_needed_to_apply(
+            state, ctx.agent.provider, voice_failed=ctx.voice_failed
+        )
+        if restarting:
+            app.state.restart_requested = True
+            app.state.restart_event.set()  # run_ui stops uvicorn once this response is out
+        return {
+            "complete": bool(state.get("setup_complete")),
+            "install_mode": state.get("install_mode"),
+            "router_mode": state.get("router_mode"),
+            # .env is read at boot and the router is built once, so a key saved in
+            # this session only takes effect on the next launch.
+            "restart_recommended": bool(state.get("router_mode") == "cloud_primary"),
+            # ...and when the shell owns this process, that next launch is immediate:
+            # it restarts us rather than leaving the user on a build that silently
+            # cannot use the key they just entered.
+            "restarting": restarting,
+        }
+
+    @app.get("/api/diagnostics")
+    async def api_diagnostics(save: bool = False):
+        """A report the user can paste into a public issue.
+
+        Everything textual is scrubbed on the way out -- known .env values first,
+        then key-shaped strings (an old key still sitting in a log line), then the
+        Windows username and the owner's name/city. Key VALUES never appear, not
+        even masked: the last four characters are still key material once a report
+        is public. `save=true` also writes it next to the logs.
+        """
+        from core import diagnostics
+
+        report = await asyncio.to_thread(diagnostics.collect, None)
+        text = diagnostics.render(report)
+        saved = None
+        if save:
+            saved = str(await asyncio.to_thread(diagnostics.write_report, text))
+        return {"report": report, "text": text, "saved_to": saved}
 
     @app.get("/memory")
     async def memory_view(limit: int = 200):
@@ -841,7 +1293,7 @@ def _quiet_playwright_teardown(loop, context) -> None:
     loop.default_exception_handler(context)
 
 
-async def run_ui(config: dict, with_voice: bool = False) -> None:
+async def run_ui(config: dict, with_voice: bool = False) -> int:
     """Boot the full text stack: DB, model, tools, agent, UI server.
 
     with_voice=True additionally attaches the Phase 3 voice pipeline on its
@@ -854,7 +1306,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     from tools import files as files_tools
     from tools import web as web_tools
 
-    db = Database("baby.db")
+    db = Database(paths.db_path())
     asyncio.get_running_loop().set_exception_handler(_quiet_playwright_teardown)
     await db.connect()
     bus = EventBus()
@@ -885,6 +1337,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
     # toggle re-warms local + re-announces "Baby ready" when the owner turns it off.
     if cloud_mode and hasattr(provider, "game_mode"):
         provider.game_mode = True
+        # Setting the flag does not free the GPU, and on a first run the weights
+        # ARE loaded by this point: the wizard's verify step warm-pings the 9B and
+        # the backend then restarts into game mode on top of it.
+        if await _evict_local_brain(provider):
+            print("game mode: local brain evicted from VRAM")
 
     gamewatch = None
     if config.get("game_mode", {}).get("auto_detect") and hasattr(provider, "set_game_mode"):
@@ -953,6 +1410,19 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         await db.close()
         sys.exit(1)
 
+    async def _restart_watch() -> None:
+        """Stop uvicorn once the wizard asks to be restarted (_restart_needed_to_apply).
+
+        The brief wait is for the /api/setup/complete response itself: the wizard needs
+        to receive `restarting: true` and paint it before the socket goes away, or the
+        user's last view of Baby is a dead connection rather than a message.
+        """
+        await app.state.restart_event.wait()
+        await asyncio.sleep(0.75)
+        server.should_exit = True
+
+    restart_task = asyncio.create_task(_restart_watch())
+
     voice_pipeline = None
     voice_ok = False
     voice_notes: list[str] = []
@@ -981,6 +1451,10 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
         else:
             voice_pipeline = None
         ctx.voice = voice_pipeline
+        # On a first install the wake-word models do not exist yet -- the wizard
+        # fetches them minutes after this runs. Record the failure so finishing the
+        # wizard can restart into a machine that finally has them.
+        ctx.voice_failed = not voice_ok
 
     # Phase 4: notifications + background worker pool. Voice/telegram tiers
     # are injected as they come up; the pool works with toast-only too.
@@ -1130,3 +1604,6 @@ async def run_ui(config: dict, with_voice: bool = False) -> None:
             except Exception:  # noqa: BLE001
                 pass
         await db.close()
+        restart_task.cancel()
+    # The shell reads this: 86 means "bring me back", anything else means we are done.
+    return RESTART_EXIT_CODE if app.state.restart_requested else 0

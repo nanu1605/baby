@@ -1,5 +1,158 @@
 # Changelog
 
+## v6.0.0 -- public Windows installer (2026-09-01)
+
+Baby becomes something a stranger can install. v6 is a **distribution** release, not
+a feature one: the app logic is frozen -- no router, provider, or safety changes --
+and everything here wraps packaging, a first-run wizard, conservative public
+defaults, and per-user state relocation *around* the unchanged assistant. Ships as
+an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
+
+- **W0 -- packaging spike.** Proved the unknowns before writing installer code: the
+  crux is shipping Python, not the wizard. Bundled `uv` + first-run `uv sync`, with a
+  **functional wheel probe** (import + a real op per native wheel) because a green
+  `uv sync` is not proof. Ollama `/api/pull` resume verified. Engine stays NSIS --
+  which has no MSI Repair/Modify dialog, so repair and mode-switch move in-app.
+- **W1 -- installer skeleton.** `core/paths.py` resolves `config.yaml` / `.env` /
+  `baby.db` under `BABY_HOME` when set, else cwd, so a dev checkout is byte-identical.
+  A conservative shipped template (`safety.mode: enforce`, empty `auto_allow_app_close`,
+  blank owner PII), the EULA as the NSIS license page, per-user install (no admin), and
+  an **allowlisted** payload that can never carry `config.yaml`, `.env`, or `baby.db`.
+  Review caught the template shipping `cloud_primary`, which hard-crashes a keyless
+  boot under `pythonw`; it ships `local_primary` now.
+- **W2 -- GPU pre-check + install-mode fork.** An 8 GB VRAM bar recommends Full or
+  cloud-only; the user still decides. Wizard choices live in a separate `setup.json`
+  overlay, never a rewrite of `config.yaml`. `paths.is_installed()` gates the wizard so
+  it can never appear in a dev checkout.
+- **W3 -- first-run dependency orchestration.** A declarative 16-dependency manifest
+  (what auto-downloads vs what must be fetched), **functional health probes** at two
+  levels that load each model and exercise it, and a resumable orchestrator with
+  classified failures (proxy / no network / disk full / corrupt). The venv is built on
+  **first launch, not during install** -- a silent installer doing a ~1.5 GB sync would
+  freeze with no progress and leave a half-install. Fixed a real segfault (sherpa-onnx
+  binding System32's stale onnxruntime) and a PowerShell 5.1 footgun where a
+  `2>`-redirected `uv` call aborted the happy path on its own success output.
+- **W4 -- validated API keys, locked-down `.env`.** Keys are proved against the vendor
+  before they are trusted (a `GET /models` auth probe -- no quota spent, key in a
+  header, never a URL). A wrong key reads as a wrong key; a network failure reads as a
+  network failure; a rate-limited key is **accepted**, since the vendor recognised it.
+  Keys are written only to `.env`, merged line by line, and locked to the owner.
+  `router.mode` follows the key state rather than the user's intent, so the wizard can
+  never stamp a mode that crashes at boot.
+- **W5 -- public hardening.** The uninstaller's "delete application data" box removed
+  **nothing** -- it targeted a directory that never existed, so a user who ticked it
+  kept their API keys and every conversation; fixed with an NSIS hook. The wizard now
+  ends on a capability disclosure and finally stamps `setup_complete`. A diagnostics
+  report scrubs keys, usernames and owner details so it is safe to paste publicly. An
+  in-app **setup & repair** panel replaces the Repair/Modify dialog NSIS lacks. Public
+  install and signing docs explain the SmartScreen warning honestly.
+- **A stuck first run can no longer look like a working one.** Found by installing the
+  built `.exe` on a second machine, where the wizard sat on "Memory embedder --
+  working" for three hours against a backend that had already exited. Three holes
+  lined up: nothing watched the spawned backend (the port is probed once, at startup),
+  the two hub downloads emitted a single event for a multi-GB fetch so slow, wedged
+  and dead looked identical, and `run.py` opened its logfile *after* the imports that
+  can fail -- so the crash left no log at all. The shell now reports a backend that
+  exits, hub steps show progress read off the model cache and give up at a ceiling
+  instead of spinning forever, and the log opens first with `faulthandler` on, so a
+  native crash leaves a stack rather than stopping mid-line.
+- **A first run could crash the backend outright.** Voice loads the mic first and the
+  wake word second; on a first install the wake-word models are not downloaded yet, so
+  the load failed — and returned without closing the PortAudio stream it had already
+  opened. Dropping that still-running stream left the real-time audio thread calling a
+  callback the garbage collector was freeing underneath it, killing the process with
+  an access violation minutes later, during the embedder load. Two installs, same
+  stack, and nothing in it mentioned voice. A failed load now closes what it opened.
+- **An installed build kept no log at all.** The logfile was opened only when
+  `sys.stdout is None` -- what a windowed CPython gives you, and never what an
+  install gets: uv's venv `pythonw.exe` is a trampoline that re-execs the base
+  console `python.exe` and hands it live streams whose output goes nowhere. The
+  check passed, the file was never created, and every crash since v6 shipped has
+  been invisible -- surfacing to one user as a bare Windows dialog reading
+  "Python-CFFI error", which is cffi's fallback for having no stderr to report
+  through. Baby now keeps the file unconditionally and tees a console run into it,
+  rolling it at 5 MB. Also fixes the previous entry's real reason for leaving no
+  trace.
+- **A healthy Ollama no longer looks like a stalled one.** The Full-mode walk
+  answered the "Ollama runtime" row only when the daemon was missing, so an Ollama
+  that was already running left a permanent grey circle beside a ticked 9B download
+  -- a finished install reading as one still in progress.
+- **The first run no longer ends on a half-configured Baby.** The backend boots
+  *before* the wizard runs, against a machine that has none of what the wizard is
+  about to fetch — and it could pick up neither of the two things that changed under
+  it. `router.mode` is read once at boot, so a validated cloud key left the process on
+  its local-only ladder: the cloud badge never lit and the game-mode button did
+  nothing, on an install whose key was valid and working. Voice loads at boot too, so
+  on a first install it failed for want of wake-word models the wizard downloads
+  minutes later, and nothing re-attached it — a fresh install answered no wake word
+  for its entire first session. Finishing the wizard now exits with a restart code and
+  the shell — which spawned the backend and already watches the handle — brings it
+  straight back against the finished machine. Never applies to an always-on service,
+  which has nobody to restart it.
+- **Baby says which wake phrase it answers to.** A public install wakes on
+  **"Hey Jarvis"**: openWakeWord ships no phrase for Baby's own name, and the custom
+  model the config points at is owner-trained and not in the installer. The wizard's
+  disclosure step and `docs/INSTALL.md` now say so (and mention Ctrl+Alt+B), pinned by
+  test to the shipped config so the two cannot drift.
+- **A rebuilt venv no longer costs the user their wake word.** openWakeWord's downloader
+  defaults to writing its 19 MB of weights inside its own site-packages folder, and
+  `uv sync` reinstalling that wheel deletes the folder -- so any rebuilt venv left
+  Baby permanently deaf, with `setup_complete` already true so the wizard never
+  re-ran and nothing re-fetched them. Found by reinstalling after a data-deleting
+  uninstall, which is one of the ways the venv gets rebuilt. The models now live under
+  `%LOCALAPPDATA%\baby\models\openwakeword` beside the other weights, loaded by
+  explicit path, so a rebuilt venv no longer touches them; an older install's
+  copy is lifted out of the venv before the sync that would destroy it.
+- **A key can be added after setup, and testing one no longer loses it.** The key
+  step's `Test` button proves a key against the vendor and deliberately stores
+  nothing, but its success message ("OpenRouter key works.") reads as done -- and
+  Continue never checked whether anything had been saved, so a real install
+  finished the wizard with an empty `.env`, an unstamped router mode, and a user
+  who believed Baby was on the cloud. The field now says "Not saved yet" and the
+  step will not advance past an unsaved box. The setup & repair panel takes keys
+  too, instead of listing them read-only and pointing at a text editor; and a key
+  saved once setup is finished now restarts the backend to apply itself, since the
+  router is built once at boot and would otherwise ignore it until the next launch.
+- **Game mode now actually frees the GPU.** A first run reached the desktop with
+  game mode on, the cloud badge lit, and the VRAM bar at 8.0 of 9 GB -- all three
+  true at once. Boot set the game-mode flag but never evicted anything, and the
+  wizard's own verify step loads the 9B on purpose to prove it answers, so the
+  restart landed in game mode on top of a resident model. The same probe runs
+  behind the repair panel's "Run a check", which cost 5 GB mid-game until Ollama's
+  keep_alive expired. All three paths now hand the VRAM back.
+- **Long downloads say how far along they are.** The wake-word step was reported as
+  a hung install: the row sat on "Wake-word models (openWakeWord) - 19 MB" for six
+  minutes with no other sign of life. It was downloading the whole time. The step
+  emitted a single event and then nothing, and even the text it did send was never
+  rendered -- the wizard row draws a bar when an event carries a percentage, and
+  falls back to the word "working" otherwise, which is every download without a
+  Content-Length. The wake-word, Whisper and embedder rows now count up in MB, say
+  when nothing has moved for a while, and give up at a ceiling instead of spinning
+  forever.
+- **An upgrade can no longer delete your data.** A double-clicked newer setup.exe
+  makes NSIS run the OLD uninstaller first, so the uninstaller's "Delete application
+  data" checkbox is shown -- live and destructive -- in the middle of what the user
+  is doing as an upgrade. Ticking it there wiped %LOCALAPPDATA%\baby a second before
+  the new build installed onto the empty directory: keys, conversations, memory and
+  models, twice on a real machine. The template's `$UpdateMode` guard does not cover
+  it, because `$UpdateMode` is set only by the built-in updater's `/UPDATE` flag and
+  never by a human. The uninstaller now detects that an installer is waiting on it
+  (it is running in place rather than from a copy in the temp directory, which is
+  what `_?=` means) and keeps the data. Uninstalling for real -- Add/Remove Programs,
+  the Start Menu entry, `uninstall.exe` -- is unchanged and still honours the box.
+- **Licensed MIT.** The repository was previously all-rights-reserved, which made a
+  public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
+  SignPath Foundation's free code-signing track is open as well.
+- **W6 -- release.** Version aligned to 6.0.0 across all seven tracks (with a drift test),
+  the release checklist, and the always-green gate. Owner runs the clean-VM matrix,
+  then merges + tags `v6.0.0` and publishes the `.exe` + `SHA256SUMS.txt`.
+
+**Known limitations.** The build is **unsigned**, so SmartScreen warns -- verify the
+published checksum (see `docs/INSTALL.md`). Offline first-install is out of scope: the
+first run needs a network connection. Voice answers to **"Hey Jarvis"**, not "Hey
+Baby" -- the pretrained wake-word set has no phrase for Baby's own name; train your own
+with `scripts/wakeword_training.md`.
+
 ## v5.0.0 — chat history & default cloud mode (2026-07-11)
 
 Baby learns to look back and boots lighter. A collapsible **chat-history sidebar**

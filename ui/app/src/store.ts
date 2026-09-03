@@ -110,6 +110,11 @@ interface BrainState {
    *  can't corrupt the frozen viewed transcript. */
   viewingConversationId: number | null;
 
+  /** v6 first-run wizard dismissed for THIS session. The wizard re-prompts on the
+   *  next launch until the full flow (W5) stamps setup_complete; this only frees
+   *  the current session once the user has clicked through, never traps them. */
+  wizardDismissed: boolean;
+
   // chat
   messages: ChatMessage[];
   // gating
@@ -120,6 +125,8 @@ interface BrainState {
   toasts: Toast[];
   // UI chrome
   memoryOpen: boolean;
+  /** v6 W5: the in-app Repair/Modify surface (NSIS has no such dialog). */
+  repairOpen: boolean;
   rightTab: RightTab;
   rightCollapsed: boolean;
 
@@ -181,8 +188,11 @@ interface BrainState {
   // chrome
   openMemory: () => void;
   closeMemory: () => void;
+  openRepair: () => void;
+  closeRepair: () => void;
   setTab: (t: RightTab) => void;
   toggleRightPanel: () => void;
+  dismissWizard: () => void;
 }
 
 export const useBrain = create<BrainState>((set) => ({
@@ -205,12 +215,14 @@ export const useBrain = create<BrainState>((set) => ({
   focusFact: null,
   activeConversationId: null,
   viewingConversationId: null,
+  wizardDismissed: false,
 
   messages: [],
   activeConfirm: null,
   stats: null,
   toasts: [],
   memoryOpen: false,
+  repairOpen: false,
   rightTab: "chat",
   rightCollapsed: initCollapsed(),
 
@@ -406,8 +418,11 @@ export const useBrain = create<BrainState>((set) => ({
 
   openMemory: () => set({ memoryOpen: true }),
   closeMemory: () => set({ memoryOpen: false }),
+  openRepair: () => set({ repairOpen: true }),
+  closeRepair: () => set({ repairOpen: false }),
   setTab: (t) => set({ rightTab: t, rightCollapsed: false }),
   toggleRightPanel: () => set((st) => ({ rightCollapsed: !st.rightCollapsed })),
+  dismissWizard: () => set({ wizardDismissed: true }),
 }));
 
 /** Next client-side sequence number for the live-event ring (frames carry no seq). */

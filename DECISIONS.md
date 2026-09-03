@@ -1129,3 +1129,891 @@ Running log of non-obvious choices made during the build. Newest last.
       (`startup.cloud_mode: false` or a cloud key; the v6 installer wizard handles key
       entry for end users). Rollbacks: `ui.history: off`, `startup.cloud_mode: false` —
       both code-defaulted, never written to `config.yaml`.
+
+## v6 — Public Windows Installer (2026-07-11)
+
+127. **v6 W0 packaging spike — the crux is shipping Python, not the NSIS wizard.**
+     v6 turns Baby from a one-user dev checkout into a downloadable Windows app.
+     Before any installer code, four unknowns were spiked (throwaway `spike/`,
+     deleted in W1); every dev-box-provable piece is green, and the two clean-VM
+     proofs are flagged owner-run.
+     - **Backend delivery = bundled `uv` + first-run `uv sync` (owner-chosen).** The
+       `.exe` bundles a tiny `uv.exe` + pinned `pyproject.toml` + `uv.lock`; first-run
+       does `uv python install` (managed CPython — no system Python) then `uv sync`
+       into `%LOCALAPPDATA%\baby\.venv`, reusing the exact `.venv` contract the shell
+       already spawns (`resolve_baby_home` is already `BABY_HOME`-aware). Freeze
+       (PyInstaller) was off the table: the tree pulls `torch` (via
+       `sentence-transformers` + `silero-vad`) plus ctranslate2/onnxruntime/sherpa/
+       sqlite-vec/kokoro/playwright native wheels — freezing that is fragile; the venv
+       is ~1–1.5 GB of prebuilt wheels instead.
+     - **A green `uv sync` is not proof — a post-sync FUNCTIONAL probe is.** A native
+       wheel can install yet fail to load (missing VC++ redist, bad ABI). The spike's
+       `health_probe.py` imports each wheel and does a real op (loads the .pyd);
+       proven all-green on the dev box incl. a live Chromium launch, and it ports
+       verbatim into W3's health check. Failure UX was proven against **real** `uv`
+       stderr and caught a real classifier bug — a DNS failure was mis-labeled a proxy
+       problem because uv's `client error (Connect)` chain matched a naive `CONNECT`
+       regex; tightened so a no-internet error never sends a user to configure a proxy.
+     - **Offline-first-install is OUT of scope.** The web-installer requires first-run
+       network by design (`uv sync` pulls wheels from PyPI; models from the Ollama
+       registry). This keeps the release tiny and installs current-by-default.
+     - **Model pull = Ollama `/api/pull` stream, resumable by construction.** Real
+       byte/%/speed/ETA rendering proven; a re-issued pull completes from cached
+       content-addressed blobs (the resume mechanism). The mid-pull NIC-kill is the
+       one owner clean-VM check.
+     - **Engine = NSIS, unchanged.** `tauri-cli 2.1.0` + the existing
+       `bundle.targets:["nsis"]` already emit a ~1.6 MB unsigned `*_x64-setup.exe` —
+       toolchain works, tiny size confirms the web-installer premise. NSIS covers the
+       wizard needs (license/EULA page, per-user `installMode`, post-install hooks,
+       native uninstaller). **Finding:** NSIS has no MSI-style Repair/Modify ARP
+       dialog, so v6 does **repair + mode-switch (cloud-only ↔ full) in-app** (W5),
+       leaving clean uninstall to NSIS — no WiX/MSI detour.
+     - **Signing = unsigned now + hook wired.** Owner publishes free, so the build
+       ships unsigned + a SmartScreen "More info → Run anyway" walkthrough + `.exe`
+       checksums. The hook is a single-key drop-in later (`bundle.windows.signCommand`
+       or `certificateThumbprint`+`timestampUrl`). The only free *trusted* path for a
+       public OSS repo is **SignPath.io Foundation (free OSS signing)** — a parallel
+       owner enrollment track, not a blocker.
+     - **Boundary finalized.** `.exe` carries only shell + wizard + `uv.exe` +
+       `pyproject`/`uv.lock` + `config.default.yaml` + `EULA.txt`; first-run fetches
+       the managed Python, the deps, [Full] Ollama + 9B, and the voice/embedder
+       assets. STOP for owner ratification before W1.
+
+128. **v6 W1 -- per-user state relocation, a conservative shipped config, and the
+     installed shell layout (owner ratified W0's four decisions 2026-07-11).**
+     - **State relocation is opt-in, so dev stays byte-identical.** New `core/paths.py`
+       resolves `config.yaml` / `.env` / `baby.db` under `BABY_HOME` when that env is
+       set (an installed build), else the current dir (a repo checkout, unchanged).
+       Nothing moves unless `BABY_HOME` is set. Wired the three cwd-relative runtime
+       load sites (`run.py`, `clients/cli.py`, `ui/server.py`); scripts that take
+       explicit paths are left alone. `ensure_config()` seeds the shipped template into
+       `BABY_HOME` on first run **only if absent** -- a returning user's config is never
+       clobbered (in dev the target already exists, so it is a no-op). The safety gate
+       itself is untouched frozen ground; this only relocates where its config is read.
+     - **The shipped config is a separate, conservative file -- not the owner's.** New
+       tracked `installer/config.default.yaml` carries the most conservative posture for
+       a stranger (`safety.mode: enforce`, `auto_allow_app_close: []` so every app-close
+       is confirmed, blank owner PII, `game_mode.auto_detect: false`, localhost UI). The
+       code defaults were already conservative (`core/safety.py:36-42`,
+       `clients/cli.py:23-30`); the risk was only the owner's populated `config.yaml`, so
+       the fix is a distinct template, never a commit to `config.yaml`. **The template
+       ships `router.mode: local_primary`** (an adversarial-review fix -- an earlier
+       `cloud_primary` default hard-crashed a keyless install at boot, since
+       `build_provider` raises when the primary slot is unbuilt, `core/router.py:1010-1017`,
+       and no fallback catches it before uvicorn binds). local_primary boots keyless
+       (bare Ollama daily, degrades gracefully); the W2/W4 wizard UPGRADES to
+       `cloud_primary` only after a cloud key validates. `tests/test_fresh_install_defaults.py`
+       builds the **real** `SafetyGate` from the template (enforce + empty allowlist) AND
+       asserts the template **boots keyless** (`build_provider` doesn't raise with no keys)
+       -- the regression guard for that crash.
+     - **The installed shell splits code from state.** In dev, run.py + `.venv` are
+       co-located and the shell's `resolve_layout()` (was `resolve_baby_home`) returns
+       that one dir -- unchanged. Installed, run.py + the Python source ship next to the
+       exe (a read-mostly install dir) while the venv + config/db live in
+       `%LOCALAPPDATA%\baby`; the shell runs the data-home venv's `pythonw`, sets cwd to
+       the code dir, and exports `BABY_HOME` **only when the layout actually splits** (so
+       dev never gets a spurious `BABY_HOME`). If the installed venv is missing (first-run
+       not finished, W3), the shell says so rather than falling back to a depless system
+       Python. `bundle.windows.nsis.installMode: currentUser` (no admin) +
+       `bundle.licenseFile` = the EULA license page; `nsis.installerHooks` is the
+       post-install first-run trigger wired in W3.
+     - **Source-staging (W1e) -- done, verified against a real build.** A new
+       `scripts/stage_payload.ps1` assembles an ALLOWLISTED runtime payload (2.5 MB:
+       run.py + the Python packages + `assets/` + `installer/` + `ui/{server,tray,
+       gamewatch}.py` + `ui/web` + the built `ui/app/dist` + pyproject/uv.lock; never
+       config.yaml/.env/baby.db/__pycache__/ui-shell/ui-app-src -- an allowlist so a
+       public build can't leak a secret). `tauri.conf` `beforeBuildCommand` runs it
+       (build-only, not the `tauri dev` loop -- and it must be `beforeBuildCommand`, not
+       `beforeBundleCommand`, because the `resources` glob is validated at build.rs time,
+       before bundling), and `bundle.resources: ["payload/**/*"]` ships it. The shell
+       finds it via `app.path().resource_dir().join("payload")` -- Tauri's own API, not
+       an exe-relative guess -- which `resolve_layout` uses. A real `tauri build`
+       confirmed it: `target/release/payload/run.py` lands exactly where the shell looks,
+       and the NSIS installer grew 1.6 -> 2.2 MB. `.venv` + models are still first-run;
+       `uv.exe` is dropped in at release build (`-UvExe`).
+     - **Owner gap surfaced:** the repo has **no LICENSE** (currently all-rights-reserved).
+       A public release needs one, and SignPath-OSS free signing requires an OSI-approved
+       license (MIT/Apache-2.0) -- an owner prerequisite before W6.
+
+129. **v6 W2 -- GPU pre-check and the install-mode fork (first-run wizard, backend
+     + front-end).**
+     - **Wizard state lives in a separate `setup.json`, never in `config.yaml`.**
+       `core/paths.py` gained `read/write/apply/is_setup_complete` over
+       `BABY_HOME/setup.json`. The wizard's choices are overlaid onto a freshly loaded
+       config non-destructively (`apply_setup` only stamps `router_mode` today), so the
+       shipped template's comments survive and a missing `setup.json` is a no-op -- a dev
+       boot stays byte-identical. Keys never go here; they land in `.env` (W4).
+     - **The wizard only shows in an installed build.** The naive gate
+       (`setup.complete === false`) would fire in every dev checkout, since `setup.json`
+       is absent there and `complete` reads false forever. So `/stats` now reports
+       `setup.installed` from `paths.is_installed()` (`"BABY_HOME" in os.environ` -- the
+       shell exports it only for a split installed layout), and the front-end gate is
+       `installed && !complete && !dismissed`. A repo checkout reports `installed:false`
+       and never renders the wizard.
+     - **GPU informs, never walls (cloud-primary since the NIM migration).**
+       `GET /api/setup/gpu` reuses `tools/system_stats._gpu` (pynvml) off-thread and
+       returns detected VRAM + a recommendation against an 8 GB Full-mode bar
+       (`_FULL_MODE_MIN_VRAM_GB`); no NVIDIA / NVML-unavailable fails soft to cloud-only.
+       The wizard shows the number and the recommendation but the user makes the final
+       call -- a capable GPU can still pick cloud-only, a weak GPU can force Full with a
+       plain warning.
+     - **Mode gates the download, keys set the router mode -- kept apart on purpose.**
+       `POST /api/setup/mode` writes only `install_mode` (Full | cloud_only), which gates
+       the first-run 9B pull in W3. It deliberately does NOT touch `router.mode`, so a
+       keyless boot stays on the safe `local_primary` default; W4's key wizard is what
+       upgrades `local_primary -> cloud_primary`, and only after a cloud key validates.
+       This is the joint mode/key correctness core that keeps a fresh install from the
+       `cloud_primary`-keyless boot crash (#128).
+     - **The wizard front-end is a resumable multi-step shell, not a one-shot.** The
+       mode-fork is step 1 of an N-step flow (W3 deps, W4 keys, W5 disclosure ack, which
+       finally stamps `setup_complete`). Because that flow isn't finished, the terminal
+       panel only dismisses the wizard for the current session (`dismissWizard`, in-store)
+       -- it never fakes completion, so it honestly re-prompts next launch until W5 lands,
+       but never traps a session. Pure gate/summary/recommendation logic lives in
+       `ui/app/src/lib/setup.ts` with vitest coverage; the React shell is thin glue over
+       it. Additive only -- no router/safety/provider logic touched.
+     - **Verification boundary.** The wizard is gated OFF in dev by design, so a dev
+       preview can't render it without faking an installed layout -- proven instead by
+       vitest (gate + GPU-summary + recommendation), the tsc+vite build (component in the
+       bundle), and pytest (`is_installed`, the GPU endpoint, the mode endpoint, and the
+       `installed` flag on `/stats`). Live wizard render belongs to the owner's W6
+       clean-VM matrix.
+
+130. **v6 W3 -- first-run dependency orchestration (the hardest phase): a functional
+     dep manifest + probes, a resumable provisioning orchestrator, the wizard's
+     install step, and a first-launch venv bootstrap.**
+     - **A declarative dependency manifest is the single source of truth.**
+       `core/manifest.py` lists every first-run dependency with the two facts that
+       decide a correct install: whether the library auto-downloads the asset (the HF
+       hub cache for whisper/e5; the wheel for espeak-ng/sqlite-vec) or first-run must
+       fetch it explicitly (kokoro, the 9B, openWakeWord, Chromium, the CAM++ model),
+       and where it lands. Anything the app loads BY PATH (kokoro, CAM++) relocates to
+       a per-user `models/` dir (`core/paths.py:models_dir`/`resolve_model`) so an
+       installed build reads writable state, never the read-mostly install dir; a dev
+       checkout stays byte-identical. The orchestrator, the wizard checklist, and the
+       first-run harness all read this one list.
+     - **The health check is FUNCTIONAL, at two levels.** `core/health.py` ports the W0
+       spike and adds the model-LOAD probes it deferred: it imports each native wheel
+       AND does a real op (torch sum, onnxruntime providers, sqlite-vec vec_version),
+       then loads each model and exercises it (whisper transcribes a synthetic buffer,
+       kokoro synthesizes a word, e5 encodes to dim 384, openWakeWord predicts, CAM++
+       embeds, Ollama answers a 1-token warm-ping). Two levels: `wheels` runs right
+       after `uv sync` (before any model exists); `full` runs after the downloads.
+       Mode-aware -- the Ollama checks only exist for a Full install. A green `uv sync`
+       is not proof; this probe is. It also preloads the venv's onnxruntime.dll before
+       anything imports sherpa-onnx, or sherpa binds System32's stale ORT 1.17 and
+       segfaults the process (a real bug the dev-box probe caught). Run on the dev box:
+       all 16 checks pass.
+     - **The provisioning orchestrator is resumable and streams honest progress.**
+       `core/provision.py` walks the manifest for the chosen mode: a low-disk pre-check
+       (`disk_footprint_mb`), detect the VC++ runtime, download kokoro, fetch the
+       wake-word models, trigger the whisper+e5 HF downloads, the optional CAM++ model
+       (best-effort), then in Full mode pull the 9B if the daemon is up -- and finally a
+       functional re-verify that marks `provisioned` only when everything works.
+       Downloads resume where they stopped (HTTP Range for files; Ollama's
+       content-addressed blobs for the model pull), and every failure is classified into
+       a legible, retryable message (proxy / no-network / disk / corrupt) rather than a
+       raw trace. It reports through a plain callback the endpoint publishes on the bus
+       (`POST /api/setup/provision`, `GET /api/setup/status`); the wizard renders a
+       per-dependency checklist with byte/percent progress bars off `GET /api/setup/plan`.
+     - **The venv is built on first LAUNCH, not by a silent installer hook.** The
+       backend can't run until its venv exists, so the shell (`main.rs:ensure_venv`)
+       runs `installer/first_run.ps1` the first time an installed build launches without
+       a ready venv: the bundled uv.exe installs a managed CPython and `uv sync`s the
+       per-user venv, then a `wheels`-level probe gates it. This deliberately does NOT
+       run inside a silent NSIS `installerHooks`: a ~1.5 GB `uv sync` there would freeze
+       the installer with no progress and leave a half-install on failure. On launch it
+       is resumable (uv sync continues from its cache), shows a splash, classifies
+       failures, and a relaunch retries. Completion is gated on a `.baby-ready` sentinel
+       written only after the wheels probe passes -- NOT on `pythonw.exe`, which `uv
+       sync` creates before installing the deps, so an interrupted first sync would
+       otherwise look "done" and never resume (both bugs caught by adversarial review).
+     - **The Visual C++ runtime is the one elevated step.** Every native wheel dlopens
+       the MSVC 2015-2022 x64 runtime; a clean image may lack it, and without it the
+       wheels probe fails with an opaque "DLL load failed". `first_run.ps1` detects the
+       System32 DLLs and, if absent, downloads `vc_redist.x64.exe` and installs it
+       elevated (a UAC prompt -- the sole admin step of an otherwise no-admin per-user
+       install), then re-verifies. A declined prompt is reported legibly, not as a trace.
+     - **PowerShell 5.1 stderr-redirect footgun.** `& native.exe ... 2> file` under
+       `$ErrorActionPreference=Stop` throws a terminating NativeCommandError on the FIRST
+       stderr line -- and uv writes progress to stderr on SUCCESS -- so the redirect used
+       to capture uv's stderr for classification aborted the happy path for every user.
+       Fixed by capturing under `EAP=Continue` (we read `$LASTEXITCODE` explicitly).
+       Verified against a real `uv sync`. Recorded so it isn't reintroduced.
+     - **Owner-only remains:** the real installed first-run (clean-VM matrix: no-VC++,
+       no-admin decline, antivirus, non-English, low-disk, network-drop) -- the dev box
+       can't validate a stranger's first launch. Deferred: relocate the voice-enrollment
+       WRITE path through BABY_HOME when an installed enrollment flow is built (dormant
+       OOTB; speaker verify is off until enrollment).
+
+131. **v6 W4 -- API keys: proved before they are trusted, and never anywhere but
+     `.env`.** The installer asks a stranger for cloud credentials, so this is the
+     one phase where a mistake leaks something that is not ours.
+     - **A key is validated by a real vendor call before it is written.** `core/keys.py`
+       probes `GET {base_url}/models` with an `Authorization: Bearer` header -- the
+       same auth-only check `NvidiaProvider.probe` already uses, so it proves DNS +
+       TLS + auth without spending generation quota, and all three vendors answer it
+       identically (they are all OpenAI-compatible, Gemini included, via its
+       `/v1beta/openai` endpoint). The key travels in a header, never a query string.
+       A typo is therefore caught in the wizard rather than at the first cloud
+       escalation, weeks later, on a machine we cannot see.
+     - **The failure classification is the feature.** 401/403 says the key is wrong.
+       A transport failure is routed through the W3 provisioning classifier and says
+       the NETWORK is wrong -- telling someone their key is bad when their wifi
+       dropped sends them hunting for a replacement key that cannot help. 402 names
+       an empty account. And 429 is treated as a PASS: the vendor recognised the key
+       and is throttling, so rejecting it would trap a rate-limited user in a wizard
+       with no way forward.
+     - **`.env` is the only thing that ever holds key material.** Writes merge line by
+       line, so comments and unrelated vars survive a save, and an empty value removes
+       the line. The file is then locked to its owner (inheritance stripped, one
+       grant; `chmod 600` off Windows) -- defense in depth, since `%LOCALAPPDATA%` is
+       already per-user. Tightening fails SOFT: a policy-blocked `icacls` still leaves
+       a working install and reports `secured: false`, because losing the user's key
+       to a hardening step would be the worse failure. Nothing else stores a key --
+       `setup.json` holds flags only, and every value leaving the module goes through
+       `mask()` (vendor prefix + last 4).
+     - **`router.mode` follows the KEY STATE, not the user's intent.** `cloud_primary`
+       is stamped only once the primary slot is actually keyed; otherwise the mode
+       stays `local_primary`. This is the crash the phase exists to prevent:
+       `build_provider` raises at boot when `cloud_primary` has no key, and the
+       backend runs under `pythonw`, so the user would see a window that never opens
+       and no error at all. Two tests pin both directions -- a stamped `cloud_primary`
+       must build, and no reachable key state may stamp a mode that does not. A
+       cloud-only install is likewise blocked from finishing the wizard without the
+       primary key, since it has no local brain to fall back on. A Full install may
+       finish keyless and run entirely on its own GPU.
+     - **The write path is serialised, lossless, and leaves nothing behind.** Saves
+       take a lock, because two Save clicks in a row would otherwise interleave
+       read-merge-write and silently drop one key (verified: the test fails without
+       the lock). The file is read and written with `surrogateescape`, so bytes we
+       did not write -- a line the user hand-edited in the system codepage --
+       round-trip instead of raising and costing them the file. And any failure
+       between writing the temp file and swapping it in deletes that temp, so a
+       crash mid-save cannot strand key material in a file nothing will clean up.
+       Verified on a real Windows box: the inherited SYSTEM / Administrators /
+       OWNER RIGHTS entries are replaced by a single user grant, the file stays
+       readable and re-writable afterwards, and no temp survives.
+     - **The key handlers parse their own request body.** Declaring `body: dict` on a
+       FastAPI route makes the framework answer a malformed body with a 422 whose
+       `detail[].input` ECHOES that body -- so a client posting a bare string or a
+       list containing the key gets the key reflected straight back (verified live
+       before the fix). The three key routes take a raw `Request`, parse the JSON
+       themselves, and answer anything unusable with a fixed message that contains
+       nothing derived from the request.
+     - **The secrets gate is a regression test, not a one-off scan.** `test_keys.py`
+       drives the real endpoints with a sentinel key through the good, rejected, and
+       offline branches while capturing Python logging, every bus event, every HTTP
+       response, and every file written under `BABY_HOME`; the sentinel may appear in
+       exactly one place, `.env`. The gate was verified non-vacuous by deliberately
+       leaking the key into a bus event and confirming it fails.
+     - Endpoints: `GET /api/setup/keys` (masked state + whether the wizard may
+       finish), `POST /api/setup/keys/validate` (test without saving, so a bad paste
+       never reaches disk), `POST /api/setup/keys` (validate, persist, re-stamp the
+       router mode). The wizard step is `mode -> provision -> keys -> done`, and a
+       reopened wizard lands on the key step rather than skipping it, so the
+       cloud-only gate cannot be walked around by relaunching. A saved key needs one
+       restart to take effect: `.env` is read at boot and the router is built once.
+
+132. **v6 W5 -- public hardening: what a stranger is told, what they can repair,
+     and what leaves their machine.** Three of the four items here started as a
+     promise the build did not keep.
+     - **The uninstaller's "delete application data" box removed nothing.** Tauri's
+       NSIS template deletes `%LOCALAPPDATA%\<BUNDLEID>` -- `com.tanishq.baby`, a
+       directory that has never existed. Baby's state lives in
+       `%LOCALAPPDATA%\baby`, a name chosen long before the app had a bundle id,
+       and that folder holds the `.env` with the user's cloud API keys, `baby.db`
+       with every conversation, the models and the ~1.5 GB venv. So a user who
+       ticked the box kept all of it, ~3.5 GB orphaned, while EULA section 5 told
+       them the opposite. `installer_hooks.nsh` adds a POSTUNINSTALL hook behind
+       the template's own two guards (the box is ticked, and this is not an
+       update). Verified with a real `tauri build`: the hook is included in the
+       generated `installer.nsi` and makensis compiles it into the setup exe. The
+       drift guard is a test, not a comment -- it pins the hook's target to the
+       directory `main.rs` actually points `BABY_HOME` at, and was
+       mutation-checked by renaming the target.
+     - **The wizard never finished.** Nothing set `setup_complete`, so every launch
+       re-prompted. It now ends on a capability disclosure (`core/disclosure.py`):
+       what Baby can act on, that it asks before anything changes, where
+       conversations and keys live, what the microphone does, and that the user is
+       responsible for what they approve. Two rules keep it honest. It describes
+       the SHIPPED DEFAULTS rather than what the app could do reconfigured, and a
+       test pins "nothing is auto-approved" to the template's `safety.mode` and
+       empty `auto_allow_app_close` -- if the template relaxes, the test fails
+       instead of the claim quietly becoming a lie. And the cloud wording follows
+       the install mode, because telling a cloud-only user their chats can stay on
+       this PC would be false. The EULA says this legally at install time, when
+       nobody reads; this says it once, in an owner's words, at the moment it
+       matters. `POST /api/setup/complete` refuses an unacknowledged finish and a
+       keyless cloud-only finish -- the latter would stamp "done" onto a build
+       whose next boot has no brain to answer with.
+     - **Diagnostics: the scrubber is the feature, not the collector.** "Send me
+       your diagnostics" is the useful reply to a broken install, and the obvious
+       implementation hands a public bug tracker the user's API keys and Windows
+       username. `core/diagnostics.py` scrubs in three layers because each catches
+       what the others cannot: exact `.env` values (the only thing that catches a
+       key of unfamiliar shape), key SHAPES anchored on the vendor prefix (an old
+       key in a weeks-old log line is no longer in `.env`), then personal
+       identifiers. Key values never appear, not even masked -- once a report is
+       public, the last four characters are still key material; presence is
+       reported instead, which is the part that helps. Verified against real data
+       on the dev box: four real `.env` secrets, none reached the report; the real
+       37 KB production log, clean and correctly bounded. The suite was
+       mutation-checked -- disabling `scrub()` fails 10 of 17 tests.
+     - **Repair and mode-switch live in the app, as W0 predicted.** NSIS has no MSI
+       Repair/Modify dialog, so the panel carries it: re-run the functional health
+       check, re-download whatever broke, switch modes, see which keys are set,
+       and produce the scrubbed report. It drives the same endpoints as the
+       first-run wizard, so there is one provisioning path rather than two that
+       can disagree. A mode change clears `provisioned`, because the other mode's
+       dependency set is different and the old flag no longer describes the
+       machine. **Running it for real caught what the tests missed:** the report
+       body was scrubbed but the "Saved to" line printed the full path, username
+       included, on the one screen users screenshot when asking for help. It shows
+       the filename only now.
+     - **A stray byte in `.env` could block setup forever.** Probing the scrubber
+       with a deliberately corrupt `.env` turned up a W4 gap: `read_env_file`
+       read strict UTF-8 and caught only `OSError`, so one non-UTF-8 byte -- a
+       line hand-edited in Notepad, the exact case `write_keys` was already
+       hardened for -- raised a `UnicodeDecodeError` straight through
+       `has_key` -> `can_finish` -> `POST /api/setup/complete`. The user could
+       never finish the wizard, and got a 500 with no legible reason. The read
+       path now matches the write path (`surrogateescape`). Worth noting how it
+       was found: an adversarial review of this diff reasoned about that exact
+       function and concluded "no throw risk"; running it proved otherwise.
+     - **The docs say the uncomfortable part out loud.** `docs/INSTALL.md` explains
+       the SmartScreen warning rather than hoping the user pushes through it: the
+       build is unsigned, reputation is bought, and the checksum -- not the
+       absence of a warning -- is what tells them the file is genuine. Anyone who
+       would rather not run unsigned software is pointed at running from source.
+       `docs/SIGNING.md` records the options and their costs, that the
+       `signCommand` hook needs no code change, and keeps the **LICENSE blocker**
+       where the release process will trip over it: SignPath's free OSS signing
+       requires an OSI-approved license, and this repo still has none. Four tests
+       pin the docs to the build so they cannot drift into fiction.
+
+133. **v6 W6 -- release: one version, seven files, and an owner-run acceptance.**
+     - **The version had already drifted.** Every installer built during v6
+       development came out stamped `Baby_5.0.0_x64-setup.exe` while the project was
+       on v6, because the number lives in seven places (pyproject, Cargo.toml,
+       Cargo.lock, tauri.conf.json, two package.json files, and uv.lock, which uv
+       restamps on any sync). Nobody notices a wrong version on an installer until a
+       bug report cites it. All seven now read 6.0.0, and a drift test pins them to
+       each other and to the CHANGELOG so a future bump cannot land half-done --
+       mutation-checked by moving one track to 6.0.1.
+     - **The bump was verified by building, not by reading.** `tauri build` now emits
+       `Baby_6.0.0_x64-setup.exe`, with the W5 uninstall hook still included in the
+       generated NSIS script. The filename is what a user actually sees, so it is
+       what had to be checked.
+     - **The release checklist is owner-run by construction**, and it leads with the
+       blocker rather than burying it: the repo has no `LICENSE`, which makes a
+       public release meaningless and blocks SignPath's free OSS signing. Everything
+       after that assumes it is resolved. The rest is what this machine cannot
+       prove -- the clean-VM matrix (no VC++, declined UAC, no GPU, non-admin,
+       antivirus, non-English locale, low disk, network drop mid-sync and mid-pull),
+       the wizard walkthrough including an `icacls` check on `.env` and a log scan
+       for the key, both uninstall branches, and the real-box regression that the
+       assistant itself still behaves.
+     - **The CHANGELOG states the limitations plainly** rather than only the wins:
+       unsigned so SmartScreen warns, offline first-install out of scope, and a
+       saved cloud key needing one restart because `.env` is read at boot. A release
+       note that hides those just moves the surprise to the user.
+
+134. **MIT license -- the last release blocker, closed.** The repo shipped five
+     phases of installer work while still being all-rights-reserved, which made a
+     public release legally meaningless and blocked the only free code-signing
+     track (SignPath Foundation requires an OSI-approved license). MIT rather than
+     Apache-2.0: it is the shortest thing that actually grants use, it matches what
+     the shipped EULA already tells users about warranty and their own
+     responsibility for approved actions, and it carries no patent or NOTICE
+     machinery this project has any use for. Copyright is attributed to Tanishq
+     Jain -- the one judgement here made on the owner's behalf, flagged in the
+     release checklist for confirmation before publishing. `docs/SIGNING.md` no
+     longer calls it a blocker, and the test that pinned the blocker is now a
+     TWO-WAY guard: with no LICENSE the blocker must stay documented, and with one
+     the doc must stop claiming it, because a resolved blocker left in the docs is
+     how a project sits on an application it could already have made.
+
+
+135. **A first run must never sit on "working" with no end condition.** An
+     installed build on a second machine showed "Memory embedder (e5-small) ...
+     working" for three hours. Nothing was downloading: the model was complete on
+     disk, the backend process was gone, and :8765 was refusing connections. Three
+     independent holes lined up, and each one alone would have made it diagnosable.
+     - **Nothing watched the backend.** `attach_or_spawn` probes :8765 once, at
+       startup, and never again. A backend that dies mid-run leaves the window
+       rendering whatever it last received, indefinitely. The shell now polls the
+       child it spawned and overlays a message naming the exit code and the log.
+       It cannot reuse `show_splash_message` -- that writes into the splash's
+       `.wrap`, which is gone once the window has navigated to the served UI, i.e.
+       exactly when this fires.
+     - **The hub steps reported nothing.** Whisper and e5 auto-download with no
+       byte callback, so each emitted ONE "working" event for a multi-GB fetch.
+       Healthy-but-slow, wedged, and dead all rendered identically. Progress is now
+       measured off the HF cache directory -- the only honest signal available --
+       with a stall message and a hard ceiling, so a row always resolves to done or
+       a retryable error. The ceiling does not kill the download: a blocking thread
+       cannot be cancelled, so what it ends is our claim to be working.
+     - **The crash left no trace.** `run.py` opened its logfile AFTER importing
+       `core.paths` and `tools.register_all` -- so the one failure the log existed
+       for, an import blowing up inside a windowed process with nowhere to print,
+       died before the file was created. An installed build had no logs directory
+       at all. The log now opens first, `faulthandler` is enabled so a native crash
+       in torch/onnxruntime leaves a stack instead of stopping mid-line, and each
+       boot is stamped so "when did it die" is answerable from an appended file.
+
+     The diagnosis took four probes against a machine that could report nothing,
+     which is the actual cost being paid here: a stranger hitting this gets a
+     permanent spinner and has no way to learn anything at all. Every gate above is
+     mutation-checked, and the cache-path derivation is verified against the real
+     HF cache rather than only its shape, because a drifted repo id would silently
+     measure an empty directory and report 0 MB forever -- the same blind state it
+     replaced.
+
+136. **The uninstall checkbox could take a dev checkout's caches with it.** Found
+     while checking whether Baby was installed on the dev box before a test
+     reinstall: it was not, but `%LOCALAPPDATA%\baby` already held 102 MB of
+     browser profile, logs, screenshots and file index. `core/paths.py` says so
+     outright -- the data caches resolve there "untouched" by `BABY_HOME`, so a
+     source checkout writes to the same directory an installed build calls its
+     data home. The W5 hook's `RmDir /r "$LOCALAPPDATA\baby"` cannot tell them
+     apart, and release checklist section 5 instructs the owner to tick that box.
+     Following the checklist on a development machine destroys development state.
+     The same class as the original W5 bug -- a delete aimed at a path whose
+     ownership was assumed rather than checked -- and it points the other way.
+
+     The hook now deletes only a directory an install actually provisioned, proven
+     by the venv `installer/first_run.ps1` builds there (a checkout keeps its own
+     in the repo). **This does not make the shared case safe**, and the comment and
+     the test both say so: once an install exists the venv is present and
+     everything still goes. Nothing visible to an uninstaller distinguishes "an
+     install owns this" from "an install and a checkout share this". What the guard
+     removes is an uninstaller wiping a directory no install ever owned; the
+     checklist carries a backup command and a warning for the rest, which is the
+     honest split rather than a guard that only looks complete.
+
+     A mutation caught the first version of the checklist test passing on the wrong
+     occurrence of its own search string -- the phrase appears in both the warning
+     and a checklist item, so deleting the warning left it green. It now asserts
+     against the blockquote specifically. The pre-existing ordering test also had
+     to start stripping `;` comments before comparing offsets, since the comments
+     name the instructions they explain.
+
+137. **Key validation accepted any string, because /models is not an auth check.**
+     Found by typing a deliberately invalid key into the installed wizard: it
+     answered "OpenRouter key works." W4's probe was one shared
+     `GET {base_url}/models` for all three providers, on the theory that an
+     OpenAI-compatible listing endpoint proves auth without spending quota. It
+     does not. OpenRouter answers **200 with no Authorization header at all**, and
+     NVIDIA's `/models` and `/models/{id}` are both public too. Only Gemini
+     authenticated -- and it rejects with **400**, which the classifier did not map
+     to invalid_key, so even the one working probe gave the wrong message.
+
+     The consequence was worst exactly where it mattered most: OPENROUTER_API_KEY
+     is the PRIMARY, the key a cloud-only install cannot finish without. A stranger
+     with a typo got a green tick, finished setup, and had every cloud turn fail
+     later with nothing connecting the two. Setup validated a non-functional app.
+
+     The probe is now per-provider (`KeySpec.probe_url` / `probe_body`), which is
+     the actual lesson: **never assume a vendor's endpoint authenticates -- confirm
+     it 401s unauthenticated.** OpenRouter uses `/api/v1/key`; Gemini keeps
+     `/models` plus a 400-body check; NVIDIA has no authenticated GET anywhere
+     under /v1, so its probe POSTs a one-token completion.
+
+     It survived because every key test mocks the network -- the mock returned
+     whatever status the test asked for, so it could never notice the real endpoint
+     ignored the key. The release checklist listed "validate against a REAL
+     provider" as an owner task precisely because of this gap, and it went unrun.
+
+     Two things fell out of the fix:
+     - A pinned probe model can be retired, and NVIDIA answers 410 for one BEFORE
+       checking auth, so a GOOD key comes back unverified. That is now
+       `probe_unavailable` -- explicitly NOT "rejected", so nobody hunts a key that
+       is fine. This is not theoretical: the first model chosen here was already
+       retired, and this branch is what surfaced it.
+     - `installer/config.default.yaml` shipped `nim_heavy: z-ai/glm-5.2`, which
+       NVIDIA retired on 2026-08-21 and no longer lists. Every user who added an
+       NVIDIA key got a dead heavy brain. Now `openai/gpt-oss-120b`, verified live.
+
+     One mutation exposed a vacuous test of my own: the key-scrubbing assertion
+     checked only the returned payload, which is built from a template and never
+     includes the response body -- so it passed with the scrub deleted. It now
+     spies on what the classifier actually receives.
+
+138. **An installed build produced no logs at all -- the gate that was supposed to
+     create them never fired.** Found by running the shipped `.exe`, not by reading
+     it. The wizard threw a Windows dialog titled "Python-CFFI error" reading
+     `Exception ignored from cffi callback <function FileLike.flush ...>:
+     MemoryError:`, and `%LOCALAPPDATA%\baby\logs\baby.log` had nothing from that
+     session -- last written seven hours before the backend booted.
+
+     `FileLike` turned out to be cffi's OWN internal stderr shim
+     (`cffi/_cffi_errors.h`), and the MessageBox its fallback for when it cannot
+     report through stderr at all. So the dialog was never the bug; it was the
+     symptom of Baby having nowhere to write.
+
+     `run.py` opened its log behind `if sys.stdout is None or sys.stderr is None:`.
+     That is what a windowed CPython hands you, and it is exactly what an INSTALLED
+     build never gets: uv's venv `pythonw.exe` is a 45 KB trampoline that re-execs
+     the base CONSOLE `python.exe` and gives it live stdio objects whose output goes
+     nowhere. Probed directly under a hidden spawn: `stdout_is_None=False`. The
+     check passed, the file was never opened, and every crash, traceback and stall
+     in every install has been invisible since v6 shipped -- including the
+     three-hour stall in #135, which I had wrongly written off as an artefact of my
+     own console.
+
+     There is nothing about a dead stream that is detectable from inside the
+     process, so the detection is gone: the log file is now kept unconditionally and
+     a console run is TEE'd into it. Console output still reaches the console; the
+     log gets a copy either way. The tee's writes to the real stream are
+     best-effort, because a dying console must never take the log down with it, and
+     the file rolls at 5 MB since download progress bars now land in it too.
+
+     The lesson is the same one as #137, one layer down: **a guard written for a
+     condition you never reproduce is not a guard.** The old behaviour had a test.
+     It asserted source ORDER -- that the log opened before Baby's imports -- which
+     stayed true the whole time the log was never opened at all. The new tests spawn
+     the entrypoint for real and demand the file exists.
+
+139. **A healthy Ollama left its own row grey forever.** The Full-mode walk emitted
+     an `ollama-daemon` event only when the daemon was DOWN. `plan()` lists that row
+     regardless, so an Ollama that was already running answered nothing and the
+     wizard drew a permanent empty circle next to "Ollama runtime" -- directly under
+     a ticked "Local 9B brain (6.4 GB)" that had been pulled through that very
+     daemon. A finished install rendering as one still in progress, which is exactly
+     the reading that sent a user to wait three hours on #135. It now reports
+     `status="pass"`, which is what the wizard counts as done.
+
+140. **The wizard stamped a router mode the running process could not honour.**
+     Found on a live install: `setup.json` said `router_mode: cloud_primary`, the
+     OpenRouter key in `.env` was valid and answering real chat completions, and
+     `/stats` carried no `router`, no `game_mode` and no `brain_turns` at all. File
+     mtimes told the whole story -- the backend read its config at 22:55:14, the key
+     landed at 22:58:29 and the stamp at 22:58:35. `build_provider` runs ONCE, at
+     boot, so the process spent the rest of its life as a bare `OllamaProvider`.
+
+     Two features read as broken because of it. The cloud badge never lit. The
+     game-mode button POSTed to a provider with no `set_game_mode` and did nothing
+     at all, while Ollama held the 9B resident the whole time. Both were reported as
+     separate bugs; they were one.
+
+     The product already knew: `/api/setup/complete` returned `restart_recommended`,
+     and the wizard rendered it as one line of text on its last screen. **A correct
+     diagnosis delivered as advice the user can walk past is not a fix.**
+
+     The shell spawned this backend and is already polling the handle (#135), so it
+     is the thing that can act. The backend now exits with `RESTART_EXIT_CODE` (86)
+     when the stamped mode differs from the one it is running, and the watcher
+     branches on that code -- restart instead of the death overlay -- respawns, waits
+     for the port, and puts the user back on the live UI. The wizard says "Baby is
+     restarting itself" rather than asking.
+
+     Two guards matter more than the rest. It fires only when `BABY_SHELL_TRAY=1`,
+     i.e. only for a child the shell owns, so an always-on service can never be taken
+     down by a wizard with nobody to bring it back. And it fires only when the live
+     provider is not already a `CloudRouter`, so a second wizard visit cannot loop.
+     The exit code is a magic number crossing a language boundary with nothing but a
+     test holding the two halves together; a drift there degrades silently into the
+     old bug, so that test exists.
+
+141. **A build called Baby answers to "Hey Jarvis", and told nobody.** The user
+     reported voice as dead: "Hey Baby" and "Hi Baby" did nothing, so everything got
+     typed. Voice was working perfectly -- the log said `voice on (hey_jarvis)` on
+     every boot.
+
+     openWakeWord ships six pretrained phrases (alexa, hey_jarvis, hey_mycroft,
+     hey_rhasspy, timer, weather) and none is Baby's own name. The config points at
+     `models/jarvis.onnx`, an owner-trained model that is in neither the installer
+     nor the repo, so a public install runs the built-in `hey_jarvis` and nothing
+     else. Training a real "hey baby" is a Colab job with voice samples, not a config
+     edit, so the shipped phrase stands -- but a product whose name is not its wake
+     word has to say so before the user decides it is broken.
+
+     Now named in the capability disclosure (the wizard's last screen, which everyone
+     sees) alongside the Ctrl+Alt+B alternative, and in `docs/INSTALL.md` with the
+     path to training your own. Both are pinned by test to
+     `installer/config.default.yaml`, so changing the shipped phrase without changing
+     what the user is told fails the build. Same doctrine as the "it asks first" line:
+     **a promise in prose has to be pinned to the config that keeps it.**
+
+142. **The installer could ship a stale UI, silently.** Hit while building the
+     installer for #140: the wizard string had changed in `ui/app/src`, and the
+     staged bundle still carried the previous one. Nothing in the shell's build
+     rebuilds the SPA -- `tauri.conf.json`'s `beforeBuildCommand` IS the staging
+     script, and that script only checked `ui/app/dist/index.html` for EXISTENCE.
+     Built once, ever, is not the same as built from this source.
+
+     Staging now refuses a `dist` older than the newest file under `ui/app/src`, so
+     a forgotten `npm --prefix ui/app run build` fails the build with the offending
+     filename instead of producing an installer that looks correct and carries the
+     wrong wizard. Same shape as the mistyped-`uv.exe` fix: **the build must fail
+     where the mistake is made, not on a stranger's first launch.**
+
+     The script had no test coverage at all, which is how it accumulated three of
+     these. It has some now, including the PS 5.1 BOM/non-ASCII trap that has broken
+     a release build before.
+
+143. **A fresh install was deaf for its whole first session.** Found in the first-run
+     log of an installed build -- readable at all only because #138 finally made
+     installed builds keep one. In order:
+
+         voice: voice unavailable: NoSuchFile ... hey_jarvis_v0.1.onnx ... doesn't exist
+         Baby ready (text only) -- voice failed to load
+         <openWakeWord's downloads start here>
+
+     Voice loads at boot. The wizard fetches the models voice needs minutes later.
+     Nothing re-attaches the pipeline afterwards, so a first install answered no wake
+     word until the user happened to restart -- on a build whose headline feature is
+     a wake word, and right after #141 taught the user which phrase to say.
+
+     Same shape as #140 one layer over: **Baby boots BEFORE the wizard runs, so its
+     whole boot state is built against a machine that has none of what the wizard is
+     about to fetch.** The router mode was the first symptom of that, not the whole
+     of it. So the trigger generalises rather than gaining a special case: restart
+     when the boot state is stale, whether that is a router mode the process cannot
+     honour or a voice pipeline that died for want of files that now exist.
+
+     `ctx.voice is None` could not carry it -- that also means "voice was never asked
+     for" -- so the boot records the outcome explicitly in `ctx.voice_failed`. The
+     ownership gate is unchanged and now covers both reasons: only a backend the
+     shell spawned is ever restarted, and it happens once, when the wizard finishes.
+
+144. **A failed voice load left the mic running, and the process died minutes later
+     with no apparent connection to voice.** Two fresh installs, identical stack,
+     exit code -1073741819 (0xC0000005), Windows Error Reporting naming no module at
+     all. faulthandler put the crash in a thread with `<no Python frame>` while
+     `sentence_transformers` was building its tokenizer, so it read as a torch or
+     transformers problem. It was neither.
+
+     `VoicePipeline.load()` loads six stages in order, and the mic is FIRST --
+     `AudioIO.start()` opens a PortAudio InputStream whose callback is a cffi
+     trampoline holding a reference to the pipeline. The wake word is SECOND, and on
+     a first install its models have not been downloaded yet, so it raises
+     NoSuchFile. The `except` returned `(False, notes)` without closing anything,
+     `run_ui` then set `voice_pipeline = None`, and the last reference to a RUNNING
+     audio stream went away. PortAudio's real-time thread kept calling a callback
+     whose Python side the collector was freeing underneath it.
+
+     Which is why it landed during the embedder load: that is the next
+     allocation-heavy phase, so that is when the collector ran and the freed memory
+     got reused. The delay is what made it look unrelated.
+
+     Demonstrated rather than argued -- drop a running InputStream and churn memory:
+     8/8 crashed, exit -1073741819 among them; close it first: 0/8. `load()` now
+     unwinds what it opened.
+
+     Two hypotheses died on the way, both killed by measurement rather than
+     reasoning. The stale System32 `onnxruntime.dll` (ORT 1.17, a real conflict this
+     repo has fixed once for sherpa) is not involved: ORT's Python module statically
+     links, and a module enumeration shows nothing binds `onnxruntime.dll` by name on
+     the boot path. Nor is it the two `libiomp5md.dll` copies torch and ctranslate2
+     ship: no OpenMP module loads in any load order, and all four orders survived.
+
+     The lesson is in the first symptom of this whole session. The original report
+     was a Windows dialog titled **"Python-CFFI error"**, and `sounddevice` is the
+     only cffi user in the stack. That was the crash pointing straight at itself,
+     three fixes ago, and it read as noise because an installed build kept no log to
+     put it next to (#138).
+
+145. **An upgrade wiped the wake-word models, and nothing ever put them back.**
+     Found by installing over a working Baby during the uninstall test, not by
+     reading code: the reinstall came up healthy, cloud router intact, history
+     intact, and `openWakeWord model files: 0`. Voice was dead, the readiness line
+     said "text only", and there was no path back.
+
+     openWakeWord's wheel ships no weights. Its own `download_models()` defaults to
+     writing the 19 MB *inside its site-packages folder*, and `uv sync` reinstalling
+     that wheel deletes the folder. First-run had been calling it with that default
+     (`install_kind="download_models"`, `dest="venv"` in the manifest -- documented,
+     and wrong). So the models lived in the one directory a venv rebuild throws away.
+
+     The trigger is narrower than "any upgrade", which is what this looked like when
+     it happened: `ensure_venv` gates on `.venv\.baby-ready`, so a reinstall over a
+     working install skips the bootstrap entirely and never re-syncs. The rebuild
+     comes when that sentinel is gone -- a data-deleting uninstall followed by a
+     reinstall (how this was found), an interrupted first run, or a wiped venv. Rare
+     enough to survive three phases of testing; permanent when it lands.
+
+     The silence is the worse half. `setup_complete` was already true, so the wizard
+     never re-ran; provisioning is the only thing that fetches these files, and
+     nothing re-checks them at boot. A load failure fails soft to text-only by
+     design (#144), which is right for a missing microphone and wrong here -- the
+     user is simply never told their wake word stopped existing. Re-running
+     provisioning by hand restored it (17 files, `verify=pass`), which is the proof
+     it was only ever a missing-file problem.
+
+     Fixed by moving them out of the venv: `paths.wakeword_dir()` is
+     `models_dir()/openwakeword`, beside kokoro and CAM++, and `WakeWord.load()`
+     hands openWakeWord explicit paths for the wake model and both feature models
+     rather than bare names. A rebuilt venv now costs nothing. Absent a durable
+     copy, every helper degrades to openWakeWord's own default, so a dev checkout
+     that never provisioned behaves exactly as before.
+
+     Two migrations, because an existing install's files are still in the venv until
+     the sync that destroys them. `first_run.ps1` lifts them out *before* `uv sync`
+     (the ordering is the whole point, and is pinned by a test), and `load()` lifts
+     any that are still there on boot. Both are copies, never overwrite, and need no
+     network. The two cover different halves: the boot-time lift is what an existing
+     install actually hits, since the bootstrap it would otherwise pass through is
+     skipped while `.baby-ready` stands.
+
+     The general lesson: `models_dir()` exists precisely because an installed build
+     must keep its weights in a directory it owns. This dependency was the one that
+     downloaded itself somewhere else, and the manifest recorded that fact for three
+     phases without anyone reading it as a bug.
+
+146. **"Test" proved the key and threw it away, and after setup there was no second
+     chance.** Reported as "I entered the OpenRouter API key while setting up baby
+     but the report says the api key is not set". The report was right:
+     `router_mode: null`, no keys present, `setup_complete: true`.
+
+     The key step ships two buttons. `Test` hits the vendor and, by design, writes
+     nothing -- its own docstring says "Test a key against its vendor WITHOUT
+     saving it" -- and on success it prints "OpenRouter key works." Nothing says
+     the key was not kept. `Continue` was gated on `canLeaveKeys`, which mirrors
+     the server's `can_finish`, and a Full install can always finish keyless. So
+     tested-green then Continue discarded the key with no warning, and because
+     only the *save* endpoint stamps `router_mode`, the null in that report is
+     proof no save ever happened.
+
+     The second half is worse than the first. Once `setup_complete` is stamped the
+     wizard never returns, and the repair panel listed keys read-only over the
+     advice to "edit .env in Baby's data folder and reopen Baby" -- which stamps
+     no `router_mode` either, so even a correct hand edit left Baby on the local
+     brain. There was no supported way to add a key to a finished install.
+
+     Three changes, one story. The key field is now one shared component instead of
+     a wizard-private one, so the panel and the wizard cannot drift. It says "Not
+     saved yet -- press Save to store it" under a passing test whose key is still
+     in the box, and the step refuses to advance while any box holds unsaved text.
+     And `POST /api/setup/keys` now applies itself: once setup is complete it runs
+     the same `_restart_needed_to_apply` check the wizard's finish uses (#143) and
+     arms the same restart, because the router is built once at boot and a key
+     saved afterwards is inert until something restarts the backend.
+
+     Restarting only *after* setup is deliberate. During the wizard the bounce
+     belongs to `/api/setup/complete`; firing it on a key save would take the
+     user's own screen away several steps before they are finished with it.
+
+     `restart_required: true` had been hardcoded in that response since W4 and read
+     by nothing. It now means what it says: a restart is needed and nobody else is
+     going to do it.
+
+147. **Game mode was on, the badge was lit, and the GPU was full.** Reported with a
+     screenshot of a first run: `game mode on`, cloud badge green, VRAM 8.0 of 9 GB.
+     Every one of those was telling the truth.
+
+     `run_ui` boots into cloud mode by setting `provider.game_mode = True` directly
+     and deliberately NOT calling `set_game_mode`, whose own comment explains why:
+     it "would try to unload a model that was never warmed + publish a spurious
+     status". On a first run that assumption is exactly backwards. The wizard's
+     last act is the functional re-verify, and `health.check_ollama_model` warm-pings
+     the 9B on purpose -- "1 token loads the weights into VRAM" is its own comment,
+     and loading it is the point of the check. The backend then restarts (#143) into
+     game mode on top of a model Ollama is already holding, and nothing evicts it.
+
+     Measured rather than argued, on the reporting machine: 1841 MiB before the
+     probe, 7785 MiB after, `/api/ps` showing qwen3.5:9b-q4_K_M resident at 5.31 GB,
+     `/stats` reporting `game_mode: true` throughout. A single `unload()` gave it
+     back in 2.2 seconds.
+
+     The flag and the GPU were two different things and only one of them was being
+     set. `_evict_local_brain` now runs wherever a model can end up resident behind
+     game mode's back: at boot, after the repair panel's "Run a check", and when
+     provisioning finishes -- all three run that same warm-ping. It changes no
+     routing logic; it only hands VRAM back.
+
+     Best-effort throughout, with a timeout: freeing memory must never be the reason
+     a launch fails or hangs. An unload against an Ollama holding nothing is a no-op,
+     so the call is safe to make unconditionally once game mode is on.
+
+     Worth noting what made this survive testing: it self-heals. Ollama's own default
+     keep_alive is 5 minutes and the verify ping does not override it, so the symptom
+     evaporates a few minutes after the first launch -- which is roughly how long it
+     takes to finish reading the wizard's last screen and go looking at the header.
+
+148. **An upgrade deleted the user's keys and conversations, twice.** Reported from
+     the author's own machine mid-v6-testing: a double-clicked newer
+     `Baby_6.0.0_x64-setup.exe` came back to a wizard. `setup_complete` false,
+     `router` null, all three keys absent, `0 conversations`, `0 facts`, one boot in
+     a fresh log, and the wake-word models downloading from scratch. It had happened
+     on the install before that one too; the first time it was misattributed to the
+     `Test`-versus-`Save` trap (#146), which is a real bug but not this one.
+
+     The delete was already behind two guards, and both were satisfied. The first is
+     the user's own tick on "Delete application data", and that box really was
+     ticked -- during what the user understood to be an upgrade. The second,
+     `$UpdateMode <> 1`, is the one that reads like protection and is not.
+     `$UpdateMode` is set only by a `/UPDATE` flag on the command line. Tauri's
+     built-in updater passes it; a human double-clicking a setup.exe never does.
+     And NSIS performs an over-the-top install by running the OLD uninstaller first
+     (`PageLeaveReinstall` -> `reinst_uninstall`, a plain `ExecWait` with `_?=` and
+     no `/UPDATE`), so the confirm page appears in full, with a live and destructive
+     checkbox, in the middle of an upgrade. The guard named for updates covered every
+     update except the one people actually perform.
+
+     `_?=` is exactly the signal wanted -- it is what a parent passes when it intends
+     to `ExecWait` on the uninstaller -- but it cannot be read: NSIS strips it out of
+     `$CMDLINE` before the script runs. Measured, not assumed: a purpose-built probe
+     compiled against this NSIS reported only its own quoted path either way. What
+     `_?=` *does* is observable, because its whole function is to suppress the
+     uninstaller's copy of itself into the temp directory:
+
+         $EXEDIR == $INSTDIR   running in place, a parent is waiting   -> reinstall
+         $EXEDIR <> $INSTDIR   copied to %TEMP%\~nsu.tmp, nobody is waiting   -> uninstall
+
+     Same probe, both flows: `%TEMP%\~nsu.tmp` and the install directory for a standalone
+     run, two identical paths for a `_?=` run. That comparison is the third guard,
+     and `tests/test_uninstall.py` compiles the shipped guard lines into a probe and
+     runs both flows for real, because the risk here is not someone editing the hook
+     -- it is NSIS quietly changing when it copies itself aside.
+
+     Add/Remove Programs, the Start Menu entry and a double-clicked `uninstall.exe`
+     all invoke the UninstallString without `_?=`, so the checkbox keeps working
+     exactly as `docs/INSTALL.md` and the EULA describe. What is gone is the ability
+     to answer that question destructively while upgrading. Someone who wants a clean
+     slate uninstalls first, then installs -- now written down in both the install doc
+     and the release checklist.
+
+     Not covered, and out of the uninstaller's reach: the template's own block
+     deletes `%APPDATA%` and `%LOCALAPPDATA%` under the bundle id before any hook
+     runs. For Baby that is the WebView2 cache, not user data -- %LOCALAPPDATA%\baby is where
+     everything that matters lives, and that is the directory this guard protects.
+
+149. **A healthy six-minute download and a wedged one looked identical.** Reported
+     as "the installation is stuck at Wake-word models (openWakeWord) - 19 MB". It
+     was not stuck; it finished three minutes later. 19 MB of GitHub release assets
+     took 369s on the reporting machine, arriving as one file every 30-60s, and the
+     step said nothing at all for the whole of it.
+
+     Two separate holes, either of which alone produced the symptom.
+
+     The backend emitted one `working` event and then nothing until done, because
+     the wake-word download was written as a bare `await asyncio.to_thread(...)`.
+     #139 had already solved exactly this for the two huggingface loaders -- measure
+     the directory the loader fills, heartbeat off it, distinguish a stall from
+     normal quiet, give up at a ceiling -- and had left a test to stop it recurring.
+     That test named the two loaders it knew about, so the wake-word step was added
+     beside them and inherited the bug the test existed to prevent. It now enumerates
+     every `asyncio.to_thread` in the walk instead of listing the ones it remembers,
+     and permits only the bounded verify.
+
+     The runner was also welded to huggingface: it resolved a repo id from the
+     manifest and derived the cache path from `HF_HUB_CACHE`. openWakeWord is a
+     GitHub release, not a hub repo. Splitting the measuring loop (`_run_watched_step`)
+     from where the bytes are (`probe`) and how they read (`detail`) made the
+     wake-word step three lines, and it only became possible because #144 moved
+     those models into a directory we choose rather than the venv's site-packages.
+
+     The second hole was that none of that detail was ever displayed. The wizard row
+     renders a progress bar when the event carries a `pct`, and otherwise the bare
+     status word. Only downloads with a Content-Length produce a `pct`, so the hub
+     steps and the wake-word step have shown the word "working" and nothing else
+     since W3 -- their carefully-worded `detail` went to the event stream and the log
+     and was read by nobody. `rowNote` now puts the detail in the row's own text
+     slot when there is no bar, which is the actual fix for the thing the user saw.
+
+     Deliberately no `pct` for these steps: the bar is 160px with a centred label,
+     and "downloading 8 of ~19 MB (2m)" does not fit in it. A number carrying a `~`
+     is also more honest than a bar, since the total is the manifest's estimate
+     rather than a server's Content-Length.
