@@ -120,6 +120,17 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   restart landed in game mode on top of a resident model. The same probe runs
   behind the repair panel's "Run a check", which cost 5 GB mid-game until Ollama's
   keep_alive expired. All three paths now hand the VRAM back.
+- **An upgrade can no longer delete your data.** A double-clicked newer setup.exe
+  makes NSIS run the OLD uninstaller first, so the uninstaller's "Delete application
+  data" checkbox is shown -- live and destructive -- in the middle of what the user
+  is doing as an upgrade. Ticking it there wiped %LOCALAPPDATA%\baby a second before
+  the new build installed onto the empty directory: keys, conversations, memory and
+  models, twice on a real machine. The template's `$UpdateMode` guard does not cover
+  it, because `$UpdateMode` is set only by the built-in updater's `/UPDATE` flag and
+  never by a human. The uninstaller now detects that an installer is waiting on it
+  (it is running in place rather than from a copy in the temp directory, which is
+  what `_?=` means) and keeps the data. Uninstalling for real -- Add/Remove Programs,
+  the Start Menu entry, `uninstall.exe` -- is unchanged and still honours the box.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.

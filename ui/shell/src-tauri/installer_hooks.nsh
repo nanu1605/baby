@@ -30,16 +30,62 @@
 ; an uninstaller wiping a directory no install ever owned. tests/manual carries the
 ; warning for the case this cannot cover.
 ;
+; The template's SECOND guard does not mean what it says, and that is how this hook
+; came to delete a user's data during an UPGRADE. $UpdateMode is set only by a /UPDATE
+; flag on the command line, which the built-in updater passes and a human never does.
+; Double-clicking a newer Baby_x.y.z_x64-setup.exe over an existing install is an
+; upgrade in every sense the user means -- but NSIS implements it by running the OLD
+; uninstaller first (PageLeaveReinstall -> reinst_uninstall), with a plain ExecWait
+; and no /UPDATE. So $UpdateMode is 0, the confirm page appears in full, and the
+; "Delete application data" checkbox is live and destructive. Tick it there while
+; believing you are upgrading, and every conversation and every API key is deleted a
+; second before the new build installs onto the empty directory. That happened twice
+; on the author's own machine during v6 testing.
+;
+; The fourth guard closes it. NSIS strips `_?=` out of $CMDLINE before the script
+; runs -- measured; the uninstaller sees only its own quoted path either way -- so
+; the flag itself cannot be read. What `_?=` DOES is observable: it tells the
+; uninstaller not to copy itself to %TEMP% and re-exec, which is the only way a
+; parent process can ExecWait on it. So the copy is the signal:
+;
+;   $EXEDIR == $INSTDIR   an installer is waiting on us  -> reinstall, keep the data
+;   $EXEDIR <> $INSTDIR   we were copied to %TEMP%       -> real uninstall, honour it
+;
+; Measured both ways against this NSIS: %TEMP%\~nsu.tmp for a standalone run, the
+; install directory for a reinstall. Add/Remove Programs, the Start Menu entry and
+; double-clicking uninstall.exe all run the UninstallString without `_?=`, so all
+; three land in the second branch and the checkbox still does exactly what the docs
+; say. A user who wants a genuinely clean slate uninstalls first, then installs.
+;
+; The registers are pushed and popped because a hook has no claim on them, and the
+; error flag is cleared because $INSTDIR is legitimately gone by this point on the
+; standalone path -- GetFullPathName then yields an empty string, the compare cannot
+; match, and the delete proceeds, which is right.
+;
+; GetFullPathName normalises both sides, and LogicLib's `!=` compares them the way
+; Windows compares paths, case-insensitively. If $INSTDIR is already gone it yields
+; an empty string and the compare cannot match -- which is the standalone branch,
+; and the branch that is supposed to delete.
+;
 ; POSTUNINSTALL runs after the template's own deletion block, where both variables
 ; are still in scope.
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  Push $R4
+  Push $R5
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1
-    SetShellVarContext current
-    IfFileExists "$LOCALAPPDATA\baby\.venv\*.*" baby_data_is_ours baby_data_not_ours
-    baby_data_is_ours:
-      RmDir /r "$LOCALAPPDATA\baby"
-    baby_data_not_ours:
+    GetFullPathName $R4 "$EXEDIR"
+    GetFullPathName $R5 "$INSTDIR"
+    ClearErrors
+    ${If} $R4 != $R5
+      SetShellVarContext current
+      IfFileExists "$LOCALAPPDATA\baby\.venv\*.*" baby_data_is_ours baby_data_not_ours
+      baby_data_is_ours:
+        RmDir /r "$LOCALAPPDATA\baby"
+      baby_data_not_ours:
+    ${EndIf}
   ${EndIf}
+  Pop $R5
+  Pop $R4
 !macroend

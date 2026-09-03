@@ -1931,3 +1931,51 @@ Running log of non-obvious choices made during the build. Newest last.
      keep_alive is 5 minutes and the verify ping does not override it, so the symptom
      evaporates a few minutes after the first launch -- which is roughly how long it
      takes to finish reading the wizard's last screen and go looking at the header.
+
+148. **An upgrade deleted the user's keys and conversations, twice.** Reported from
+     the author's own machine mid-v6-testing: a double-clicked newer
+     `Baby_6.0.0_x64-setup.exe` came back to a wizard. `setup_complete` false,
+     `router` null, all three keys absent, `0 conversations`, `0 facts`, one boot in
+     a fresh log, and the wake-word models downloading from scratch. It had happened
+     on the install before that one too; the first time it was misattributed to the
+     `Test`-versus-`Save` trap (#146), which is a real bug but not this one.
+
+     The delete was already behind two guards, and both were satisfied. The first is
+     the user's own tick on "Delete application data", and that box really was
+     ticked -- during what the user understood to be an upgrade. The second,
+     `$UpdateMode <> 1`, is the one that reads like protection and is not.
+     `$UpdateMode` is set only by a `/UPDATE` flag on the command line. Tauri's
+     built-in updater passes it; a human double-clicking a setup.exe never does.
+     And NSIS performs an over-the-top install by running the OLD uninstaller first
+     (`PageLeaveReinstall` -> `reinst_uninstall`, a plain `ExecWait` with `_?=` and
+     no `/UPDATE`), so the confirm page appears in full, with a live and destructive
+     checkbox, in the middle of an upgrade. The guard named for updates covered every
+     update except the one people actually perform.
+
+     `_?=` is exactly the signal wanted -- it is what a parent passes when it intends
+     to `ExecWait` on the uninstaller -- but it cannot be read: NSIS strips it out of
+     `$CMDLINE` before the script runs. Measured, not assumed: a purpose-built probe
+     compiled against this NSIS reported only its own quoted path either way. What
+     `_?=` *does* is observable, because its whole function is to suppress the
+     uninstaller's copy of itself into the temp directory:
+
+         $EXEDIR == $INSTDIR   running in place, a parent is waiting   -> reinstall
+         $EXEDIR <> $INSTDIR   copied to %TEMP%\~nsu.tmp, nobody is waiting   -> uninstall
+
+     Same probe, both flows: `%TEMP%\~nsu.tmp` and the install directory for a standalone
+     run, two identical paths for a `_?=` run. That comparison is the third guard,
+     and `tests/test_uninstall.py` compiles the shipped guard lines into a probe and
+     runs both flows for real, because the risk here is not someone editing the hook
+     -- it is NSIS quietly changing when it copies itself aside.
+
+     Add/Remove Programs, the Start Menu entry and a double-clicked `uninstall.exe`
+     all invoke the UninstallString without `_?=`, so the checkbox keeps working
+     exactly as `docs/INSTALL.md` and the EULA describe. What is gone is the ability
+     to answer that question destructively while upgrading. Someone who wants a clean
+     slate uninstalls first, then installs -- now written down in both the install doc
+     and the release checklist.
+
+     Not covered, and out of the uninstaller's reach: the template's own block
+     deletes `%APPDATA%` and `%LOCALAPPDATA%` under the bundle id before any hook
+     runs. For Baby that is the WebView2 cache, not user data -- %LOCALAPPDATA%\baby is where
+     everything that matters lives, and that is the directory this guard protects.

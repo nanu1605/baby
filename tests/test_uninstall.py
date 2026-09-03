@@ -21,8 +21,15 @@ silently. Three groups, all DRIFT GUARDS rather than simulations:
 from __future__ import annotations
 
 import json
+import os
+import platform
 import re
+import shutil
+import subprocess
+import time
 from pathlib import Path
+
+import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
 _HOOKS = _ROOT / "ui" / "shell" / "src-tauri" / "installer_hooks.nsh"
@@ -272,3 +279,169 @@ def test_the_checklist_warns_where_the_hook_cannot_help():
     warning = "\n".join(ln for ln in section.splitlines() if ln.lstrip().startswith(">"))
     assert "from source" in warning, "no warning about a shared data dir"
     assert "robocopy" in warning, "the warning gives no backup command"
+
+
+# --- the guard that keeps an upgrade from wiping the user's data -------------
+# Reported twice from the author's own machine during v6 testing: a double-clicked
+# newer setup.exe came back to an empty data directory -- no keys, no conversations,
+# `setup_complete` false, the models downloading again. The delete was already behind
+# two guards and still fired, because `$UpdateMode <> 1` does not mean "not
+# upgrading". NSIS performs an upgrade by running the OLD uninstaller first, with a
+# plain ExecWait and no /UPDATE, so $UpdateMode is 0 and the confirm page offers
+# "Delete application data" to someone who believes they are upgrading.
+
+
+def _reinstall_guard() -> list[str]:
+    """The guard lines themselves, lifted out of the shipped hook.
+
+    The executable test below compiles these verbatim, so it exercises what ships
+    rather than a paraphrase of it.
+    """
+    code = _hook_code().splitlines()
+    first = next((i for i, ln in enumerate(code) if "GetFullPathName" in ln), None)
+    assert first is not None, "the hook no longer resolves $EXEDIR against $INSTDIR"
+    last = next(
+        (i for i in range(first, len(code)) if code[i].lstrip().startswith("${If}")),
+        None,
+    )
+    assert last is not None, "the resolved paths are never compared"
+    return [ln.strip() for ln in code[first : last + 1]]
+
+
+def test_a_reinstall_cannot_reach_the_delete():
+    """`_?=` is what an installer passes when it ExecWaits on the old uninstaller,
+    and NSIS strips it out of $CMDLINE before the script sees it -- so the flag is
+    unreadable. What it does is not: it suppresses the copy to the temp directory.
+    Running in place therefore means a parent is waiting, which means a reinstall."""
+    guard = _reinstall_guard()
+    assert any("$EXEDIR" in ln for ln in guard), "nothing distinguishes a reinstall"
+    assert any("$INSTDIR" in ln for ln in guard)
+    code = _hook_code()
+    assert code.index("$EXEDIR") < code.index("RmDir"), "the guard is after the delete"
+
+
+def test_update_mode_alone_is_not_trusted():
+    """Both guards have to be there. $UpdateMode still covers the built-in updater's
+    /UPDATE path; the double-click upgrade is the one it never saw."""
+    code = _hook_code()
+    assert "$UpdateMode <> 1" in code
+    assert "$EXEDIR" in code, "$UpdateMode is doing this on its own again"
+
+
+def _makensis() -> str | None:
+    found = shutil.which("makensis.exe")
+    if found:
+        return found
+    local = os.environ.get("LOCALAPPDATA")
+    roots = [Path.home() / "AppData" / "Local"] + ([Path(local)] if local else [])
+    for root in roots:
+        candidate = root / "tauri" / "NSIS" / "makensis.exe"
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+_PROBE = """!include LogicLib.nsh
+Name "baby-reinstall-guard-probe"
+OutFile "maker.exe"
+InstallDir "$EXEDIR\\inst"
+SilentInstall silent
+SilentUnInstall silent
+RequestExecutionLevel user
+
+Section
+  SetOutPath "$INSTDIR"
+  WriteUninstaller "$INSTDIR\\un.exe"
+SectionEnd
+
+Section Uninstall
+{guard}
+    StrCpy $R6 "DELETE"
+  ${{Else}}
+    StrCpy $R6 "KEEP"
+  ${{EndIf}}
+  FileOpen $R7 "{out}" w
+  FileWrite $R7 "$R6"
+  FileClose $R7
+SectionEnd
+"""
+
+
+def _verdict(path: Path, seconds: float = 30.0) -> str:
+    """The un-`_?=` run detaches into the temp directory, so the parent process
+    returns before the copy has written anything."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if path.exists():
+            text = path.read_text(encoding="ascii").strip()
+            if text:
+                return text
+        time.sleep(0.25)
+    return "<no verdict>"
+
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="NSIS is Windows-only")
+@pytest.mark.skipif(_makensis() is None, reason="makensis.exe not installed")
+def test_the_reinstall_guard_holds_against_real_nsis(tmp_path):
+    r"""Compile the shipped guard and run both flows for real.
+
+    A static assertion cannot catch what actually threatens this guard, which is
+    NSIS changing its mind about when it copies the uninstaller aside. Measured on
+    the NSIS this project builds with: a standalone run reports $EXEDIR under
+    %TEMP%\~nsu.tmp while $INSTDIR stays the install directory, and a run given
+    `_?=` reports the two as equal.
+    """
+    verdict_file = tmp_path / "verdict.txt"
+    script = tmp_path / "probe.nsi"
+    script.write_text(
+        _PROBE.format(
+            guard="\n".join("  " + ln for ln in _reinstall_guard()),
+            out=str(verdict_file),
+        ),
+        encoding="utf-8",
+    )
+    built = subprocess.run(
+        [_makensis(), "probe.nsi"], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert built.returncode == 0, built.stdout + built.stderr
+
+    maker, inst = tmp_path / "maker.exe", tmp_path / "inst"
+
+    # A reinstall: the installer ExecWaits on the old uninstaller, with `_?=`.
+    subprocess.run([str(maker)], cwd=tmp_path, timeout=180, check=True)
+    subprocess.run(
+        [str(inst / "un.exe"), "_?=" + str(inst)],
+        cwd=tmp_path,
+        timeout=180,
+        check=True,
+    )
+    assert _verdict(verdict_file) == "KEEP", (
+        "an upgrade would delete the user's keys and conversations"
+    )
+
+    # A real uninstall: Add/Remove Programs, the Start Menu entry, or a
+    # double-clicked uninstall.exe -- none of them pass `_?=`.
+    verdict_file.unlink()
+    subprocess.run([str(maker)], cwd=tmp_path, timeout=180, check=True)
+    subprocess.run([str(inst / "un.exe")], cwd=tmp_path, timeout=180, check=True)
+    assert _verdict(verdict_file) == "DELETE", (
+        "the checkbox stopped deleting anything, which is the bug the hook fixed"
+    )
+
+
+def test_install_doc_says_an_upgrade_keeps_the_data():
+    """The checkbox now behaves differently depending on how the uninstaller was
+    reached. Anyone who wants a clean slate has to be told the route that works."""
+    doc = _INSTALL_DOC.read_text(encoding="utf-8")
+    section = doc.split("## Uninstalling", 1)[1]
+    assert "upgrad" in section.lower(), "the upgrade behaviour is undocumented"
+    assert "clean slate" in section.lower()
+
+
+def test_the_checklist_covers_the_upgrade_branch():
+    doc = (_ROOT / "tests" / "manual" / "v6_release_checklist.md").read_text(
+        encoding="utf-8"
+    )
+    section = doc.split("## 5. Uninstall", 1)[1].split("## 6.", 1)[0]
+    assert "upgrade" in section.lower(), "no upgrade-path check"
+    assert "survive" in section.lower()

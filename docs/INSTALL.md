@@ -136,3 +136,14 @@ The uninstaller offers a **"Delete application data"** checkbox:
 - **Ticked** — `%LOCALAPPDATA%\baby` is removed: conversations, memory, models,
   and your API keys.
 - **Unticked** — your data stays, so reinstalling picks up where you left off.
+
+### Upgrading keeps your data, whatever you tick
+
+Running a newer `Baby_x.y.z_x64-setup.exe` over an existing install makes Windows
+run the old uninstaller first, so you may be shown that same checkbox in the middle
+of an upgrade. **During an upgrade it does nothing** — your conversations, memory
+and API keys are kept either way, and the new version starts where the old one left
+off.
+
+If you want a clean slate, do it in two steps: uninstall first with the box
+**ticked**, then run the installer.

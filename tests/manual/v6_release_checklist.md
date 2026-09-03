@@ -200,6 +200,18 @@ The W5 fix. Verify both branches.
       **survives**; reinstalling resumes with history intact.
 - [ ] On a box where Baby was only ever run **from source** (no install), the
       uninstaller leaves `%LOCALAPPDATA%\baby` alone — the dev caches survive.
+- [ ] **Upgrade path.** With a set-up install in place, double-click a newer
+      `Baby_x.y.z_x64-setup.exe`, choose to uninstall the old version when offered,
+      and **tick "Delete application data"** on the uninstaller's confirm page. The
+      data **survives**: after the upgrade the wizard does not reappear, the saved
+      key is still there, and `/api/diagnostics` still reports the conversation
+      count it had before. This is the branch that ate a real user's keys and
+      history twice — `$UpdateMode` is 0 on this path, so only the
+      `$EXEDIR`/`$INSTDIR` guard stands between an upgrade and a wipe.
+- [ ] Re-verify against the NSIS the release was built with: an uninstaller invoked
+      by an installer runs in place, a standalone one copies itself to `%TEMP%`.
+      `tests/test_uninstall.py::test_the_reinstall_guard_holds_against_real_nsis`
+      does this automatically wherever `makensis.exe` is installed.
 
 ## 6. Regression on the real box
 
