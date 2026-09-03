@@ -1861,3 +1861,40 @@ Running log of non-obvious choices made during the build. Newest last.
      must keep its weights in a directory it owns. This dependency was the one that
      downloaded itself somewhere else, and the manifest recorded that fact for three
      phases without anyone reading it as a bug.
+
+146. **"Test" proved the key and threw it away, and after setup there was no second
+     chance.** Reported as "I entered the OpenRouter API key while setting up baby
+     but the report says the api key is not set". The report was right:
+     `router_mode: null`, no keys present, `setup_complete: true`.
+
+     The key step ships two buttons. `Test` hits the vendor and, by design, writes
+     nothing -- its own docstring says "Test a key against its vendor WITHOUT
+     saving it" -- and on success it prints "OpenRouter key works." Nothing says
+     the key was not kept. `Continue` was gated on `canLeaveKeys`, which mirrors
+     the server's `can_finish`, and a Full install can always finish keyless. So
+     tested-green then Continue discarded the key with no warning, and because
+     only the *save* endpoint stamps `router_mode`, the null in that report is
+     proof no save ever happened.
+
+     The second half is worse than the first. Once `setup_complete` is stamped the
+     wizard never returns, and the repair panel listed keys read-only over the
+     advice to "edit .env in Baby's data folder and reopen Baby" -- which stamps
+     no `router_mode` either, so even a correct hand edit left Baby on the local
+     brain. There was no supported way to add a key to a finished install.
+
+     Three changes, one story. The key field is now one shared component instead of
+     a wizard-private one, so the panel and the wizard cannot drift. It says "Not
+     saved yet -- press Save to store it" under a passing test whose key is still
+     in the box, and the step refuses to advance while any box holds unsaved text.
+     And `POST /api/setup/keys` now applies itself: once setup is complete it runs
+     the same `_restart_needed_to_apply` check the wizard's finish uses (#143) and
+     arms the same restart, because the router is built once at boot and a key
+     saved afterwards is inert until something restarts the backend.
+
+     Restarting only *after* setup is deliberate. During the wizard the bounce
+     belongs to `/api/setup/complete`; firing it on a key save would take the
+     user's own screen away several steps before they are finished with it.
+
+     `restart_required: true` had been hardcoded in that response since W4 and read
+     by nothing. It now means what it says: a restart is needed and nobody else is
+     going to do it.

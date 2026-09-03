@@ -807,6 +807,21 @@ def create_app(ctx: UIContext) -> FastAPI:
         mode = paths.read_setup().get("install_mode") or "cloud_only"
         router_mode = keymod.router_mode_for(mode)
         paths.write_setup({"router_mode": router_mode})
+        # A key added AFTER setup is finished has no wizard behind it to bring the
+        # backend back, and the provider was built at boot from the key state as it
+        # was then -- so the key lands in .env and changes nothing until the user
+        # happens to reopen Baby. Apply it here instead.
+        #
+        # Only once setup is complete. During the wizard /api/setup/complete owns
+        # the restart, and bouncing here would take the user's own screen away
+        # mid-flow, several steps before they have finished with it.
+        state = paths.read_setup()
+        restarting = bool(state.get("setup_complete")) and _restart_needed_to_apply(
+            state, ctx.agent.provider
+        )
+        if restarting:
+            app.state.restart_requested = True
+            app.state.restart_event.set()
         ctx.bus.publish(
             "status", "setup", text=f"{keymod.spec(env).label} key saved"
         )
@@ -817,7 +832,10 @@ def create_app(ctx: UIContext) -> FastAPI:
             "message": result.get("message"),
             "secured": receipt["secured"],
             "router_mode": router_mode,
-            "restart_required": True,
+            # Honest now: "you must reopen Baby" ONLY when nothing is going to do it
+            # for you. It used to be hardcoded True and read by nothing at all.
+            "restart_required": not restarting,
+            "restarting": restarting,
             "keys": keymod.key_status(mode),
             "can_finish": keymod.can_finish(mode),
         }

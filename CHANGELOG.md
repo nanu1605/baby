@@ -103,6 +103,16 @@ an unsigned NSIS `.exe` with published SHA-256 checksums. Owner merges + tags.
   `%LOCALAPPDATA%\baby\models\openwakeword` beside the other weights, loaded by
   explicit path, so a rebuilt venv no longer touches them; an older install's
   copy is lifted out of the venv before the sync that would destroy it.
+- **A key can be added after setup, and testing one no longer loses it.** The key
+  step's `Test` button proves a key against the vendor and deliberately stores
+  nothing, but its success message ("OpenRouter key works.") reads as done -- and
+  Continue never checked whether anything had been saved, so a real install
+  finished the wizard with an empty `.env`, an unstamped router mode, and a user
+  who believed Baby was on the cloud. The field now says "Not saved yet" and the
+  step will not advance past an unsaved box. The setup & repair panel takes keys
+  too, instead of listing them read-only and pointing at a text editor; and a key
+  saved once setup is finished now restarts the backend to apply itself, since the
+  router is built once at boot and would otherwise ignore it until the next launch.
 - **Licensed MIT.** The repository was previously all-rights-reserved, which made a
   public release meaningless. It is now MIT (`LICENSE`) -- OSI-approved, so
   SignPath Foundation's free code-signing track is open as well.

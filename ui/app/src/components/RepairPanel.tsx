@@ -10,7 +10,6 @@ import {
 import { useBrain } from "../store";
 import {
   firstError,
-  keyRowSummary,
   provisionOutcome,
   savedFileName,
   stepGlyph,
@@ -19,9 +18,11 @@ import {
 import type {
   DiagnosticsReport,
   SetupHealth,
+  SetupKeyResult,
   SetupKeys,
   SetupStatus,
 } from "../types";
+import { KeyField } from "./KeyField";
 
 /**
  * Setup & repair — the in-app replacement for an installer Repair/Modify dialog.
@@ -86,6 +87,14 @@ export default function RepairPanel() {
   }, [open, repairing]);
 
   if (!open) return null;
+
+  // A save hands back the refreshed roster, so the list re-renders without another
+  // round trip. The restart, when the shell can do one, is already under way by the
+  // time this fires -- KeyField says so under the field.
+  const applyKeySaved = (r: SetupKeyResult) => {
+    if (!alive.current || !r.keys) return;
+    setKeys((prev) => (prev ? { ...prev, keys: r.keys! } : prev));
+  };
 
   const runCheck = async () => {
     setChecking(true);
@@ -224,16 +233,15 @@ export default function RepairPanel() {
 
         <section className="repair-section">
           <h3>API keys</h3>
-          <ul className="repair-list">
+          <div className="wizard-keys">
             {(keys?.keys ?? []).map((row) => (
-              <li key={row.env}>
-                <strong>{row.label}</strong> — {keyRowSummary(row)}
-              </li>
+              <KeyField key={row.env} row={row} onSaved={applyKeySaved} />
             ))}
-          </ul>
+          </div>
           <p className="repair-note">
-            Keys live in a file only your account can read. To change one, edit
-            <code> .env</code> in Baby's data folder and reopen Baby.
+            Each key is checked against its provider before it is stored, in a file
+            only your account can read. Saving one here switches Baby onto it — the
+            router is built at boot, so Baby restarts itself to pick it up.
           </p>
         </section>
 

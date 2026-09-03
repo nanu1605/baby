@@ -110,6 +110,15 @@ for W3 and W5 — the dev box cannot fake any of it.
       instead says `voice on (hey_jarvis)` and that **"Hey Jarvis" actually wakes it
       in that same session** — before this, a fresh install was deaf until the user
       happened to restart on their own.
+- [ ] **Test a key, then press Continue.** The step must refuse to move on, and
+      the field must say the key is not saved yet. Pressing only `Test` and
+      continuing is how a real install finished setup with an empty `.env`, an
+      unstamped `router_mode`, and a user who thought Baby was on the cloud --
+      `Test` proves the key against the vendor and stores nothing.
+- [ ] **Add a key AFTER setup, from the setup & repair panel.** It must accept the
+      key (not just list it), and Baby must restart itself and come back on cloud.
+      Before this the panel was read-only and told the user to hand-edit `.env` --
+      which stamps no `router_mode`, so even a correct edit left Baby local-only.
 - [ ] **A second launch, with everything already provisioned, does NOT restart.** A
       bounce there is an outage for nothing.
 - [ ] After finishing, **relaunch → the wizard does not reappear**.

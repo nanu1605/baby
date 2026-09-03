@@ -12,6 +12,7 @@ import type {
 import {
   canFinishSetup,
   canLeaveKeys,
+  canLeaveKeysStep,
   firstError,
   formatSize,
   gpuSummaryLine,
@@ -21,6 +22,8 @@ import {
   keyOutcomeOk,
   keyRowSummary,
   keysBlockedReason,
+  keySavedHint,
+  keyTestedNotSaved,
   keyTone,
   modeTradeoff,
   restartHint,
@@ -28,6 +31,8 @@ import {
   recommendedMode,
   savedFileName,
   rowBar,
+  unsavedKeyLabels,
+  unsavedKeysWarning,
   rowStatus,
   shouldShowWizard,
   stepGlyph,
@@ -311,6 +316,73 @@ const doc = (o: Partial<SetupDisclosure>): SetupDisclosure => ({
   items: [{ key: "actions", title: "Baby can act", detail: "It can run things." }],
   acknowledged: false,
   ...o,
+});
+
+describe("keyTestedNotSaved", () => {
+  // "Test" proves the key against the vendor and stores NOTHING. Its success
+  // message is "OpenRouter key works.", which reads as done -- a real install
+  // finished the wizard that way and booted local-only with an empty .env.
+  it("flags a passing test whose key is still sitting in the box", () => {
+    expect(keyTestedNotSaved(keyResult({ ok: true }), true)).toBe(true);
+  });
+  it("does not flag a save -- that one stored it", () => {
+    expect(keyTestedNotSaved(keyResult({ ok: true, saved: true }), true)).toBe(false);
+    expect(keyTestedNotSaved(keyResult({ ok: false, saved: false }), true)).toBe(false);
+  });
+  it("does not flag a rejected key, or an empty box", () => {
+    expect(keyTestedNotSaved(keyResult({ ok: false, kind: "invalid_key" }), true)).toBe(false);
+    expect(keyTestedNotSaved(keyResult({ ok: true }), false)).toBe(false);
+    expect(keyTestedNotSaved(null, true)).toBe(false);
+  });
+});
+
+describe("unsavedKeyLabels / unsavedKeysWarning / canLeaveKeysStep", () => {
+  const ok = keysState({
+    mode: "full",
+    can_finish: { ok: true, missing: null, message: "" },
+  });
+
+  it("names the pending key by its label, not its env var", () => {
+    expect(unsavedKeyLabels(ok, ["OPENROUTER_API_KEY"])).toEqual(["OpenRouter"]);
+    expect(unsavedKeysWarning(unsavedKeyLabels(ok, ["OPENROUTER_API_KEY"]))).toMatch(
+      /OpenRouter key is typed in but not saved/,
+    );
+  });
+  it("falls back to the env name for a row it does not know", () => {
+    expect(unsavedKeyLabels(ok, ["MYSTERY_KEY"])).toEqual(["MYSTERY_KEY"]);
+    expect(unsavedKeyLabels(null, ["MYSTERY_KEY"])).toEqual(["MYSTERY_KEY"]);
+  });
+  it("says nothing when nothing is pending", () => {
+    expect(unsavedKeysWarning([])).toBe("");
+  });
+  it("holds Continue while a key sits unsaved, even on a Full install", () => {
+    expect(canLeaveKeysStep(ok, [])).toBe(true);
+    expect(canLeaveKeysStep(ok, ["OPENROUTER_API_KEY"])).toBe(false);
+  });
+  it("still defers to the server when nothing is pending", () => {
+    expect(canLeaveKeysStep(keysState({}), [])).toBe(false);
+  });
+});
+
+describe("keySavedHint", () => {
+  // The router is built once, at boot, from the key state as it was then. A key
+  // saved afterwards is inert until something restarts the backend -- so the
+  // panel has to say which of the two is happening.
+  it("says Baby is doing the restart itself", () => {
+    expect(keySavedHint(keyResult({ saved: true, restarting: true }))).toMatch(
+      /restarting/,
+    );
+  });
+  it("asks the user to reopen when nobody else will", () => {
+    expect(
+      keySavedHint(keyResult({ saved: true, restarting: false, restart_required: true })),
+    ).toMatch(/Reopen Baby/);
+  });
+  it("says nothing for a test, or for a save that needs no restart", () => {
+    expect(keySavedHint(keyResult({ ok: true }))).toBe("");
+    expect(keySavedHint(keyResult({ saved: true, restart_required: false }))).toBe("");
+    expect(keySavedHint(null)).toBe("");
+  });
 });
 
 describe("canFinishSetup", () => {

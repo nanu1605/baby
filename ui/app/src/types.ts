@@ -241,7 +241,10 @@ export interface SetupKeyResult {
   message: string;
   secured?: boolean;
   router_mode?: string;
+  /** A restart is needed for this key to take effect and nobody is doing it for you. */
   restart_required?: boolean;
+  /** The shell owns this backend and is restarting it now — no user action needed. */
+  restarting?: boolean;
   keys?: SetupKeyRow[];
   can_finish?: SetupCanFinish;
 }

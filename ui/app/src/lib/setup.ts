@@ -207,6 +207,65 @@ export function keysBlockedReason(keys: SetupKeys | null): string {
   return keys.can_finish?.message ?? "A cloud key is required to continue.";
 }
 
+/**
+ * Did the last action prove the key without storing it?
+ *
+ * "Test" hits the vendor and deliberately writes nothing, and its success message
+ * is "<vendor> key works." — which reads exactly like "you're done". A real
+ * install finished the wizard that way: key tested, green tick, Continue, and the
+ * key gone. Nothing was written to .env, so router_mode stayed unstamped and Baby
+ * booted local-only with the user believing it was on the cloud.
+ */
+export function keyTestedNotSaved(result: SetupKeyResult | null, hasText: boolean): boolean {
+  if (!result || !hasText) return false;
+  return result.saved === undefined && result.ok === true;
+}
+
+/**
+ * The labels of every key that has been typed but not saved. The wizard holds on
+ * these rather than discarding them silently when the step is left.
+ */
+export function unsavedKeyLabels(
+  keys: SetupKeys | null,
+  pending: readonly string[],
+): string[] {
+  const byEnv = new Map((keys?.keys ?? []).map((r) => [r.env, r.label]));
+  return pending.map((env) => byEnv.get(env) ?? env);
+}
+
+/** The banner for those unsaved keys. "" when there are none. */
+export function unsavedKeysWarning(labels: readonly string[]): string {
+  if (labels.length === 0) return "";
+  const which = labels.join(" and ");
+  return `Your ${which} key is typed in but not saved yet — press Save to store it, or clear the box.`;
+}
+
+/**
+ * The key step may be left when the server is satisfied AND nothing is sitting
+ * unsaved in a box. Testing a key is not saving it, and Continue used to take no
+ * notice of the difference.
+ */
+export function canLeaveKeysStep(
+  keys: SetupKeys | null,
+  pending: readonly string[],
+): boolean {
+  return canLeaveKeys(keys) && pending.length === 0;
+}
+
+/**
+ * What a saved key means for the running process. The router is built once, at
+ * boot, from the key state as it was then — so a key saved later does nothing
+ * until something restarts the backend. The server says which case this is.
+ */
+export function keySavedHint(result: SetupKeyResult | null): string {
+  if (!result?.saved) return "";
+  if (result.restarting) {
+    return "Baby is restarting to start using this key. This takes a few seconds.";
+  }
+  if (result.restart_required) return "Reopen Baby once to start using this key.";
+  return "";
+}
+
 
 // -- W5 disclosure step ------------------------------------------------------
 

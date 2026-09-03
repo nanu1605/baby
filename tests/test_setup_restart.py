@@ -251,3 +251,117 @@ def test_the_shell_restarts_instead_of_reporting_a_crash():
     assert "reveal(" in restart
     # And a restart that fails still has to say so rather than hanging on the overlay.
     assert "show_backend_died(" in restart
+
+
+# --- a key added AFTER the wizard has to apply itself ------------------------
+# Reported from a real install: the wizard was finished without ever pressing
+# Save (Test proves the key and stores nothing), so `.env` was empty and
+# router_mode unstamped. The repair panel could not add one -- it listed the keys
+# read-only and said to hand-edit .env, which stamps nothing either. And even a
+# correct hand edit changed nothing until the next launch, because the router is
+# built once at boot. So the save endpoint now applies itself.
+
+
+def _keys_client(tmp_path, monkeypatch, *, complete: bool, tray: bool):
+    from core import keys as keymod
+
+    for spec in keymod.KEYS:
+        monkeypatch.delenv(spec.env, raising=False)
+    if tray:
+        monkeypatch.setenv("BABY_SHELL_TRAY", "1")
+    else:
+        monkeypatch.delenv("BABY_SHELL_TRAY", raising=False)
+    client, db = _client_with_ctx(tmp_path, monkeypatch, voice_failed=False)
+    paths.write_setup({"install_mode": "full", "setup_complete": complete})
+    return client, db
+
+
+def _save(client, monkeypatch):
+    from tests.test_keys import _probe
+
+    _probe(monkeypatch, status=200)
+    return client.post(
+        "/api/setup/keys", json={"env": "OPENROUTER_API_KEY", "key": _FAKE_KEY}
+    ).json()
+
+
+def test_a_key_added_after_setup_applies_itself(tmp_path, monkeypatch):
+    """The repair-panel case: no wizard behind it to restart the process, and a
+    provider built at boot from a key state that had no key in it."""
+    client, db = _keys_client(tmp_path, monkeypatch, complete=True, tray=True)
+    try:
+        body = _save(client, monkeypatch)
+        assert body["saved"] is True
+        assert body["router_mode"] == "cloud_primary"
+        assert body["restarting"] is True
+        assert body["restart_required"] is False  # nothing for the user to do
+        assert client.app.state.restart_requested is True
+        assert client.app.state.restart_event.is_set()
+        assert _FAKE_KEY not in str(body)
+    finally:
+        _close(db)
+
+
+def test_a_key_saved_during_the_wizard_does_not_bounce_it(tmp_path, monkeypatch):
+    """Restarting here would tear the user's own screen away several steps before
+    they are done with it. /api/setup/complete owns that restart."""
+    client, db = _keys_client(tmp_path, monkeypatch, complete=False, tray=True)
+    try:
+        body = _save(client, monkeypatch)
+        assert body["saved"] is True
+        assert body["restarting"] is False
+        assert client.app.state.restart_requested is False
+        assert not client.app.state.restart_event.is_set()
+    finally:
+        _close(db)
+
+
+def test_a_key_save_never_restarts_a_backend_the_shell_does_not_own(tmp_path, monkeypatch):
+    """An attached service or a bare dev run has nobody to bring it back, so the
+    honest answer is to tell the user to reopen it."""
+    client, db = _keys_client(tmp_path, monkeypatch, complete=True, tray=False)
+    try:
+        body = _save(client, monkeypatch)
+        assert body["restarting"] is False
+        assert body["restart_required"] is True
+        assert not client.app.state.restart_event.is_set()
+    finally:
+        _close(db)
+
+
+# --- the two screens that hand a key over -----------------------------------
+# vitest covers the pure decisions in lib/setup.ts; these pin the JSX facts it
+# cannot reach -- that the guard is actually wired to the button, and that the
+# repair panel really does take a key now.
+
+_APP = _ROOT / "ui" / "app" / "src"
+
+
+def test_continue_cannot_walk_past_a_typed_but_unsaved_key():
+    """Test proves a key and stores nothing. Continue used to look only at the
+    server's can_finish, which a Full install always satisfies -- so a tested key
+    was dropped on the way to the next step, silently."""
+    src = (_APP / "components" / "FirstRunWizard.tsx").read_text(encoding="utf-8")
+    assert "canLeaveKeysStep(keys, pending)" in src, "the button ignores unsaved keys"
+    assert "onPendingChange={notePending}" in src, "nothing reports a field as pending"
+    assert "canLeaveKeys(keys)" not in src, "the old unguarded check is still wired up"
+
+
+def test_the_repair_panel_can_add_a_key_not_just_list_them():
+    """Finishing setup used to be the last moment a key could be added: the panel
+    was read-only and pointed at a text editor, which also leaves router_mode
+    unstamped, so even a correct hand edit left Baby on the local brain."""
+    src = (_APP / "components" / "RepairPanel.tsx").read_text(encoding="utf-8")
+    assert 'import { KeyField }' in src, "the panel has no way to enter a key"
+    assert "<KeyField" in src
+    assert "edit" not in src.split("<h3>API keys</h3>", 1)[1].split("</section>", 1)[0], (
+        "the panel still tells the user to hand-edit .env"
+    )
+
+
+def test_one_key_field_serves_both_screens():
+    """Two copies drift: the wizard's would get the guard and the panel's would
+    quietly keep the old behaviour."""
+    assert (_APP / "components" / "KeyField.tsx").is_file()
+    wizard = (_APP / "components" / "FirstRunWizard.tsx").read_text(encoding="utf-8")
+    assert "function KeyField(" not in wizard, "the wizard still defines its own"
