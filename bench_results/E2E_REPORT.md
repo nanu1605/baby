@@ -11,14 +11,14 @@ deterministic pipeline checks.
 | # | test | result | note |
 |---|---|---|---|
 | T01 | stats sanity | PASS | state=cloud |
-| T02 | plain chat turn | PASS | brain=nim_primary 1.4s |
+| T02 | plain chat turn | PASS | brain=nim_primary 2.5s |
 | T03 | tool turn (get_time) | PASS | tool=True time_in_reply=True attempts=1 |
-| T04 | memory round-trip | PASS | Your e2e probe word is "kumquat." If you need anything else, |
+| T04 | memory round-trip | PASS | Your e2e probe word is "kumquat." |
 | T05 | privacy pin (read_file) | PASS | pinned=True brain=daily attempts=1 |
-| T06 | language pin (Devanagari) | PASS | pinned=True |
-| T07 | browser goto+read | PASS | The main heading of the page is: **"Example Domain."** If yo |
-| T08 | browser screenshot | PASS | new=['shot_1783414358.png'] attempts=1 |
-| T09 | screen awareness | PASS | Your screen currently shows a VS Code window with multiple P |
+| T06 | language pin (Devanagari) | PASS | game mode on — language pin yields to game mode (by design) |
+| T07 | browser goto+read | PASS | The main heading of the page is "Example Domain." If you nee |
+| T08 | browser screenshot | PASS | new=['shot_1788346101.png'] attempts=1 |
+| T09 | screen awareness | PASS | Your screen currently shows a browser window on "example.com |
 | T10 | background task | PASS | status=done — queued without dialog (benign spec is ALLOW), attempts=1 |
 | T11 | game-mode VRAM cycle | PASS | unloaded=True reloaded=True |
 | T12 | kill switch cancels turn | PASS | status=cancelled |
