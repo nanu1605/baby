@@ -1,6 +1,6 @@
 # Changelog
 
-## v6.0.1 -- unreleased
+## v6.0.1 -- setup failure reporting (2026-09-04)
 
 Found by running the clean-VM matrix against the published `.exe`: a fresh
 Windows 11 guest with no Visual C++ runtime, no GPU, and the network cut on

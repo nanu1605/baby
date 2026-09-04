@@ -72,7 +72,7 @@ For each release, publish alongside the `.exe`:
 1. `SHA256SUMS.txt` — generated with:
 
 ```powershell
-Get-FileHash .\Baby_6.0.0_x64-setup.exe -Algorithm SHA256 | Format-List
+Get-FileHash .\Baby_6.0.1_x64-setup.exe -Algorithm SHA256 | Format-List
 ```
 
 2. A note in the release body pointing at the SmartScreen walkthrough, so a

@@ -2106,3 +2106,32 @@ Running log of non-obvious choices made during the build. Newest last.
      who reconnects still waits up to 20 minutes, then gets a retryable error and
      has to act on it. Actually resuming in place would mean owning the hub's
      transfer, which is a much larger change than this release wants.
+
+152. **6.0.1 ships on its own rather than waiting for something to batch with.**
+     v6.0.0 is already public and downloadable, so the two matrix findings (#150,
+     #151) are not sitting on a branch waiting for a release -- they are live in
+     the installer strangers are fetching now. Holding a patch for company means
+     every install between now and the next feature only ever sees the broken
+     provisioning failure path. Both fixes are small, both are on a path nothing
+     else touches, and the seven version tracks were already bumped, so the cost
+     of tagging is the tag.
+
+     What that costs: v6.0.0's evidence does not transfer. The clean-VM matrix
+     recorded in the release checklist was measured against the published 6.0.0
+     `.exe`, and the whole point of 6.0.1 is code on the failure path that matrix
+     exercised. So section 7 now asks for row 9 to be re-run against the 6.0.1
+     build specifically, and the recorded results say which binary they came from
+     rather than reading as a general pass.
+
+     The old release stays up. Its `.exe` and its SHA256 line remain valid for
+     anyone who already downloaded and wrote the hash down; deleting a published
+     asset to tidy up would break exactly the verification `docs/INSTALL.md` asks
+     people to perform.
+
+     A smaller thing this exposed: the checksum commands in `docs/INSTALL.md` and
+     `docs/SIGNING.md` hardcode the installer's filename, so they went stale the
+     instant the version moved -- and a `Get-FileHash` on a name that is not on
+     disk fails in a way a reader cannot distinguish from a tampered download.
+     They are now pinned to `tauri.conf.json`'s version by a test, scoped to
+     exclude the checklist's section 2, where naming the 6.0.0 exe is a record of
+     what was tested rather than drift.

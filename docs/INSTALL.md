@@ -20,7 +20,7 @@ Get `Baby_<version>_x64-setup.exe` from the
 Each release also publishes a `SHA256SUMS.txt`. To check your download matches:
 
 ```powershell
-Get-FileHash .\Baby_6.0.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Baby_6.0.1_x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the result with the line for that file in `SHA256SUMS.txt`. If they

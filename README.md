@@ -5,7 +5,7 @@ A Jarvis-style, voice-enabled personal AI assistant for Windows 11.
 default, but privacy-pinned turns never leave the PC, and the warm local 9B
 keeps everything working with the Wi-Fi cable pulled.
 
-> Status: **v6.0.0 — public Windows installer** ✅ — Baby now ships as a
+> Status: **v6.0.1 — public Windows installer** ✅ — Baby now ships as a
 > downloadable `.exe` a stranger can install: no Python, no Git, no repo. A first-run
 > wizard checks your GPU, picks Full or cloud-only, downloads what it needs with
 > resumable progress, validates your API key against the provider before accepting it,

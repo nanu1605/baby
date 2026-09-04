@@ -1,4 +1,4 @@
-# v6.0.0 release checklist
+# v6.0.1 release checklist
 
 Everything here is **owner-run**. The dev box cannot validate a stranger's first
 launch, and nothing in this file is something Claude does: the merge, the tag, and
@@ -48,11 +48,11 @@ cannot prove.
       uv.exe` and a size in the tens of MB rather than ~3 MB:
       `ui/shell/src-tauri/payload/uv.exe`
 - [ ] Installer lands at
-      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.0_x64-setup.exe`
-      — check the **filename says 6.0.0**, not 5.0.0.
+      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.1_x64-setup.exe`
+      — check the **filename says 6.0.1**, not 6.0.0.
 - [ ] Generate the checksum file published alongside it:
       ```powershell
-      Get-FileHash .\Baby_6.0.0_x64-setup.exe -Algorithm SHA256 | Format-List
+      Get-FileHash .\Baby_6.0.1_x64-setup.exe -Algorithm SHA256 | Format-List
       ```
 
 ## 2. Clean-VM matrix
@@ -286,9 +286,22 @@ Baby is still the same assistant — confirm v6 packaging did not disturb it.
 
 ## 7. Publish
 
+This one is a **patch on a release that is already public**. v6.0.0 is
+downloadable now, so anyone who installs before this ships gets the two bugs
+below; the fix is worth its own tag rather than waiting to be batched.
+
+- [ ] **Re-run matrix row 9 against the 6.0.1 build.** Both fixes live on the
+      provisioning failure path and nothing else exercises it: cut the network
+      mid-download, leave it, and confirm the row gives up inside ~20 minutes with
+      a named retryable error rather than an `EventBus.publish() got multiple
+      values for argument 'kind'`. The evidence recorded in section 2 was measured
+      against **6.0.0** and cannot vouch for this.
 - [ ] Merge the PR.
-- [ ] Tag `v6.0.0`.
+- [ ] Tag `v6.0.1`.
 - [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.
+- [ ] Leave the v6.0.0 release up. Its `.exe` and checksum stay valid for anyone
+      who already has them, and deleting a published asset breaks the hash a user
+      may have written down.
 - [ ] Release body links the SmartScreen walkthrough
       (`docs/INSTALL.md`) — a first-time user meeting an unexplained blue warning
       is the most likely reason a download gets abandoned.
