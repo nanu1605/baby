@@ -2,6 +2,28 @@
 
 ## v6.0.1 -- setup failure reporting (2026-09-04)
 
+- **Full mode now installs the local brain instead of asking for it.** Picking
+  Full on a machine without Ollama could not finish setup at all: the row said
+  "the installer sets it up", nothing did (the only script that installs Ollama is
+  a dev script, not in the shipped payload), the verify step then failed with a
+  raw `ConnectError: [WinError 10061] ...` printed twice, and the only control on
+  screen was a Retry that re-ran the same check forever. Provisioning now performs
+  the silent install the manifest has described since W3 -- `winget install --id
+  Ollama.Ollama`, falling back to the vendor installer -- which is per-user and
+  needs no admin, so the no-admin promise holds. It also sets
+  `OLLAMA_CONTEXT_LENGTH`, without which the local brain silently serves a
+  truncated context; only the dev script had ever set it. Measured end to end on a
+  clean VM: installed in six minutes, 9B pulled, "Baby is ready".
+
+- **A first run that only the local brain broke offers a way out.** The failure
+  reads as a sentence naming the fix rather than a Windows error code, one dead
+  daemon is reported once instead of twice, and when nothing except the local
+  brain failed the wizard offers "Use cloud only instead" beside Retry -- a
+  machine that cannot host the 9B can still finish setup. Deliberately strict: if
+  anything a cloud-only install also needs has failed, the offer is withheld,
+  because switching modes would not fix it.
+
+
 Found by running the clean-VM matrix against the published `.exe`: a fresh
 Windows 11 guest with no Visual C++ runtime, no GPU, and the network cut on
 purpose part-way through setup.

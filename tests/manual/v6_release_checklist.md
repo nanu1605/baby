@@ -219,6 +219,36 @@ Still uncovered by any of the above, and still yours to run:
 - [ ] "Create report" — confirm **no API key, no username, no owner name** in the
       output before you post it anywhere.
 
+### Full mode on a machine that has never had Ollama
+
+Until 6.0.1 this could not finish at all, and the dev box could not show it: Ollama
+is already running there, so the whole branch is skipped.
+
+- [ ] **Pick Full on a clean machine with no Ollama.** The "Ollama runtime" row must
+      install it by itself -- counting up ("installing Ollama (2m)"), not sitting on
+      one word -- and reach a tick. No UAC prompt for this step: the install is
+      per-user. Then the 9B pulls and "Verifying everything works" passes.
+      Machine-verified once on a clean VM (6 minutes, non-elevated); confirm on real
+      hardware.
+- [ ] **Confirm the context length actually got set**, or the local brain silently
+      serves a truncated context and everything just feels stupider:
+      ```powershell
+      [Environment]::GetEnvironmentVariable("OLLAMA_CONTEXT_LENGTH", "User")
+      ```
+      Expect `8192`.
+- [ ] **The escape hatch — the one thing not machine-verified.** Make Full fail on
+      the local brain ALONE (easiest: let setup finish, then exit Ollama from its
+      tray icon, delete `%LOCALAPPDATA%\baby\setup.json`, and relaunch so
+      provisioning re-runs with everything else already cached). The error must be a
+      sentence naming ollama.com -- **not** `ConnectError: [WinError 10061]` -- must
+      say it once rather than twice, and must offer **"Use cloud only instead"**
+      beside Retry. Click it: the plan reloads without the Ollama rows and setup
+      completes. Cutting the network does NOT reproduce this — the embedder fails
+      first and the offer is correctly withheld.
+- [ ] **The offer must NOT appear when something shared broke.** Break whisper
+      (delete its cache with the network off) and confirm only Retry is offered:
+      cloud-only needs whisper too, so switching modes would fix nothing.
+
 ### Progress is legible while it runs
 
 - [ ] During the first run, the **Wake-word models**, **Whisper** and **Memory
@@ -290,12 +320,14 @@ This one is a **patch on a release that is already public**. v6.0.0 is
 downloadable now, so anyone who installs before this ships gets the two bugs
 below; the fix is worth its own tag rather than waiting to be batched.
 
-- [ ] **Re-run matrix row 9 against the 6.0.1 build.** Both fixes live on the
-      provisioning failure path and nothing else exercises it: cut the network
-      mid-download, leave it, and confirm the row gives up inside ~20 minutes with
-      a named retryable error rather than an `EventBus.publish() got multiple
-      values for argument 'kind'`. The evidence recorded in section 2 was measured
-      against **6.0.0** and cannot vouch for this.
+- [x] **Re-run matrix row 9 against the 6.0.1 build.** Done on a clean VM against
+      the built installer: cut at 68 MB of 1.6 GB, the row said "no new data for
+      10m" at +10.1m and **gave up at +19.8m** with `kind=stalled`,
+      `retryable=true`; the `provision` row read a real sentence and a log scan for
+      `multiple values for argument` / `TypeError` / `Traceback` returned **0
+      hits**. Retry alone did not recover (it gave up again at +20.3m with the
+      network healthy) -- reopening Baby did, resuming from the cached 68 MB and
+      finishing. The retry wording is worth a second look; see DECISIONS #151.
 - [ ] Merge the PR.
 - [ ] Tag `v6.0.1`.
 - [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.

@@ -10,6 +10,7 @@ import type {
   SetupStatus,
 } from "../types";
 import {
+  canFallBackToCloud,
   canFinishSetup,
   canLeaveKeys,
   canLeaveKeysStep,
@@ -466,5 +467,83 @@ describe("rowNote", () => {
     const ev = { dep: "wakeword", phase: "download", status: "done", detail: "wake-word models ready" };
     expect(rowNote("done", ev)).toBe("done");
     expect(rowNote("error", { ...ev, status: "error" })).toBe("error");
+  });
+});
+
+describe("canFallBackToCloud", () => {
+  // A fresh Full install on a machine with no Ollama fails verify, and the error
+  // state used to render one button: Retry, which re-runs the identical check and
+  // fails identically. Cloud-only works on that machine as it stands.
+  const verify = (o: Record<string, unknown>) => ({
+    verify: { dep: "verify", phase: "verify", status: "fail", ...o },
+  });
+
+  it("offers the switch when only the local brain failed", () => {
+    expect(canFallBackToCloud(verify({ local_brain_only: true }))).toBe(true);
+  });
+
+  it("does not offer it when something else failed too", () => {
+    expect(canFallBackToCloud(verify({ local_brain_only: false }))).toBe(false);
+  });
+
+  it("stays silent when the backend says nothing", () => {
+    // An older backend has no such field. Degrade to the previous behaviour
+    // rather than proposing a mode switch that might fix nothing.
+    expect(canFallBackToCloud(verify({}))).toBe(false);
+  });
+
+  it("stays silent when there is no verify row at all", () => {
+    expect(canFallBackToCloud({})).toBe(false);
+  });
+
+  // pull_ollama_model raises once its retries are spent, which aborts the walk
+  // before verify runs -- so the 6.4 GB model pull, the scariest step of a first
+  // run, produced the same Retry-only dead end with no flag to notice it by.
+  const errored = (dep: string) => ({
+    dep,
+    phase: "error",
+    status: "error",
+  });
+
+  it("offers the switch when the 9B pull died before verify ran", () => {
+    expect(
+      canFallBackToCloud({
+        kokoro: { dep: "kokoro", phase: "download", status: "done" },
+        "ollama-model": errored("ollama-model"),
+        provision: errored("provision"),
+      }),
+    ).toBe(true);
+  });
+
+  it("offers it when the daemon install itself failed", () => {
+    expect(canFallBackToCloud({ "ollama-daemon": errored("ollama-daemon") })).toBe(true);
+  });
+
+  it("does not offer it when a shared dependency died", () => {
+    // whisper is needed in BOTH modes; switching would fix nothing.
+    expect(
+      canFallBackToCloud({
+        whisper: errored("whisper"),
+        provision: errored("provision"),
+      }),
+    ).toBe(false);
+  });
+
+  it("does not offer it when the local brain AND something shared both died", () => {
+    // The case that separates every() from some(): switching to cloud-only drops
+    // the Ollama rows but whisper is still required, so the run would fail again
+    // and the user would have changed their install for nothing.
+    expect(
+      canFallBackToCloud({
+        whisper: errored("whisper"),
+        "ollama-model": errored("ollama-model"),
+      }),
+    ).toBe(false);
+  });
+
+  it("does not treat the wrapper row alone as a local-brain failure", () => {
+    // `provision` is the endpoint restating whatever exception ended the walk.
+    // On its own it says nothing about which dependency broke.
+    expect(canFallBackToCloud({ provision: errored("provision") })).toBe(false);
   });
 });

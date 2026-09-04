@@ -2135,3 +2135,91 @@ Running log of non-obvious choices made during the build. Newest last.
      They are now pinned to `tauri.conf.json`'s version by a test, scoped to
      exclude the checklist's section 2, where naming the 6.0.0 exe is a record of
      what was tested rather than drift.
+
+153. **Full mode could not finish on any machine that did not already have Ollama.**
+     Found by picking Full on the clean VM while re-running row 9 against the
+     6.0.1 build. The row read `Ollama runtime -- needs_install`, the detail said
+     "the installer sets it up", the verify step then failed, and the wizard
+     rendered one control: Retry, which re-ran the identical check and failed the
+     identical way. `provisioned` stayed false, so setup could never complete.
+
+     Nothing set it up. `grep -rn ollama` over `installer/`, the NSIS hooks and
+     `tauri.conf.json` returns nothing; the only script that installs Ollama is
+     `scripts/setup.ps1`, which is a DEV script and is not in the shipped payload.
+     The manifest had described the intended behaviour since W3 -- `install_kind
+     ="winget"`, "Silent-install via winget Ollama.Ollama (fallback:
+     OllamaSetup.exe /VERYSILENT)" -- and no code ever performed it. So the
+     sentence in the row was a promise the build could not keep, and the verify
+     failure was its consequence being reported as if it were a separate fault.
+
+     **Why nobody saw it:** the dev box has Ollama running, so `_ollama_healthy()`
+     returns true and the whole branch is skipped. Same shape as #6 and #8 --
+     the machine that would fail is the one the developer does not have. The
+     clean-VM matrix had not caught it either, because whichever rows ran Full
+     stopped before the verify step.
+
+     Two changes, in the order they were made.
+
+     **Legibility and a way out first**, because that is what stops a stranger
+     being stuck. `check_ollama` and `check_ollama_model` catch `TransportError`
+     and return a named sentence instead of raising, so the banner no longer says
+     `ConnectError: [WinError 10061] No connection could be made because the
+     target machine actively refused it` -- twice, which is what a clean VM
+     actually showed. It is deliberately worded for both "not installed" and
+     "installed but stopped": a refused connection cannot tell those apart, and
+     sending someone to reinstall software they already have is its own dead end.
+     `readiness_summary` de-duplicates identical details, because one dead daemon
+     failed both checks with the same sentence and printing it twice read as two
+     separate problems. And `local_brain_only_failure` tells the wizard when a run
+     failed ONLY on the local brain, which is when "use cloud only instead" is an
+     honest offer -- strict by design, since a run that also broke whisper would
+     not be fixed by switching modes.
+
+     **Then the install the manifest always described.** Measured on a clean VM
+     before writing any of it, because designing this blind is how the `_?=`
+     mistake in #12 nearly shipped: winget is present per-user, `winget install
+     --id Ollama.Ollama --silent` succeeds NON-ELEVATED in about five minutes,
+     and the vendor installer starts the daemon itself and drops a Startup
+     shortcut -- so there is no `ollama serve` to run and it survives the next
+     logon. That keeps the installer's no-admin promise. The vendor `.exe`
+     fallback stays for machines with no winget. A heartbeat fires every 15s
+     while it runs: five silent minutes on one row is exactly what #13 was about.
+
+     `OLLAMA_CONTEXT_LENGTH=8192` is written to the user's environment on success.
+     The `/v1` endpoint ignores `options.num_ctx` (verified, see
+     `core/providers/ollama.py`), so this is the only thing that stops the local
+     brain silently serving a truncated context -- and only `scripts/setup.ps1`
+     ever set it, which is precisely why the dev box never showed the shipped
+     build not doing so. Best-effort: a degraded context is not worth failing an
+     install over.
+
+     **One gap the green tests did not show, found by reading the failure paths
+     rather than the coverage.** `pull_ollama_model` RAISES once its retries are
+     spent, which aborts the walk -- so a failed 6.4 GB model pull, the manifest's
+     own "scariest first-run moment", never reaches verify, carries no
+     `local_brain_only` flag, and would have shown the same Retry-only dead end
+     this work exists to remove. `canFallBackToCloud` therefore also qualifies a
+     run whose only failing dependencies are local-brain ones, excluding the
+     synthetic `provision` row (the endpoint's restatement of whatever exception
+     ended the walk, not a dependency of its own).
+
+     **Proven on a clean VM, from the built installer:** Full mode installed
+     Ollama itself, non-elevated, in six minutes with a per-minute heartbeat, the
+     row reached `pass`, the 9B pulled at 12 MB/s, and verify returned "Baby is
+     ready -- all required components work", `provisioned: true`. That is a
+     complete Full-mode first run, which no shipped build has ever managed.
+
+     **Not proven:** the "use cloud only instead" button rendering on a live
+     failure. Its decision function is unit-tested seven ways and mutation-tested
+     on both branches, and the repo's convention is to test the logic rather than
+     the JSX -- but the condition could not be reproduced on the VM. Cutting the
+     network fails the embedder first (correctly refusing the offer, since
+     cloud-only needs it too), and with the network up the install simply
+     succeeds. It is a manual checklist item rather than something to claim.
+
+     Two smaller things seen while measuring, neither fixed here: an offline
+     re-provision fails at the embedder even with a full HF cache (it appears to
+     want a revision check; `HF_HUB_OFFLINE` would be the lever), and the
+     `provision` row can carry a raw library string -- "Cannot send a request, as
+     the client has been closed." -- the same shape as #150, though the banner is
+     unaffected because `firstError` takes the classified row first.
