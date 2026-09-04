@@ -1,4 +1,4 @@
-# v6.0.0 release checklist
+# v6.0.1 release checklist
 
 Everything here is **owner-run**. The dev box cannot validate a stranger's first
 launch, and nothing in this file is something Claude does: the merge, the tag, and
@@ -48,11 +48,11 @@ cannot prove.
       uv.exe` and a size in the tens of MB rather than ~3 MB:
       `ui/shell/src-tauri/payload/uv.exe`
 - [ ] Installer lands at
-      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.0_x64-setup.exe`
-      — check the **filename says 6.0.0**, not 5.0.0.
+      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.1_x64-setup.exe`
+      — check the **filename says 6.0.1**, not 6.0.0.
 - [ ] Generate the checksum file published alongside it:
       ```powershell
-      Get-FileHash .\Baby_6.0.0_x64-setup.exe -Algorithm SHA256 | Format-List
+      Get-FileHash .\Baby_6.0.1_x64-setup.exe -Algorithm SHA256 | Format-List
       ```
 
 ## 2. Clean-VM matrix
@@ -72,6 +72,50 @@ for W3 and W5 — the dev box cannot fake any of it.
 | 8 | **Network drop mid `uv sync`** | Reopen Baby → resumes, does not restart from zero |
 | 9 | **Network drop mid model pull** | Same — resumes from cached blobs |
 | 10 | **Corporate proxy** (if reachable) | Message names the proxy and the env vars to set |
+
+### What a machine already measured
+
+Run on a VirtualBox guest (`baby-cleanvm`, Windows 11, snapshot per row, 8 GB
+RAM, no GPU, `--audio-driver none`) against the **published**
+`Baby_6.0.0_x64-setup.exe` — the same bytes on the Release page, not a local
+build. This is evidence for the table above, **not a substitute for it**: none of
+it ran on real hardware, and a VM cannot prove the things a VM does not have.
+
+| # | Result | What was actually observed |
+|---|---|---|
+| 1 | pass, in part | UAC prompt, then a complete install. "Baby answers a message" is **not** covered — that needs a cloud key |
+| 2 | pass | Declining UAC gives a named, legible error |
+| 3 | pass | "No NVIDIA GPU detected"; cloud-only badged Recommended, Full still selectable with a warning |
+| 4 | pass | Standard account `stduser`, absent from Administrators. `READY` at 13:52:37, `saw any UAC prompt: False` |
+| 5 | pass | Defender on: 0 detections, 0 quarantined |
+| 6 | pass, in part | See the note below — paths, not locale |
+| 7 | pass | `disk error free_mb=9426 need_mb=13092`, refused **before** downloading |
+| 8 | pass | Venv grew 1232.9 → 1308 MB across the drop; `UVCACHE_MB=1230` never moved, so the cache was reused rather than refetched |
+| 9 | pass, plus two bugs | Resumed from cached blobs — and surfaced the two defects fixed in 6.0.1 (the `EventBus` `kind` collision, and a dead download that waited the full hour) |
+| 10 | **inconclusive** | A dead local proxy returns connection-refused, which is indistinguishable from no network. Proving the proxy branch needs something that really answers **407** |
+
+**Row 6 is a path test, not a locale test.** It ran under `C:\Users\Jörg`: the
+installer exited 0, `BABY_HOME` built there (`.venv`, `config.yaml`, `logs`), and
+SQLite opened and wrote its WAL at that path (`baby.db-shm`, `baby.db-wal`
+present). `path_or_codec_errors = 0`, and the log bytes decode strict UTF-8 with
+real `e28094` em dashes and no `c3a2e282ac` mojibake. The wizard renders "Full —
+local + cloud" correctly. What this does **not** cover is a **translated Windows
+UI** — a German or Hindi language pack was never installed, so row 6's own
+wording is only half-satisfied. Do not let the path result stand in for it.
+
+**Ignore one line in these guest logs:** `voice unavailable: PortAudioError:
+Error querying device -1`. The VM was created with no audio device at all. It is
+the harness, not a defect.
+
+Still uncovered by any of the above, and still yours to run:
+
+- Anything needing a real API key — row 1's "answers a message", every **Test**
+  in §3, and the "not saved yet" warning, which only appears once a key has
+  tested `ok`.
+- Row 9's **Ollama blob** variant. The drop was measured against the Hugging Face
+  downloads; the 9B pull needs a GPU box and ~5.5 GB.
+- Everything in §6. A VM with no GPU and no microphone cannot speak to voice,
+  the local 9B, or game mode.
 
 ## 3. First-run wizard
 
@@ -175,6 +219,36 @@ for W3 and W5 — the dev box cannot fake any of it.
 - [ ] "Create report" — confirm **no API key, no username, no owner name** in the
       output before you post it anywhere.
 
+### Full mode on a machine that has never had Ollama
+
+Until 6.0.1 this could not finish at all, and the dev box could not show it: Ollama
+is already running there, so the whole branch is skipped.
+
+- [ ] **Pick Full on a clean machine with no Ollama.** The "Ollama runtime" row must
+      install it by itself -- counting up ("installing Ollama (2m)"), not sitting on
+      one word -- and reach a tick. No UAC prompt for this step: the install is
+      per-user. Then the 9B pulls and "Verifying everything works" passes.
+      Machine-verified once on a clean VM (6 minutes, non-elevated); confirm on real
+      hardware.
+- [ ] **Confirm the context length actually got set**, or the local brain silently
+      serves a truncated context and everything just feels stupider:
+      ```powershell
+      [Environment]::GetEnvironmentVariable("OLLAMA_CONTEXT_LENGTH", "User")
+      ```
+      Expect `8192`.
+- [ ] **The escape hatch — the one thing not machine-verified.** Make Full fail on
+      the local brain ALONE (easiest: let setup finish, then exit Ollama from its
+      tray icon, delete `%LOCALAPPDATA%\baby\setup.json`, and relaunch so
+      provisioning re-runs with everything else already cached). The error must be a
+      sentence naming ollama.com -- **not** `ConnectError: [WinError 10061]` -- must
+      say it once rather than twice, and must offer **"Use cloud only instead"**
+      beside Retry. Click it: the plan reloads without the Ollama rows and setup
+      completes. Cutting the network does NOT reproduce this — the embedder fails
+      first and the offer is correctly withheld.
+- [ ] **The offer must NOT appear when something shared broke.** Break whisper
+      (delete its cache with the network off) and confirm only Retry is offered:
+      cloud-only needs whisper too, so switching modes would fix nothing.
+
 ### Progress is legible while it runs
 
 - [ ] During the first run, the **Wake-word models**, **Whisper** and **Memory
@@ -184,6 +258,11 @@ for W3 and W5 — the dev box cannot fake any of it.
       minutes is what got reported as a hung install.
 - [ ] Pull the network mid-download and leave it: within ten minutes the row says
       "no new data for Nm" rather than continuing to look busy.
+- [ ] Leave it pulled for another ten. The step must **give up** with a retryable
+      error rather than sitting there until the one-hour ceiling. Restoring the
+      network does NOT revive an interrupted download -- that was measured, with
+      the machine pinging the host at 32 ms while the row stayed dead -- so the
+      recovery is the error plus a reopen, and the row has to reach it promptly.
 
 ## 5. Uninstall
 
@@ -237,9 +316,24 @@ Baby is still the same assistant — confirm v6 packaging did not disturb it.
 
 ## 7. Publish
 
+This one is a **patch on a release that is already public**. v6.0.0 is
+downloadable now, so anyone who installs before this ships gets the two bugs
+below; the fix is worth its own tag rather than waiting to be batched.
+
+- [x] **Re-run matrix row 9 against the 6.0.1 build.** Done on a clean VM against
+      the built installer: cut at 68 MB of 1.6 GB, the row said "no new data for
+      10m" at +10.1m and **gave up at +19.8m** with `kind=stalled`,
+      `retryable=true`; the `provision` row read a real sentence and a log scan for
+      `multiple values for argument` / `TypeError` / `Traceback` returned **0
+      hits**. Retry alone did not recover (it gave up again at +20.3m with the
+      network healthy) -- reopening Baby did, resuming from the cached 68 MB and
+      finishing. The retry wording is worth a second look; see DECISIONS #151.
 - [ ] Merge the PR.
-- [ ] Tag `v6.0.0`.
+- [ ] Tag `v6.0.1`.
 - [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.
+- [ ] Leave the v6.0.0 release up. Its `.exe` and checksum stay valid for anyone
+      who already has them, and deleting a published asset breaks the hash a user
+      may have written down.
 - [ ] Release body links the SmartScreen walkthrough
       (`docs/INSTALL.md`) — a first-time user meeting an unexplained blue warning
       is the most likely reason a download gets abandoned.

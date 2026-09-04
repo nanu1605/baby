@@ -71,7 +71,22 @@ class EventBus:
         if q in self._subscribers:
             self._subscribers.remove(q)
 
-    def publish(self, kind: str, channel: str, **payload) -> AgentEvent:
+    def publish(self, kind: str, channel: str, /, **payload) -> AgentEvent:
+        """Fan an event out to every subscriber.
+
+        `kind` and `channel` are POSITIONAL-ONLY, which is load-bearing rather
+        than stylistic. A payload is arbitrary caller data, and one real payload
+        already carries a key named `kind`: `provision.classify_error` returns
+        {kind, message, retryable}, and the setup route splats that straight in
+        (`publish("setup_progress", "setup", **ev)`). Without the `/` that key
+        binds to this function's own parameter and every classified provisioning
+        failure raises `TypeError: got multiple values for argument 'kind'` --
+        so the code reporting a download failure failed instead, and the wizard
+        showed that TypeError in place of the retryable message it had ready.
+
+        Found by dropping the network on a clean VM. Every test mocks downloads
+        that SUCCEED, so no classified error had ever actually been published.
+        """
         event = AgentEvent(
             kind=kind,
             channel=channel,

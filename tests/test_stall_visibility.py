@@ -410,3 +410,112 @@ def test_the_manifest_labels_the_notice_points_at_still_exist():
     genuinely skip-if-present."""
     for dep in ("whisper", "embedder"):
         assert manifest.get(dep).assets[0].auto_downloads is True
+
+
+# --- a dead transfer must not wait out the elapsed ceiling -------------------
+# Measured on a clean VM: the network was cut mid-download and then RESTORED, and
+# the step sat dead for 25 more minutes with the row reading "no new data for
+# 23m" while the guest was pinging huggingface.co at 32ms. An interrupted hub
+# download does not resume itself; only reopening Baby did. Before this the row
+# would have held that pose until _STEP_TIMEOUT_S -- a full hour -- because stall
+# detection changed the wording and nothing else.
+
+
+def _stall_probe(values):
+    """A probe that yields each value once, then repeats the last one forever."""
+    seq = list(values)
+
+    def probe():
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+
+    return probe
+
+
+@pytest.mark.parametrize("dep", ["whisper", "embedder"])
+def test_a_stalled_download_gives_up_long_before_the_elapsed_ceiling(monkeypatch, dep):
+    monkeypatch.setattr(provision, "_HB_S", 0.01)
+    monkeypatch.setattr(provision, "_STALL_CEILING_S", 0.05)
+    monkeypatch.setattr(provision, "_STEP_TIMEOUT_S", 3600)  # untouched: must not be what fires
+
+    stop = asyncio.Event()
+
+    def never_returns() -> None:
+        import time as _t
+
+        for _ in range(400):  # bounded so a failing test can't hang the suite
+            if stop.is_set():
+                return
+            _t.sleep(0.01)
+
+    events: list = []
+    with pytest.raises(TimeoutError):
+        asyncio.run(provision._run_watched_step(
+            dep,
+            never_returns,
+            probe=lambda: 1,  # one byte, and it never moves
+            detail=lambda seen, elapsed, stalled: "stuck",
+            total_bytes=100_000_000,
+            on_event=events.append,
+        ))
+    stop.set()
+
+    err = [e for e in events if e["status"] == "error"]
+    assert err, "the step gave up without telling anyone"
+    assert err[-1]["kind"] == "stalled"
+    assert err[-1]["retryable"] is True
+
+
+def test_a_slow_model_load_is_not_mistaken_for_a_stall(monkeypatch):
+    """Past ~95% the loader builds the model in memory and the cache stops growing.
+    That is the one time zero bytes is NORMAL, and killing it would trade a hang
+    for a worse bug -- a working install refused because the machine is slow."""
+    monkeypatch.setattr(provision, "_HB_S", 0.01)
+    monkeypatch.setattr(provision, "_STALL_CEILING_S", 0.05)
+
+    def finishes() -> None:
+        import time as _t
+
+        _t.sleep(0.4)  # 8x the stall ceiling, entirely inside the load phase
+
+    events: list = []
+    asyncio.run(provision._run_watched_step(
+        "whisper",
+        finishes,
+        probe=lambda: 100_000_000,  # fully downloaded; bytes legitimately static
+        detail=lambda seen, elapsed, stalled: "loading the model",
+        total_bytes=100_000_000,
+        on_event=events.append,
+    ))
+    assert events[-1]["status"] == "done"
+    assert not [e for e in events if e["status"] == "error"]
+
+
+def test_an_unknown_total_leaves_the_stall_ceiling_disarmed(monkeypatch):
+    """total_bytes=0 means we cannot tell downloading from loading, so only the
+    elapsed ceiling applies -- never guess a step to death."""
+    monkeypatch.setattr(provision, "_HB_S", 0.01)
+    monkeypatch.setattr(provision, "_STALL_CEILING_S", 0.05)
+
+    def finishes() -> None:
+        import time as _t
+
+        _t.sleep(0.3)
+
+    events: list = []
+    asyncio.run(provision._run_watched_step(
+        "whisper",
+        finishes,
+        probe=lambda: 1,  # static, and would trip the ceiling if it were armed
+        detail=lambda seen, elapsed, stalled: "x",
+        on_event=events.append,
+    ))
+    assert events[-1]["status"] == "done"
+
+
+def test_both_real_steps_arm_the_stall_ceiling():
+    """A step that measures bytes but passes no total gets the old behaviour
+    silently, so pin that the two real callers hand their size over."""
+    src = (_ROOT / "core" / "provision.py").read_text(encoding="utf-8")
+    for fn in ("_run_hub_step", "_run_wakeword_step"):
+        body = src.split(f"async def {fn}(", 1)[1].split("\nasync def ", 1)[0]
+        assert "total_bytes=" in body, f"{fn} leaves the stall ceiling disarmed"

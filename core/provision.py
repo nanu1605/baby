@@ -7,9 +7,12 @@ are classified into a legible, retryable message -- never a raw trace -- and the
 network steps resume from where they stopped (HTTP Range for file downloads;
 Ollama's content-addressed blobs for the model pull).
 
-Division of labor: the OS-level installs that need elevation or a package manager
-(the VC++ redist, the Ollama daemon) are DETECTED and reported here, but INSTALLED
-by the first-run harness (W3d) -- a per-user backend can't cleanly UAC-elevate.
+Division of labor: the VC++ redist needs elevation, so it is DETECTED and reported
+here but INSTALLED by the first-run harness (W3d) -- a per-user backend can't
+cleanly UAC-elevate. The Ollama daemon is NOT in that category and used to be
+treated as if it were: its installer is per-user and needs no elevation, nothing in
+the shipped payload ever installed it, and a public Full install therefore reached
+the verify step with no local brain and no way forward. It is installed here now.
 This module owns the downloads (kokoro, the optional CAM++ model), the resumable
 Ollama model pull (ported from the W0 spike), the HF-cache auto-download triggers
 (whisper + e5), the low-disk pre-check, and the final health re-verify.
@@ -25,6 +28,7 @@ import asyncio
 import json
 import re
 import shutil
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import asdict
@@ -298,6 +302,139 @@ async def _ollama_healthy(host: str = _OLLAMA) -> bool:
         return False
 
 
+# --- installing the local brain's host --------------------------------------
+# The manifest has documented this since W3 ("Silent-install via winget
+# Ollama.Ollama, fallback OllamaSetup.exe /VERYSILENT") and nothing implemented
+# it: the only script that installs Ollama is scripts/setup.ps1, which is a DEV
+# script and not in the shipped payload. So a public Full install reached the
+# verify step with no daemon, failed, and offered a Retry that re-ran the same
+# check forever. The dev box never showed it -- Ollama is already running there.
+#
+# Measured on a clean Windows 11 VM before writing any of this:
+#   * winget is present per-user (%LOCALAPPDATA%\Microsoft\WindowsApps), v1.29
+#   * `winget install --id Ollama.Ollama --silent` succeeds NON-ELEVATED, ~5m,
+#     which is what keeps the installer's no-admin promise
+#   * the vendor installer starts the daemon itself and drops a Startup shortcut,
+#     so there is no `ollama serve` to run and it survives the next logon
+_OLLAMA_SETUP_URL = "https://ollama.com/download/OllamaSetup.exe"
+_OLLAMA_INSTALL_TIMEOUT_S = 2400  # ~5m measured; a slow link is allowed far more
+_OLLAMA_READY_TIMEOUT_S = 180  # after the installer returns, before the socket answers
+# The served context comes from this, NOT from options.num_ctx -- the /v1 endpoint
+# ignores that (see core/providers/ollama.py). Unset, the local brain silently
+# truncates to Ollama's default. scripts/setup.ps1 has always set it on the dev
+# box, which is exactly why no one saw the shipped build not setting it.
+_OLLAMA_CTX = "8192"
+
+
+async def _run_silent(exe: str, *args: str, timeout: float) -> tuple[int, str]:
+    """Run a silent installer with no console window; return (code, output tail)."""
+    kwargs: dict = {"stdout": asyncio.subprocess.PIPE, "stderr": asyncio.subprocess.STDOUT}
+    if sys.platform == "win32":  # never flash a console at someone mid-wizard
+        kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+    proc = await asyncio.create_subprocess_exec(exe, *args, **kwargs)
+    try:
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise TimeoutError(
+            f"{Path(exe).name} did not finish within {int(timeout // 60)} minutes"
+        ) from None
+    text = (out or b"").decode("utf-8", "replace").strip()
+    return proc.returncode or 0, text[-400:]
+
+
+async def _await_ollama(timeout_s: float = _OLLAMA_READY_TIMEOUT_S) -> bool:
+    """The installer returning is not the socket being up. Poll for the real thing."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if await _ollama_healthy():
+            return True
+        await asyncio.sleep(3)
+    return False
+
+
+def _set_ollama_context_length() -> None:
+    """Persist OLLAMA_CONTEXT_LENGTH for this user, as the dev script always has.
+
+    Best-effort by design: a local brain serving a short context is degraded, not
+    broken, and failing the whole install over a registry write would be a worse
+    trade. Windows-only -- everywhere else this is a no-op.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0,
+                            winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "OLLAMA_CONTEXT_LENGTH", 0, winreg.REG_SZ, _OLLAMA_CTX)
+    except OSError:
+        pass
+
+
+async def _install_ollama(*, on_event: OnEvent) -> bool:
+    """Silent-install Ollama for this user. True once the daemon actually answers.
+
+    winget first (it verifies the installer hash, which a hand-rolled download does
+    not), then the vendor .exe for machines without it. A heartbeat goes out while
+    it runs: this is a multi-minute step with nothing else to show, and a row that
+    sits still for five minutes is the exact thing that got reported as a hang.
+    """
+    dep = "ollama-daemon"
+    started = time.monotonic()
+
+    async def _beat(label: str, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=_HB_S)
+            except TimeoutError:
+                mins = int((time.monotonic() - started) // 60)
+                on_event(_event(dep, "install", status="working",
+                                detail=f"{label} ({mins}m)"))
+
+    async def _attempt(label: str, exe: str, args: tuple[str, ...]) -> tuple[int, str]:
+        on_event(_event(dep, "install", status="working", detail=label))
+        stop = asyncio.Event()
+        beat = asyncio.create_task(_beat(label, stop))
+        try:
+            return await _run_silent(exe, *args, timeout=_OLLAMA_INSTALL_TIMEOUT_S)
+        finally:
+            stop.set()
+            await beat
+
+    winget = shutil.which("winget")
+    if winget:
+        code, out = await _attempt(
+            "installing Ollama", winget,
+            ("install", "--id", "Ollama.Ollama", "--exact", "--silent",
+             "--accept-package-agreements", "--accept-source-agreements",
+             "--disable-interactivity"),
+        )
+        if code == 0 and await _await_ollama():
+            _set_ollama_context_length()
+            return True
+        on_event(_event(dep, "install", status="working",
+                        detail=f"winget couldn't install it ({code}) -- trying the "
+                               "installer from ollama.com"))
+
+    # Fallback: the vendor's own installer. Also the only path on a machine with no
+    # winget at all, which is why this is not just a nicety.
+    setup = paths.models_dir().parent / "OllamaSetup.exe"
+    try:
+        await download_file(_OLLAMA_SETUP_URL, setup, on_event=on_event, dep=dep)
+        code, _ = await _attempt("installing Ollama", str(setup),
+                                 ("/VERYSILENT", "/NORESTART"))
+    except Exception:  # noqa: BLE001 -- a failed install is a reported row, not a crash
+        return False
+    finally:
+        setup.unlink(missing_ok=True)
+    if code == 0 and await _await_ollama():
+        _set_ollama_context_length()
+        return True
+    return False
+
+
 # Blocking loaders run in a worker thread -- their only job is to TRIGGER the HF-hub
 # auto-download (whisper, e5); the final health re-verify proves they function.
 def _download_whisper() -> None:
@@ -331,6 +468,14 @@ def _download_openwakeword(target: Path) -> None:
 
 _HB_S = 15  # heartbeat period
 _STALL_S = 600  # no new bytes this long -> say so in the row
+# ...and this long -> stop claiming to work and let the user retry. Measured on a
+# clean VM: the network was cut mid-download and RESTORED, and the step still sat
+# dead for 25 minutes with the row reading 'no new data for 23m', because an
+# interrupted huggingface download does not resume itself. Only reopening Baby
+# fixed it. Stall time is a different signal from elapsed time: a slow link makes
+# a download take an hour, but it never makes the byte count stand still for 20
+# minutes. So this can be short while _STEP_TIMEOUT_S stays generous.
+_STALL_CEILING_S = 1200
 _STEP_TIMEOUT_S = 3600  # hard ceiling: a step must resolve one way or the other
 
 
@@ -393,6 +538,7 @@ async def _run_watched_step(
     *,
     probe: Callable[[], int],
     detail: Callable[[int, float, float], str],
+    total_bytes: int = 0,
     done_detail: str = "ready",
     on_event: OnEvent,
 ) -> None:
@@ -403,9 +549,15 @@ async def _run_watched_step(
     they all share the same failure mode, which is a step that looks identical
     whether it is working or wedged.
 
-    The thread cannot be cancelled, so the timeout does not kill the download -- it
-    ends our claim to be working and lets the wizard show a real, retryable error
+    The thread cannot be cancelled, so neither ceiling kills the download -- they
+    end our claim to be working and let the wizard show a real, retryable error
     instead of a spinner with no end condition.
+
+    `total_bytes` (0 = unknown) arms the stall ceiling, and only while bytes are
+    still expected. Past ~95% the loader is building the model in memory and the
+    cache legitimately stops growing; killing a slow model load would trade one
+    hang for a worse bug, so the stall ceiling is off for that phase and only the
+    elapsed ceiling still applies.
     """
     started = time.monotonic()
     seen = last_seen = probe()
@@ -425,10 +577,16 @@ async def _run_watched_step(
             if seen > last_seen:
                 last_seen, moved_at = seen, now
             elapsed = now - started
-            if elapsed > _STEP_TIMEOUT_S:
+            stalled = now - moved_at
+            # Still downloading, and nothing has arrived for a long time: the
+            # transfer is dead even if the network came back. Give up here rather
+            # than at the elapsed ceiling, which is an hour away.
+            downloading = bool(total_bytes) and seen < total_bytes * 0.95
+            if elapsed > _STEP_TIMEOUT_S or (downloading and stalled > _STALL_CEILING_S):
                 raise TimeoutError(
                     f"{manifest.get(dep).label} made no progress for "
-                    f"{int(elapsed // 60)} minutes -- giving up so this can be retried"
+                    f"{int(max(stalled, elapsed) // 60)} minutes -- giving up so "
+                    f"this can be retried"
                 )
             on_event(_event(dep, "download", status="working", bytes=seen,
                             elapsed_s=int(elapsed),
@@ -456,6 +614,7 @@ async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEve
         loader,
         probe=lambda: _dir_bytes(cache),
         detail=lambda seen, elapsed, stalled: _hub_detail(seen, size_mb, elapsed, stalled),
+        total_bytes=size_mb * 1024 * 1024,
         on_event=on_event,
     )
 
@@ -478,6 +637,7 @@ async def _run_wakeword_step(target: Path, *, on_event: OnEvent) -> None:
         lambda: _download_openwakeword(target),
         probe=lambda: _dir_bytes(target),
         detail=lambda seen, elapsed, stalled: _bytes_detail(seen, size_mb, elapsed, stalled),
+        total_bytes=size_mb * 1024 * 1024,
         done_detail="wake-word models ready",
         on_event=on_event,
     )
@@ -523,7 +683,8 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
 
     Ordering: disk pre-check -> VC++ detect (install deferred) -> explicit model
     downloads (kokoro; CAM++ optional) -> openWakeWord assets -> whisper + e5 HF
-    triggers -> [Full] Ollama daemon check + 9B pull -> functional re-verify.
+    triggers -> [Full] Ollama daemon install-if-absent + 9B pull -> functional
+    re-verify.
     """
     md = paths.models_dir()
 
@@ -558,9 +719,12 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
         except Exception:  # noqa: BLE001 -- optional; verify stays off until enrollment
             on_event(_event("speaker", "skip", status="skip", detail="optional -- skipped"))
 
-    # Full mode: the local 9B. Daemon install is the harness's job (W3d); here we
-    # pull only if it's already reachable, else report it as an installer step.
+    # Full mode: the local 9B, and the daemon that hosts it.
     if mode == "full":
+        # Install it if it isn't there. This is the step the manifest has always
+        # described and no shipped code performed.
+        if not await _ollama_healthy():
+            await _install_ollama(on_event=on_event)
         if await _ollama_healthy():
             # Answer the row either way. This branch used to emit nothing at all, so
             # an Ollama that was ALREADY running left "Ollama runtime" grey for the
@@ -570,14 +734,21 @@ async def provision(mode: str, *, on_event: OnEvent, browser: bool = False) -> d
                             detail="Ollama is running"))
             await pull_ollama_model(_DAILY_MODEL, on_event=on_event)
         else:
+            # This row used to read "the installer sets it up". Nothing does: the
+            # only script that installs Ollama is scripts/setup.ps1, which is not in
+            # the shipped payload, so on a public Full install that sentence was a
+            # promise the build could not keep -- and the verify step then failed on
+            # its consequence. Say what is actually true and who has to act.
             on_event(_event("ollama-daemon", "check", status="needs_install",
-                            detail="Ollama isn't running yet -- the installer sets it up"))
+                            detail="Ollama isn't installed yet -- get it from "
+                                   "https://ollama.com/download, then retry"))
 
     # Functional re-verify: does everything actually work?
     results = await asyncio.to_thread(health.run_all, mode, "full", browser)
     ok = health.overall_ok(results)
     on_event(_event("verify", "verify", status="pass" if ok else "fail",
                     detail=health.readiness_summary(results),
+                    local_brain_only=health.local_brain_only_failure(results),
                     results=[asdict(r) for r in results]))
     if ok:
         paths.write_setup({"provisioned": True})

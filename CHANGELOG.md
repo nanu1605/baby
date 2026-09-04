@@ -1,5 +1,60 @@
 # Changelog
 
+## v6.0.1 -- setup failure reporting (2026-09-04)
+
+- **Full mode now installs the local brain instead of asking for it.** Picking
+  Full on a machine without Ollama could not finish setup at all: the row said
+  "the installer sets it up", nothing did (the only script that installs Ollama is
+  a dev script, not in the shipped payload), the verify step then failed with a
+  raw `ConnectError: [WinError 10061] ...` printed twice, and the only control on
+  screen was a Retry that re-ran the same check forever. Provisioning now performs
+  the silent install the manifest has described since W3 -- `winget install --id
+  Ollama.Ollama`, falling back to the vendor installer -- which is per-user and
+  needs no admin, so the no-admin promise holds. It also sets
+  `OLLAMA_CONTEXT_LENGTH`, without which the local brain silently serves a
+  truncated context; only the dev script had ever set it. Measured end to end on a
+  clean VM: installed in six minutes, 9B pulled, "Baby is ready".
+
+- **A first run that only the local brain broke offers a way out.** The failure
+  reads as a sentence naming the fix rather than a Windows error code, one dead
+  daemon is reported once instead of twice, and when nothing except the local
+  brain failed the wizard offers "Use cloud only instead" beside Retry -- a
+  machine that cannot host the 9B can still finish setup. Deliberately strict: if
+  anything a cloud-only install also needs has failed, the offer is withheld,
+  because switching modes would not fix it.
+
+
+Found by running the clean-VM matrix against the published `.exe`: a fresh
+Windows 11 guest with no Visual C++ runtime, no GPU, and the network cut on
+purpose part-way through setup.
+
+- **A dead download gives up in 20 minutes, not an hour.** Cutting the network
+  mid-download and then *restoring* it left the row dead for another 25 minutes,
+  reading "no new data for 23m" while the machine was pinging huggingface.co at
+  32 ms: an interrupted hub download does not resume itself, and only reopening
+  Baby fixed it. Stall detection changed the wording and nothing else, so the step
+  held that pose until the one-hour elapsed ceiling. Stall time is now its own
+  ceiling -- a slow link makes a download take an hour, but it never makes the byte
+  count stand still for 20 minutes -- and it raises the same retryable error the
+  wizard already knows how to show. Deliberately disarmed once a download is past
+  ~95%, where the loader is building the model in memory and the cache is
+  *supposed* to stop growing; killing a slow model load would trade one hang for a
+  worse bug.
+
+- **A failed download no longer reports a Python error.** Pulling the network
+  mid-provision put `EventBus.publish() got multiple values for argument 'kind'`
+  into the setup status, replacing the real reason on its way out of provisioning
+  and stopping the step's event from ever reaching subscribers. (The wizard's own
+  banner was unaffected -- it reads an earlier field that is written first -- so
+  this cost live progress and any diagnostics paste, not the headline message.)
+  `classify_error` returns `{kind, message, retryable}` and the setup
+  route splats it into `bus.publish("setup_progress", "setup", **ev)`, so the
+  payload's `kind` bound to `publish`'s own parameter -- the code reporting the
+  failure was the code that failed. `kind` and `channel` are positional-only now,
+  so a payload owns its whole key space. No test caught it because every
+  provisioning test mocks downloads that succeed, so a classified error had never
+  actually been published.
+
 ## v6.0.0 -- public Windows installer (2026-09-01)
 
 Baby becomes something a stranger can install. v6 is a **distribution** release, not

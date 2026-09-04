@@ -12,6 +12,7 @@ import {
 import { useBrain } from "../store";
 import { KeyField } from "./KeyField";
 import {
+  canFallBackToCloud,
   canFinishSetup,
   canLeaveKeysStep,
   firstError,
@@ -142,7 +143,10 @@ export default function FirstRunWizard() {
             )}
           </>
         ) : step === "provision" ? (
-          <ProvisionStep onDone={() => setStep("keys")} />
+          <ProvisionStep
+            onDone={() => setStep("keys")}
+            onModeSwitched={setChosen}
+          />
         ) : step === "keys" ? (
           <KeysStep onDone={() => setStep("disclosure")} />
         ) : step === "disclosure" ? (
@@ -164,10 +168,18 @@ export default function FirstRunWizard() {
   );
 }
 
-function ProvisionStep({ onDone }: { onDone: () => void }) {
+function ProvisionStep({
+  onDone,
+  onModeSwitched,
+}: {
+  onDone: () => void;
+  onModeSwitched: (mode: InstallMode) => void;
+}) {
   const [plan, setPlan] = useState<SetupStep[]>([]);
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [postError, setPostError] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState(false);
   const alive = useRef(true);
   const started = useRef(false);
 
@@ -177,6 +189,35 @@ function ProvisionStep({ onDone }: { onDone: () => void }) {
     started.current = true;
     const r = await postSetupProvision();
     if (alive.current && !r.ok) setPostError(true);
+  };
+
+  /**
+   * Leave Full for cloud-only after a run that only the local brain failed.
+   *
+   * The server already does the hard part: changing the mode clears `provisioned`
+   * (the old flag described a different dependency set) and a fresh provision POST
+   * wipes the previous run's snapshot. So this re-fetches the plan -- it is a
+   * shorter list now, with no Ollama rows -- and starts again.
+   */
+  const useCloudOnly = async () => {
+    setSwitching(true);
+    setSwitchError(false);
+    try {
+      const r = await postSetupMode("cloud_only");
+      if (!alive.current) return;
+      if (!r.ok) throw new Error(String(r.status));
+      onModeSwitched("cloud_only");
+      setStatus(null);
+      started.current = false;
+      const p = await getSetupPlan();
+      if (!alive.current) return;
+      setPlan(p.steps);
+      await kickoff();
+    } catch {
+      if (alive.current) setSwitchError(true);
+    } finally {
+      if (alive.current) setSwitching(false);
+    }
   };
 
   useEffect(() => {
@@ -256,11 +297,37 @@ function ProvisionStep({ onDone }: { onDone: () => void }) {
           <p className="wizard-err">
             Something didn't finish. {firstError(progress)}
           </p>
+          {canFallBackToCloud(progress) && (
+            <p className="wizard-sub">
+              Everything else on this PC is ready. Cloud only skips the local
+              brain — you can switch back later in settings.
+            </p>
+          )}
           <div className="wizard-actions">
-            <button type="button" className="wizard-primary" onClick={kickoff}>
+            {canFallBackToCloud(progress) && (
+              <button
+                type="button"
+                className="wizard-secondary"
+                onClick={useCloudOnly}
+                disabled={switching}
+              >
+                {switching ? "Switching…" : "Use cloud only instead"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="wizard-primary"
+              onClick={kickoff}
+              disabled={switching}
+            >
               Retry
             </button>
           </div>
+          {switchError && (
+            <p className="wizard-err">
+              Couldn't switch modes. Check your connection and try again.
+            </p>
+          )}
         </>
       )}
       {postError && (

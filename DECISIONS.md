@@ -2017,3 +2017,209 @@ Running log of non-obvious choices made during the build. Newest last.
      and "downloading 8 of ~19 MB (2m)" does not fit in it. A number carrying a `~`
      is also more honest than a bar, since the total is the manifest's estimate
      rather than a server's Content-Length.
+
+150. **The code that reports a failed download was the code that failed.** First
+     finding from the clean-VM matrix, and it needed all of it: a fresh Windows 11
+     guest, the published `.exe` rather than a local build, and the network cut
+     part-way through provisioning. `/api/setup/status` came back with
+
+         kokoro     error   Couldn't reach the download server. Reconnect and retry...
+         provision  error   EventBus.publish() got multiple values for argument 'kind'
+
+     Correction, recorded because the first version of this entry got it wrong:
+     the WIZARD is fine. `on_event` writes the event into `setup_progress` before
+     it publishes, so the row keeps its message, and the banner shows the first
+     error by insertion order -- kokoro's, not the TypeError's. A later screenshot
+     of the actual wizard shows the correct sentence and a Retry button. What the
+     TypeError costs is narrower and still real: the SSE event never reaches
+     subscribers, so live updates for that step are lost; it REPLACES the original
+     exception on the way out of `provision()`, so the `provision` row carries a
+     Python error instead of the real cause; and anything reading that row -- a
+     diagnostics paste, a log, a UI that ordered its errors differently -- gets a
+     raw `TypeError` instead of the classified message.
+
+     `EventBus.publish(self, kind, channel, **payload)` takes the event's own kind
+     first. `provision.classify_error` returns `{kind, message, retryable}` -- a
+     `kind` of its own, meaning the FAILURE's category, not the event's -- and
+     `ui/server.py`'s `on_event` splats the whole event dict in:
+     `bus.publish("setup_progress", "setup", **ev)`. Two different meanings of the
+     same word, one of them binding to a parameter. Every classified provisioning
+     error raised, and the provisioning task caught its own reporting failure in
+     place of the download failure that started it.
+
+     Fix is one character: `kind` and `channel` are positional-only (`/`), so a
+     payload key of either name lands in `**payload` where it belongs. All 197
+     call sites already pass both positionally, so nothing else moved. The
+     alternative -- renaming the classifier's key -- would have changed a contract
+     the frontend reads.
+
+     Worth naming why 1009 tests missed it. Every provisioning test mocks a
+     download that SUCCEEDS; the error path had test coverage for the classifier
+     (`classify_error` is unit-tested six ways) and for the runner's timeout, but
+     nothing had ever published a classified error through the real bus. The
+     regression tests now do both halves: the bus accepts a payload key named
+     `kind`, and a failing step surfaces its message through `/api/setup/status`
+     with no `TypeError` or `Traceback` anywhere in the payload. Mutation-tested by
+     removing the `/` (four tests fail) and by renaming the classifier's key (the
+     vacuity guard fires with its own message).
+
+     Same family as #137 and #142: a path that only runs when something goes wrong
+     is a path the dev box never executes, because on the dev box nothing goes
+     wrong. The matrix is the only thing that runs it.
+
+151. **The row told the truth and then did nothing about it.** Second finding from
+     the clean-VM matrix, and the more interesting one, because #149 had already
+     "fixed" this area. The network was cut part-way through the whisper download,
+     the row correctly flipped to `no new data for 11m` at `_STALL_S`, and then the
+     link was RESTORED. Twenty-five minutes later, with the guest pinging
+     huggingface.co at 32 ms, the row still read `68 of ~1600 MB -- no new data for
+     23m` and the byte count had not moved. Only closing and reopening Baby
+     recovered it -- after which the step resumed from 160 MB, so the cache was
+     fine all along; it was the in-flight transfer that was dead.
+
+     Two separate facts. An interrupted `huggingface_hub` download does not
+     self-heal when connectivity returns -- not ours to fix, and not worth
+     wrapping. And #149's stall detection was purely cosmetic: it changed the row's
+     wording and had no consequence, so the step would have held that pose until
+     `_STEP_TIMEOUT_S` an hour away. The error text even said "Reconnect and retry",
+     which a user could follow exactly and still watch a dead row.
+
+     The fix separates two things that were being measured with one number.
+     ELAPSED time must stay generous, because a legitimately slow link really can
+     take an hour for 1.6 GB. STALLED time cannot: no link is slow enough to leave
+     the byte count untouched for twenty minutes. So `_STALL_CEILING_S` (1200s)
+     raises the same `TimeoutError` the elapsed ceiling already raised, which
+     `classify_error` already maps to `stalled` + `retryable`, which the wizard
+     already renders. No new error path -- an earlier trigger for the existing one.
+
+     The part worth being careful about: past ~95% of the expected bytes the loader
+     is building the model in memory and the cache is SUPPOSED to stop growing.
+     That is the one moment where zero bytes is healthy, and a naive stall ceiling
+     would kill a slow model load -- turning a hang into a refusal to install on
+     slow hardware, which is worse than the bug being fixed. So the ceiling is
+     armed only while bytes are still expected, `total_bytes` (0 = unknown) leaves
+     it disarmed rather than guessing, and a test pins that both real callers pass
+     their size. Mutation-tested three ways: removing the ceiling, removing the
+     95% guard, and dropping `total_bytes` from a caller each fail a different test.
+
+     Standing caveat: this bounds the damage, it does not resume anything. A user
+     who reconnects still waits up to 20 minutes, then gets a retryable error and
+     has to act on it. Actually resuming in place would mean owning the hub's
+     transfer, which is a much larger change than this release wants.
+
+152. **6.0.1 ships on its own rather than waiting for something to batch with.**
+     v6.0.0 is already public and downloadable, so the two matrix findings (#150,
+     #151) are not sitting on a branch waiting for a release -- they are live in
+     the installer strangers are fetching now. Holding a patch for company means
+     every install between now and the next feature only ever sees the broken
+     provisioning failure path. Both fixes are small, both are on a path nothing
+     else touches, and the seven version tracks were already bumped, so the cost
+     of tagging is the tag.
+
+     What that costs: v6.0.0's evidence does not transfer. The clean-VM matrix
+     recorded in the release checklist was measured against the published 6.0.0
+     `.exe`, and the whole point of 6.0.1 is code on the failure path that matrix
+     exercised. So section 7 now asks for row 9 to be re-run against the 6.0.1
+     build specifically, and the recorded results say which binary they came from
+     rather than reading as a general pass.
+
+     The old release stays up. Its `.exe` and its SHA256 line remain valid for
+     anyone who already downloaded and wrote the hash down; deleting a published
+     asset to tidy up would break exactly the verification `docs/INSTALL.md` asks
+     people to perform.
+
+     A smaller thing this exposed: the checksum commands in `docs/INSTALL.md` and
+     `docs/SIGNING.md` hardcode the installer's filename, so they went stale the
+     instant the version moved -- and a `Get-FileHash` on a name that is not on
+     disk fails in a way a reader cannot distinguish from a tampered download.
+     They are now pinned to `tauri.conf.json`'s version by a test, scoped to
+     exclude the checklist's section 2, where naming the 6.0.0 exe is a record of
+     what was tested rather than drift.
+
+153. **Full mode could not finish on any machine that did not already have Ollama.**
+     Found by picking Full on the clean VM while re-running row 9 against the
+     6.0.1 build. The row read `Ollama runtime -- needs_install`, the detail said
+     "the installer sets it up", the verify step then failed, and the wizard
+     rendered one control: Retry, which re-ran the identical check and failed the
+     identical way. `provisioned` stayed false, so setup could never complete.
+
+     Nothing set it up. `grep -rn ollama` over `installer/`, the NSIS hooks and
+     `tauri.conf.json` returns nothing; the only script that installs Ollama is
+     `scripts/setup.ps1`, which is a DEV script and is not in the shipped payload.
+     The manifest had described the intended behaviour since W3 -- `install_kind
+     ="winget"`, "Silent-install via winget Ollama.Ollama (fallback:
+     OllamaSetup.exe /VERYSILENT)" -- and no code ever performed it. So the
+     sentence in the row was a promise the build could not keep, and the verify
+     failure was its consequence being reported as if it were a separate fault.
+
+     **Why nobody saw it:** the dev box has Ollama running, so `_ollama_healthy()`
+     returns true and the whole branch is skipped. Same shape as #6 and #8 --
+     the machine that would fail is the one the developer does not have. The
+     clean-VM matrix had not caught it either, because whichever rows ran Full
+     stopped before the verify step.
+
+     Two changes, in the order they were made.
+
+     **Legibility and a way out first**, because that is what stops a stranger
+     being stuck. `check_ollama` and `check_ollama_model` catch `TransportError`
+     and return a named sentence instead of raising, so the banner no longer says
+     `ConnectError: [WinError 10061] No connection could be made because the
+     target machine actively refused it` -- twice, which is what a clean VM
+     actually showed. It is deliberately worded for both "not installed" and
+     "installed but stopped": a refused connection cannot tell those apart, and
+     sending someone to reinstall software they already have is its own dead end.
+     `readiness_summary` de-duplicates identical details, because one dead daemon
+     failed both checks with the same sentence and printing it twice read as two
+     separate problems. And `local_brain_only_failure` tells the wizard when a run
+     failed ONLY on the local brain, which is when "use cloud only instead" is an
+     honest offer -- strict by design, since a run that also broke whisper would
+     not be fixed by switching modes.
+
+     **Then the install the manifest always described.** Measured on a clean VM
+     before writing any of it, because designing this blind is how the `_?=`
+     mistake in #12 nearly shipped: winget is present per-user, `winget install
+     --id Ollama.Ollama --silent` succeeds NON-ELEVATED in about five minutes,
+     and the vendor installer starts the daemon itself and drops a Startup
+     shortcut -- so there is no `ollama serve` to run and it survives the next
+     logon. That keeps the installer's no-admin promise. The vendor `.exe`
+     fallback stays for machines with no winget. A heartbeat fires every 15s
+     while it runs: five silent minutes on one row is exactly what #13 was about.
+
+     `OLLAMA_CONTEXT_LENGTH=8192` is written to the user's environment on success.
+     The `/v1` endpoint ignores `options.num_ctx` (verified, see
+     `core/providers/ollama.py`), so this is the only thing that stops the local
+     brain silently serving a truncated context -- and only `scripts/setup.ps1`
+     ever set it, which is precisely why the dev box never showed the shipped
+     build not doing so. Best-effort: a degraded context is not worth failing an
+     install over.
+
+     **One gap the green tests did not show, found by reading the failure paths
+     rather than the coverage.** `pull_ollama_model` RAISES once its retries are
+     spent, which aborts the walk -- so a failed 6.4 GB model pull, the manifest's
+     own "scariest first-run moment", never reaches verify, carries no
+     `local_brain_only` flag, and would have shown the same Retry-only dead end
+     this work exists to remove. `canFallBackToCloud` therefore also qualifies a
+     run whose only failing dependencies are local-brain ones, excluding the
+     synthetic `provision` row (the endpoint's restatement of whatever exception
+     ended the walk, not a dependency of its own).
+
+     **Proven on a clean VM, from the built installer:** Full mode installed
+     Ollama itself, non-elevated, in six minutes with a per-minute heartbeat, the
+     row reached `pass`, the 9B pulled at 12 MB/s, and verify returned "Baby is
+     ready -- all required components work", `provisioned: true`. That is a
+     complete Full-mode first run, which no shipped build has ever managed.
+
+     **Not proven:** the "use cloud only instead" button rendering on a live
+     failure. Its decision function is unit-tested seven ways and mutation-tested
+     on both branches, and the repo's convention is to test the logic rather than
+     the JSX -- but the condition could not be reproduced on the VM. Cutting the
+     network fails the embedder first (correctly refusing the offer, since
+     cloud-only needs it too), and with the network up the install simply
+     succeeds. It is a manual checklist item rather than something to claim.
+
+     Two smaller things seen while measuring, neither fixed here: an offline
+     re-provision fails at the embedder even with a full HF cache (it appears to
+     want a revision check; `HF_HUB_OFFLINE` would be the lever), and the
+     `provision` row can carry a raw library string -- "Cannot send a request, as
+     the client has been closed." -- the same shape as #150, though the banner is
+     unaffected because `firstError` takes the classified row first.
