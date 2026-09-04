@@ -73,6 +73,50 @@ for W3 and W5 — the dev box cannot fake any of it.
 | 9 | **Network drop mid model pull** | Same — resumes from cached blobs |
 | 10 | **Corporate proxy** (if reachable) | Message names the proxy and the env vars to set |
 
+### What a machine already measured
+
+Run on a VirtualBox guest (`baby-cleanvm`, Windows 11, snapshot per row, 8 GB
+RAM, no GPU, `--audio-driver none`) against the **published**
+`Baby_6.0.0_x64-setup.exe` — the same bytes on the Release page, not a local
+build. This is evidence for the table above, **not a substitute for it**: none of
+it ran on real hardware, and a VM cannot prove the things a VM does not have.
+
+| # | Result | What was actually observed |
+|---|---|---|
+| 1 | pass, in part | UAC prompt, then a complete install. "Baby answers a message" is **not** covered — that needs a cloud key |
+| 2 | pass | Declining UAC gives a named, legible error |
+| 3 | pass | "No NVIDIA GPU detected"; cloud-only badged Recommended, Full still selectable with a warning |
+| 4 | pass | Standard account `stduser`, absent from Administrators. `READY` at 13:52:37, `saw any UAC prompt: False` |
+| 5 | pass | Defender on: 0 detections, 0 quarantined |
+| 6 | pass, in part | See the note below — paths, not locale |
+| 7 | pass | `disk error free_mb=9426 need_mb=13092`, refused **before** downloading |
+| 8 | pass | Venv grew 1232.9 → 1308 MB across the drop; `UVCACHE_MB=1230` never moved, so the cache was reused rather than refetched |
+| 9 | pass, plus two bugs | Resumed from cached blobs — and surfaced the two defects fixed in 6.0.1 (the `EventBus` `kind` collision, and a dead download that waited the full hour) |
+| 10 | **inconclusive** | A dead local proxy returns connection-refused, which is indistinguishable from no network. Proving the proxy branch needs something that really answers **407** |
+
+**Row 6 is a path test, not a locale test.** It ran under `C:\Users\Jörg`: the
+installer exited 0, `BABY_HOME` built there (`.venv`, `config.yaml`, `logs`), and
+SQLite opened and wrote its WAL at that path (`baby.db-shm`, `baby.db-wal`
+present). `path_or_codec_errors = 0`, and the log bytes decode strict UTF-8 with
+real `e28094` em dashes and no `c3a2e282ac` mojibake. The wizard renders "Full —
+local + cloud" correctly. What this does **not** cover is a **translated Windows
+UI** — a German or Hindi language pack was never installed, so row 6's own
+wording is only half-satisfied. Do not let the path result stand in for it.
+
+**Ignore one line in these guest logs:** `voice unavailable: PortAudioError:
+Error querying device -1`. The VM was created with no audio device at all. It is
+the harness, not a defect.
+
+Still uncovered by any of the above, and still yours to run:
+
+- Anything needing a real API key — row 1's "answers a message", every **Test**
+  in §3, and the "not saved yet" warning, which only appears once a key has
+  tested `ok`.
+- Row 9's **Ollama blob** variant. The drop was measured against the Hugging Face
+  downloads; the 9B pull needs a GPU box and ~5.5 GB.
+- Everything in §6. A VM with no GPU and no microphone cannot speak to voice,
+  the local 9B, or game mode.
+
 ## 3. First-run wizard
 
 - [ ] GPU check reports the real card and VRAM.
