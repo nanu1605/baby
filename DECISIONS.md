@@ -2017,3 +2017,44 @@ Running log of non-obvious choices made during the build. Newest last.
      and "downloading 8 of ~19 MB (2m)" does not fit in it. A number carrying a `~`
      is also more honest than a bar, since the total is the manifest's estimate
      rather than a server's Content-Length.
+
+150. **The code that reports a failed download was the code that failed.** First
+     finding from the clean-VM matrix, and it needed all of it: a fresh Windows 11
+     guest, the published `.exe` rather than a local build, and the network cut
+     part-way through provisioning. The wizard showed
+
+         kokoro     error   Couldn't reach the download server. Reconnect and retry...
+         provision  error   EventBus.publish() got multiple values for argument 'kind'
+
+     The per-step message is the right one. The line under it is a raw Python
+     `TypeError`, which is precisely what W3's classifier exists to prevent a
+     stranger ever seeing.
+
+     `EventBus.publish(self, kind, channel, **payload)` takes the event's own kind
+     first. `provision.classify_error` returns `{kind, message, retryable}` -- a
+     `kind` of its own, meaning the FAILURE's category, not the event's -- and
+     `ui/server.py`'s `on_event` splats the whole event dict in:
+     `bus.publish("setup_progress", "setup", **ev)`. Two different meanings of the
+     same word, one of them binding to a parameter. Every classified provisioning
+     error raised, the provisioning task caught its own reporting failure, and the
+     TypeError replaced the message.
+
+     Fix is one character: `kind` and `channel` are positional-only (`/`), so a
+     payload key of either name lands in `**payload` where it belongs. All 197
+     call sites already pass both positionally, so nothing else moved. The
+     alternative -- renaming the classifier's key -- would have changed a contract
+     the frontend reads.
+
+     Worth naming why 1009 tests missed it. Every provisioning test mocks a
+     download that SUCCEEDS; the error path had test coverage for the classifier
+     (`classify_error` is unit-tested six ways) and for the runner's timeout, but
+     nothing had ever published a classified error through the real bus. The
+     regression tests now do both halves: the bus accepts a payload key named
+     `kind`, and a failing step surfaces its message through `/api/setup/status`
+     with no `TypeError` or `Traceback` anywhere in the payload. Mutation-tested by
+     removing the `/` (four tests fail) and by renaming the classifier's key (the
+     vacuity guard fires with its own message).
+
+     Same family as #137 and #142: a path that only runs when something goes wrong
+     is a path the dev box never executes, because on the dev box nothing goes
+     wrong. The matrix is the only thing that runs it.

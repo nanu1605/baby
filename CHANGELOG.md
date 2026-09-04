@@ -1,5 +1,22 @@
 # Changelog
 
+## v6.0.1 -- unreleased
+
+Found by running the clean-VM matrix against the published `.exe`: a fresh
+Windows 11 guest with no Visual C++ runtime, no GPU, and the network cut on
+purpose part-way through setup.
+
+- **A failed download no longer reports a Python error.** Pulling the network
+  mid-provision put `EventBus.publish() got multiple values for argument 'kind'`
+  on the wizard, in place of the retryable message that was already written and
+  correct. `classify_error` returns `{kind, message, retryable}` and the setup
+  route splats it into `bus.publish("setup_progress", "setup", **ev)`, so the
+  payload's `kind` bound to `publish`'s own parameter -- the code reporting the
+  failure was the code that failed. `kind` and `channel` are positional-only now,
+  so a payload owns its whole key space. No test caught it because every
+  provisioning test mocks downloads that succeed, so a classified error had never
+  actually been published.
+
 ## v6.0.0 -- public Windows installer (2026-09-01)
 
 Baby becomes something a stranger can install. v6 is a **distribution** release, not
