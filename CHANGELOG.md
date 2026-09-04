@@ -21,8 +21,11 @@ purpose part-way through setup.
 
 - **A failed download no longer reports a Python error.** Pulling the network
   mid-provision put `EventBus.publish() got multiple values for argument 'kind'`
-  on the wizard, in place of the retryable message that was already written and
-  correct. `classify_error` returns `{kind, message, retryable}` and the setup
+  into the setup status, replacing the real reason on its way out of provisioning
+  and stopping the step's event from ever reaching subscribers. (The wizard's own
+  banner was unaffected -- it reads an earlier field that is written first -- so
+  this cost live progress and any diagnostics paste, not the headline message.)
+  `classify_error` returns `{kind, message, retryable}` and the setup
   route splats it into `bus.publish("setup_progress", "setup", **ev)`, so the
   payload's `kind` bound to `publish`'s own parameter -- the code reporting the
   failure was the code that failed. `kind` and `channel` are positional-only now,

@@ -2021,14 +2021,22 @@ Running log of non-obvious choices made during the build. Newest last.
 150. **The code that reports a failed download was the code that failed.** First
      finding from the clean-VM matrix, and it needed all of it: a fresh Windows 11
      guest, the published `.exe` rather than a local build, and the network cut
-     part-way through provisioning. The wizard showed
+     part-way through provisioning. `/api/setup/status` came back with
 
          kokoro     error   Couldn't reach the download server. Reconnect and retry...
          provision  error   EventBus.publish() got multiple values for argument 'kind'
 
-     The per-step message is the right one. The line under it is a raw Python
-     `TypeError`, which is precisely what W3's classifier exists to prevent a
-     stranger ever seeing.
+     Correction, recorded because the first version of this entry got it wrong:
+     the WIZARD is fine. `on_event` writes the event into `setup_progress` before
+     it publishes, so the row keeps its message, and the banner shows the first
+     error by insertion order -- kokoro's, not the TypeError's. A later screenshot
+     of the actual wizard shows the correct sentence and a Retry button. What the
+     TypeError costs is narrower and still real: the SSE event never reaches
+     subscribers, so live updates for that step are lost; it REPLACES the original
+     exception on the way out of `provision()`, so the `provision` row carries a
+     Python error instead of the real cause; and anything reading that row -- a
+     diagnostics paste, a log, a UI that ordered its errors differently -- gets a
+     raw `TypeError` instead of the classified message.
 
      `EventBus.publish(self, kind, channel, **payload)` takes the event's own kind
      first. `provision.classify_error` returns `{kind, message, retryable}` -- a
@@ -2036,8 +2044,8 @@ Running log of non-obvious choices made during the build. Newest last.
      `ui/server.py`'s `on_event` splats the whole event dict in:
      `bus.publish("setup_progress", "setup", **ev)`. Two different meanings of the
      same word, one of them binding to a parameter. Every classified provisioning
-     error raised, the provisioning task caught its own reporting failure, and the
-     TypeError replaced the message.
+     error raised, and the provisioning task caught its own reporting failure in
+     place of the download failure that started it.
 
      Fix is one character: `kind` and `channel` are positional-only (`/`), so a
      payload key of either name lands in `**payload` where it belongs. All 197
