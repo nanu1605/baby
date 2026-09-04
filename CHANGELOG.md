@@ -6,6 +6,19 @@ Found by running the clean-VM matrix against the published `.exe`: a fresh
 Windows 11 guest with no Visual C++ runtime, no GPU, and the network cut on
 purpose part-way through setup.
 
+- **A dead download gives up in 20 minutes, not an hour.** Cutting the network
+  mid-download and then *restoring* it left the row dead for another 25 minutes,
+  reading "no new data for 23m" while the machine was pinging huggingface.co at
+  32 ms: an interrupted hub download does not resume itself, and only reopening
+  Baby fixed it. Stall detection changed the wording and nothing else, so the step
+  held that pose until the one-hour elapsed ceiling. Stall time is now its own
+  ceiling -- a slow link makes a download take an hour, but it never makes the byte
+  count stand still for 20 minutes -- and it raises the same retryable error the
+  wizard already knows how to show. Deliberately disarmed once a download is past
+  ~95%, where the loader is building the model in memory and the cache is
+  *supposed* to stop growing; killing a slow model load would trade one hang for a
+  worse bug.
+
 - **A failed download no longer reports a Python error.** Pulling the network
   mid-provision put `EventBus.publish() got multiple values for argument 'kind'`
   on the wizard, in place of the retryable message that was already written and

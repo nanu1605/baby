@@ -331,6 +331,14 @@ def _download_openwakeword(target: Path) -> None:
 
 _HB_S = 15  # heartbeat period
 _STALL_S = 600  # no new bytes this long -> say so in the row
+# ...and this long -> stop claiming to work and let the user retry. Measured on a
+# clean VM: the network was cut mid-download and RESTORED, and the step still sat
+# dead for 25 minutes with the row reading 'no new data for 23m', because an
+# interrupted huggingface download does not resume itself. Only reopening Baby
+# fixed it. Stall time is a different signal from elapsed time: a slow link makes
+# a download take an hour, but it never makes the byte count stand still for 20
+# minutes. So this can be short while _STEP_TIMEOUT_S stays generous.
+_STALL_CEILING_S = 1200
 _STEP_TIMEOUT_S = 3600  # hard ceiling: a step must resolve one way or the other
 
 
@@ -393,6 +401,7 @@ async def _run_watched_step(
     *,
     probe: Callable[[], int],
     detail: Callable[[int, float, float], str],
+    total_bytes: int = 0,
     done_detail: str = "ready",
     on_event: OnEvent,
 ) -> None:
@@ -403,9 +412,15 @@ async def _run_watched_step(
     they all share the same failure mode, which is a step that looks identical
     whether it is working or wedged.
 
-    The thread cannot be cancelled, so the timeout does not kill the download -- it
-    ends our claim to be working and lets the wizard show a real, retryable error
+    The thread cannot be cancelled, so neither ceiling kills the download -- they
+    end our claim to be working and let the wizard show a real, retryable error
     instead of a spinner with no end condition.
+
+    `total_bytes` (0 = unknown) arms the stall ceiling, and only while bytes are
+    still expected. Past ~95% the loader is building the model in memory and the
+    cache legitimately stops growing; killing a slow model load would trade one
+    hang for a worse bug, so the stall ceiling is off for that phase and only the
+    elapsed ceiling still applies.
     """
     started = time.monotonic()
     seen = last_seen = probe()
@@ -425,10 +440,16 @@ async def _run_watched_step(
             if seen > last_seen:
                 last_seen, moved_at = seen, now
             elapsed = now - started
-            if elapsed > _STEP_TIMEOUT_S:
+            stalled = now - moved_at
+            # Still downloading, and nothing has arrived for a long time: the
+            # transfer is dead even if the network came back. Give up here rather
+            # than at the elapsed ceiling, which is an hour away.
+            downloading = bool(total_bytes) and seen < total_bytes * 0.95
+            if elapsed > _STEP_TIMEOUT_S or (downloading and stalled > _STALL_CEILING_S):
                 raise TimeoutError(
                     f"{manifest.get(dep).label} made no progress for "
-                    f"{int(elapsed // 60)} minutes -- giving up so this can be retried"
+                    f"{int(max(stalled, elapsed) // 60)} minutes -- giving up so "
+                    f"this can be retried"
                 )
             on_event(_event(dep, "download", status="working", bytes=seen,
                             elapsed_s=int(elapsed),
@@ -456,6 +477,7 @@ async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEve
         loader,
         probe=lambda: _dir_bytes(cache),
         detail=lambda seen, elapsed, stalled: _hub_detail(seen, size_mb, elapsed, stalled),
+        total_bytes=size_mb * 1024 * 1024,
         on_event=on_event,
     )
 
@@ -478,6 +500,7 @@ async def _run_wakeword_step(target: Path, *, on_event: OnEvent) -> None:
         lambda: _download_openwakeword(target),
         probe=lambda: _dir_bytes(target),
         detail=lambda seen, elapsed, stalled: _bytes_detail(seen, size_mb, elapsed, stalled),
+        total_bytes=size_mb * 1024 * 1024,
         done_detail="wake-word models ready",
         on_event=on_event,
     )

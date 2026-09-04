@@ -2058,3 +2058,43 @@ Running log of non-obvious choices made during the build. Newest last.
      Same family as #137 and #142: a path that only runs when something goes wrong
      is a path the dev box never executes, because on the dev box nothing goes
      wrong. The matrix is the only thing that runs it.
+
+151. **The row told the truth and then did nothing about it.** Second finding from
+     the clean-VM matrix, and the more interesting one, because #149 had already
+     "fixed" this area. The network was cut part-way through the whisper download,
+     the row correctly flipped to `no new data for 11m` at `_STALL_S`, and then the
+     link was RESTORED. Twenty-five minutes later, with the guest pinging
+     huggingface.co at 32 ms, the row still read `68 of ~1600 MB -- no new data for
+     23m` and the byte count had not moved. Only closing and reopening Baby
+     recovered it -- after which the step resumed from 160 MB, so the cache was
+     fine all along; it was the in-flight transfer that was dead.
+
+     Two separate facts. An interrupted `huggingface_hub` download does not
+     self-heal when connectivity returns -- not ours to fix, and not worth
+     wrapping. And #149's stall detection was purely cosmetic: it changed the row's
+     wording and had no consequence, so the step would have held that pose until
+     `_STEP_TIMEOUT_S` an hour away. The error text even said "Reconnect and retry",
+     which a user could follow exactly and still watch a dead row.
+
+     The fix separates two things that were being measured with one number.
+     ELAPSED time must stay generous, because a legitimately slow link really can
+     take an hour for 1.6 GB. STALLED time cannot: no link is slow enough to leave
+     the byte count untouched for twenty minutes. So `_STALL_CEILING_S` (1200s)
+     raises the same `TimeoutError` the elapsed ceiling already raised, which
+     `classify_error` already maps to `stalled` + `retryable`, which the wizard
+     already renders. No new error path -- an earlier trigger for the existing one.
+
+     The part worth being careful about: past ~95% of the expected bytes the loader
+     is building the model in memory and the cache is SUPPOSED to stop growing.
+     That is the one moment where zero bytes is healthy, and a naive stall ceiling
+     would kill a slow model load -- turning a hang into a refusal to install on
+     slow hardware, which is worse than the bug being fixed. So the ceiling is
+     armed only while bytes are still expected, `total_bytes` (0 = unknown) leaves
+     it disarmed rather than guessing, and a test pins that both real callers pass
+     their size. Mutation-tested three ways: removing the ceiling, removing the
+     95% guard, and dropping `total_bytes` from a caller each fail a different test.
+
+     Standing caveat: this bounds the damage, it does not resume anything. A user
+     who reconnects still waits up to 20 minutes, then gets a retryable error and
+     has to act on it. Actually resuming in place would mean owning the hub's
+     transfer, which is a much larger change than this release wants.

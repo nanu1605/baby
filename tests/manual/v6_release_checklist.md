@@ -184,6 +184,11 @@ for W3 and W5 — the dev box cannot fake any of it.
       minutes is what got reported as a hung install.
 - [ ] Pull the network mid-download and leave it: within ten minutes the row says
       "no new data for Nm" rather than continuing to look busy.
+- [ ] Leave it pulled for another ten. The step must **give up** with a retryable
+      error rather than sitting there until the one-hour ceiling. Restoring the
+      network does NOT revive an interrupted download -- that was measured, with
+      the machine pinging the host at 32 ms while the row stayed dead -- so the
+      recovery is the error plus a reopen, and the row has to reach it promptly.
 
 ## 5. Uninstall
 
