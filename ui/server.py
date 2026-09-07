@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from core import paths
+from core import autostart, paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.safety import SafetyGate
@@ -487,6 +487,12 @@ def create_app(ctx: UIContext) -> FastAPI:
             # a re-entry after a completed provision).
             "provisioned": bool(_setup.get("provisioned")),
         }
+        # "Start Baby with Windows". Read from the registry every time rather than
+        # mirrored into setup.json -- the user can turn it off in Task Manager's
+        # Startup tab, and a cached flag would then have the toggle lying about
+        # the state of their machine. BABY_SHELL_EXE is set only by the native
+        # shell, and without it there is nothing to point a Run value at.
+        data["autostart"] = autostart.state(os.environ.get("BABY_SHELL_EXE"))
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router
@@ -690,6 +696,38 @@ def create_app(ctx: UIContext) -> FastAPI:
             "changed": changed,
             "provisioned": bool(state.get("provisioned")),
         }
+
+    @app.post("/api/setup/autostart")
+    async def api_setup_autostart(body: dict):
+        r"""Turn "start Baby with Windows" on or off.
+
+        Writes HKCU\...\Run -- per-user, no admin, and removable from Windows'
+        own startup list as well as from here. Baby comes up minimised to the
+        tray: an assistant that seizes the screen on every boot is one the user
+        turns off.
+
+        Refused without BABY_SHELL_EXE rather than guessing an install path. Only
+        the native shell sets it, and a Run value pointing at nothing would fail
+        silently every boot with nothing to explain why.
+        """
+        if "enabled" not in body:
+            return JSONResponse({"error": "enabled is required"}, status_code=400)
+        exe = os.environ.get("BABY_SHELL_EXE")
+        if not autostart.supported() or not exe:
+            return JSONResponse(
+                {
+                    "error": "Baby can only add itself to Windows startup when it is "
+                    "running from the installed app."
+                },
+                status_code=400,
+            )
+        want = bool(body["enabled"])
+        if want:
+            ok = await asyncio.to_thread(autostart.enable, exe)
+        else:
+            ok = await asyncio.to_thread(autostart.disable)
+        # Report what the registry SAYS, not what we asked it for.
+        return {"enabled": autostart.enabled(), "ok": ok}
 
     @app.post("/api/setup/provision")
     async def api_setup_provision():

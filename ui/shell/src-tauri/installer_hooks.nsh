@@ -73,13 +73,30 @@
 !macro NSIS_HOOK_POSTUNINSTALL
   Push $R4
   Push $R5
-  ${If} $DeleteAppDataCheckboxState = 1
+  ; The two guards that decide whether this is a REAL uninstall are hoisted out of
+  ; the data-deletion branch, because one thing has to happen on every real
+  ; uninstall and not only when the user ticked a box.
+  GetFullPathName $R4 "$EXEDIR"
+  GetFullPathName $R5 "$INSTDIR"
+  ClearErrors
+  ; Path comparison FIRST, and not merely as a matter of taste: the executable
+  ; test in tests/test_uninstall.py lifts everything from the GetFullPathName pair
+  ; to the first ${If} and compiles it for real, so the path guard has to be that
+  ; ${If}. Written the other way round the probe compiles $UpdateMode alone,
+  ; which is undefined in the harness and therefore always true.
+  ${If} $R4 != $R5
   ${AndIf} $UpdateMode <> 1
-    GetFullPathName $R4 "$EXEDIR"
-    GetFullPathName $R5 "$INSTDIR"
-    ClearErrors
-    ${If} $R4 != $R5
-      SetShellVarContext current
+    SetShellVarContext current
+
+    ; "Start Baby with Windows" writes a per-user Run value (core/autostart.py).
+    ; It is NOT user data and it is not covered by the checkbox: an uninstalled
+    ; Baby that still tries to launch at every logon is a broken startup entry
+    ; the user has no obvious way to trace back to an app they removed. So this
+    ; goes whenever the app does. Deleting a value that was never written is a
+    ; no-op, so there is nothing to guard.
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Baby"
+
+    ${If} $DeleteAppDataCheckboxState = 1
       IfFileExists "$LOCALAPPDATA\baby\.venv\*.*" baby_data_is_ours baby_data_not_ours
       baby_data_is_ours:
         RmDir /r "$LOCALAPPDATA\baby"

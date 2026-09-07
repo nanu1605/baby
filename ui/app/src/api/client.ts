@@ -70,6 +70,16 @@ export async function postKeySignup(env: string): Promise<boolean> {
   return data.opened === true;
 }
 
+/** Turn "start Baby with Windows" on or off. Writes a per-user Run key; Baby
+ *  comes up minimised to the tray. Returns what the registry says afterwards,
+ *  not what was asked for. */
+export async function postAutostart(enabled: boolean): Promise<boolean> {
+  const r = await postJSON("/api/setup/autostart", { enabled });
+  if (!r.ok) return false;
+  const data = (await r.json()) as { enabled?: boolean };
+  return data.enabled === true;
+}
+
 /** Re-runnable functional health check (wheels + real model loads). Heavy. */
 export const getSetupHealth = () => getJSON<SetupHealth>("/api/setup/health");
 

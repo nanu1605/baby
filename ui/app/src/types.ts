@@ -147,6 +147,7 @@ export interface Stats {
   ui?: { brain: string; history?: string };
   /** v6 first-run wizard state (core/paths.py setup.json + is_installed). */
   setup?: SetupState;
+  autostart?: AutostartState;
   /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
   local_model_loaded?: boolean;
   tokens?: {
@@ -173,6 +174,14 @@ export interface SetupState {
   install_mode: string | null;
   installed: boolean;
   provisioned: boolean;
+}
+
+/** /stats.autostart — "start Baby with Windows", read live from HKCU\...\Run.
+ *  `supported` is false off Windows and in a source checkout, where there is no
+ *  installed exe for a Run value to point at. */
+export interface AutostartState {
+  supported: boolean;
+  enabled: boolean;
 }
 
 /** GET /api/setup/plan — the ordered provisioning checklist for the chosen mode. */

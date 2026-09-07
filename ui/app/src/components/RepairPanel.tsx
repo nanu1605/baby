@@ -4,6 +4,7 @@ import {
   getSetupHealth,
   getSetupKeys,
   getSetupStatus,
+  postAutostart,
   postSetupMode,
   postSetupProvision,
 } from "../api/client";
@@ -40,6 +41,7 @@ export default function RepairPanel() {
   const open = useBrain((s) => s.repairOpen);
   const close = useBrain((s) => s.closeRepair);
   const setup = useBrain((s) => s.stats?.setup);
+  const autostart = useBrain((s) => s.stats?.autostart);
 
   const [health, setHealth] = useState<SetupHealth | null>(null);
   const [checking, setChecking] = useState(false);
@@ -119,6 +121,29 @@ export default function RepairPanel() {
       return;
     }
     setRepairing(true);
+  };
+
+  const [autoBusy, setAutoBusy] = useState(false);
+
+  // The registry is the source of truth, so the button reports what came back
+  // rather than assuming the write landed -- the user may have Baby's startup
+  // entry blocked from Task Manager, and a toggle that flips anyway would lie.
+  const toggleAutostart = async () => {
+    if (!autostart?.supported) return;
+    setNote("");
+    setAutoBusy(true);
+    const now = await postAutostart(!autostart.enabled);
+    if (!alive.current) return;
+    setAutoBusy(false);
+    if (now === autostart.enabled) {
+      setNote("Couldn't change the Windows startup setting.");
+      return;
+    }
+    setNote(
+      now
+        ? "Baby will start with Windows, minimised to the tray. Click the tray icon to open it."
+        : "Baby will no longer start with Windows.",
+    );
   };
 
   const switchMode = async (mode: InstallMode) => {
@@ -234,6 +259,27 @@ export default function RepairPanel() {
               Switch to cloud only
             </button>
           </div>
+          {autostart?.supported && (
+            <>
+              <p className="repair-note">
+                {autostart.enabled
+                  ? "Baby starts with Windows, minimised to the tray."
+                  : "Baby only starts when you open it."}
+              </p>
+              <div className="repair-actions">
+                <button
+                  type="button"
+                  className="repair-btn"
+                  disabled={autoBusy}
+                  onClick={toggleAutostart}
+                >
+                  {autostart.enabled
+                    ? "Don't start with Windows"
+                    : "Start Baby with Windows"}
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <section className="repair-section">

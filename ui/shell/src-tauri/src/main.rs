@@ -312,6 +312,12 @@ fn spawn_backend(app: &AppHandle, layout: &Layout) {
         // backend WE spawn; an attached always-on service relies on ui.shell instead.
         .env("BABY_SHELL_TRAY", "1")
         .creation_flags(CREATE_NO_WINDOW);
+    // What "start Baby with Windows" has to put in the Run key. The backend writes
+    // that value but cannot know this path -- deriving it from a guessed install
+    // directory is how you ship a Run key pointing at nothing.
+    if let Ok(exe) = std::env::current_exe() {
+        cmd.env("BABY_SHELL_EXE", exe);
+    }
     // Only export BABY_HOME when the layout actually splits (installed). In dev the
     // two dirs are identical, so leaving it unset keeps the cwd-relative behavior
     // byte-identical to before.
@@ -426,7 +432,9 @@ fn show_overlay(app: &AppHandle, id: &str, colour: &str, msg: &str) {
              (document.body||document.documentElement).appendChild(d);}})();"
         );
         let _ = w.eval(&js);
-        let _ = w.show();
+        if !start_minimized() {
+            let _ = w.show();
+        }
     }
 }
 
@@ -438,10 +446,31 @@ fn attach_only() -> bool {
     std::env::args().any(|a| a == "--attach-only")
 }
 
+/// True when launched by the "start Baby with Windows" Run key, which passes
+/// --minimized. Baby comes up in the tray with no window: an assistant that seizes
+/// the screen on every boot is one the user turns off.
+///
+/// Deliberately NOT --attach-only, which means the opposite thing. That flag says
+/// "never spawn a backend, wait for the always-on service to bind" -- at logon
+/// there is no such service, so reusing it would leave Baby waiting for something
+/// that is never coming and then showing "Baby service did not come up". This flag
+/// spawns exactly as a normal launch does and only skips the reveal.
+fn start_minimized() -> bool {
+    std::env::args().any(|a| a == "--minimized")
+}
+
 /// Reveal the real UI once the backend is ready. Dev already renders the live SPA via
 /// Vite (:5173, which proxies to :8765); only prod leaves the splash for the
 /// FastAPI-served UI.
 fn reveal(app: &AppHandle) {
+    // Started at logon: load the UI so the window is ready the instant the tray is
+    // clicked, but never take the screen. Only the AUTOMATIC reveal is suppressed --
+    // the tray's "Open Baby" and the single-instance callback still show, because
+    // those are the user asking.
+    if start_minimized() {
+        navigate_to_backend_inner(app, false);
+        return;
+    }
     if cfg!(debug_assertions) {
         show_main(app);
     } else {
@@ -515,6 +544,13 @@ fn attach_or_spawn_inner(app: &AppHandle) {
 /// content-hashed assets it references still cache correctly. useDeepLink only reads
 /// location.hash and preserves location.search, so the `?r=` is inert.
 fn navigate_to_backend(app: &AppHandle) {
+    navigate_to_backend_inner(app, true);
+}
+
+/// `show: false` loads the UI without raising the window — the minimised-at-logon
+/// path. Splitting it here rather than gating inside show_main keeps the tray's
+/// "Open Baby" working: that one must always show, whatever flags we booted with.
+fn navigate_to_backend_inner(app: &AppHandle, show: bool) {
     if let Some(w) = app.get_webview_window("main") {
         let bust = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -523,8 +559,10 @@ fn navigate_to_backend(app: &AppHandle) {
         if let Ok(url) = format!("{BACKEND_URL}?r={bust}").parse() {
             let _ = w.navigate(url);
         }
-        let _ = w.show();
-        let _ = w.set_focus();
+        if show {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
     }
 }
 
@@ -562,7 +600,13 @@ fn show_splash_message(app: &AppHandle, msg: &str) {
             "(function(){{var e=document.querySelector('.wrap');if(e){{e.innerHTML=\"<div style='color:#f87171;max-width:32rem'>{safe}</div>\";}}}})();"
         );
         let _ = w.eval(&js);
-        let _ = w.show();
+        // Started at logon, a failure must not throw a window at the user before
+        // they have touched anything -- but it must not vanish either. The message
+        // is written regardless, the tray is already red from the same condition,
+        // and clicking it opens the window showing exactly this text.
+        if !start_minimized() {
+            let _ = w.show();
+        }
     }
 }
 
@@ -656,6 +700,14 @@ fn main() {
         })
         .setup(|app| {
             build_tray(app)?;
+
+            // No `visible` key in tauri.conf.json means the window starts shown, so
+            // a logon launch would flash the splash before anything hid it again.
+            if start_minimized() {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.hide();
+                }
+            }
 
             // Close-to-tray: the window X hides instead of quitting; only the tray
             // "Quit Baby (app)" exits (DECISIONS #120).

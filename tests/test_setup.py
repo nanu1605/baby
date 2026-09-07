@@ -211,3 +211,102 @@ def test_a_classified_step_failure_surfaces_its_message_not_a_traceback(tmp_path
             assert leak not in blob, f"{leak} leaked into the wizard: {blob}"
     finally:
         asyncio.run(db.close())
+
+
+# --- start Baby with Windows (v6.0.2) -----------------------------------------
+# The endpoint half. core/autostart.py is covered in tests/test_autostart.py; what
+# matters here is that the route refuses rather than guesses when there is no
+# installed exe to point a Run value at, and that it reports the REGISTRY's answer
+# rather than echoing the request back.
+
+
+def _stub_autostart(monkeypatch, *, supported=True, start=False):
+    """Replace the registry with a single bool, and record the calls."""
+    import ui.server as server
+
+    state = {"enabled": start, "calls": []}
+    monkeypatch.setattr(server.autostart, "supported", lambda: supported)
+    monkeypatch.setattr(server.autostart, "enabled", lambda: state["enabled"])
+
+    def _enable(exe):
+        state["calls"].append(("enable", exe))
+        state["enabled"] = True
+        return True
+
+    def _disable():
+        state["calls"].append(("disable", None))
+        state["enabled"] = False
+        return True
+
+    monkeypatch.setattr(server.autostart, "enable", _enable)
+    monkeypatch.setattr(server.autostart, "disable", _disable)
+    return state
+
+
+def test_autostart_endpoint_round_trips(tmp_path, monkeypatch):
+    monkeypatch.setenv("BABY_SHELL_EXE", r"C:\Users\x\AppData\Local\Programs\Baby\Baby.exe")
+    state = _stub_autostart(monkeypatch)
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        on = client.post("/api/setup/autostart", json={"enabled": True})
+        assert on.status_code == 200
+        assert on.json()["enabled"] is True
+        assert state["calls"][-1][0] == "enable"
+
+        off = client.post("/api/setup/autostart", json={"enabled": False})
+        assert off.json()["enabled"] is False
+        assert state["calls"][-1][0] == "disable"
+
+        # And /stats reports it, which is how the toggle knows where it stands.
+        assert client.get("/stats").json()["autostart"] == {
+            "supported": True,
+            "enabled": False,
+        }
+    finally:
+        asyncio.run(db.close())
+
+
+def test_autostart_is_refused_without_an_installed_exe(tmp_path, monkeypatch):
+    """A source checkout is started by a developer typing a command. Writing a Run
+    value that points at a guessed install path would fail silently every boot."""
+    monkeypatch.delenv("BABY_SHELL_EXE", raising=False)
+    state = _stub_autostart(monkeypatch)
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        r = client.post("/api/setup/autostart", json={"enabled": True})
+        assert r.status_code == 400
+        assert state["calls"] == [], "it tried to write anyway"
+        assert client.get("/stats").json()["autostart"]["supported"] is False
+    finally:
+        asyncio.run(db.close())
+
+
+def test_autostart_requires_the_enabled_field(tmp_path, monkeypatch):
+    monkeypatch.setenv("BABY_SHELL_EXE", r"C:\Baby\Baby.exe")
+    state = _stub_autostart(monkeypatch)
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        # A missing field must not be read as "off" -- that would silently turn a
+        # user's autostart off on a malformed request.
+        assert client.post("/api/setup/autostart", json={}).status_code == 400
+        assert state["calls"] == []
+    finally:
+        asyncio.run(db.close())
+
+
+def test_autostart_reports_the_registry_not_the_request(tmp_path, monkeypatch):
+    """If the write is blocked -- policy, or a locked-down machine -- the answer
+    must be what the registry says, not what was asked for."""
+    monkeypatch.setenv("BABY_SHELL_EXE", r"C:\Baby\Baby.exe")
+    import ui.server as server
+
+    monkeypatch.setattr(server.autostart, "supported", lambda: True)
+    monkeypatch.setattr(server.autostart, "enabled", lambda: False)  # never takes
+    monkeypatch.setattr(server.autostart, "enable", lambda exe: False)
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        r = client.post("/api/setup/autostart", json={"enabled": True})
+        assert r.status_code == 200
+        assert r.json()["enabled"] is False, "it claimed success the registry denies"
+    finally:
+        asyncio.run(db.close())
