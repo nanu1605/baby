@@ -2632,3 +2632,97 @@ Running log of non-obvious choices made during the build. Newest last.
      visible without scrolling. A preference the user picks is not a repair action
      and does not belong filed behind one. A report of "missing" against a feature
      that is present is still a report about the feature.
+
+164. **An installer that reported success and installed nothing.**
+     The third report against the 6.0.2 candidate was "still no option to start on
+     startup". The option was there. Opened on the running backend during the
+     investigation: "Start with Windows" is the first section of Setup & repair, the
+     button is live, six headings render, no React error. What was wrong was the
+     machine.
+
+     **It was running 6.0.0.** Measured, not inferred: `DisplayVersion` in
+     `HKCU\...\Uninstall\Baby` still said 6.0.0; `baby-shell.exe` was the September 3
+     binary, and a string scan found no `BABY_SHELL_EXE` in it at all while the 6.0.2
+     binary has it (`BABY_SHELL_TRAY` is in both, so the scan works); the installed
+     `payload\ui\server.py` was the 1549-line 6.0.0 file with no `/api/setup/autostart`
+     and no origin gate, against 1778 lines in the repo; `payload\pyproject.toml` said
+     6.0.0; the payload's `index.html` still pointed at the 6.0.0 bundle; and
+     `uninstall.exe` had never been rewritten. There was no second install anywhere --
+     searched the whole user profile, both Program Files, and the uninstall keys under
+     HKCU, HKLM and Wow6432Node.
+
+     The reporter ran the installer and it told them it had finished. Only filenames
+     that had never existed before appeared in the payload -- `core\autostart.py` and
+     the new hashed bundles. Every file that was already there survived untouched.
+
+     **This is worse than the toggle that prompted it.** An upgrade that silently
+     no-ops means nothing at all reaches an existing user: not the 6.0.1 fixes, not the
+     6.0.2 fixes, and not #162's cross-origin check, which is the one that stops a web
+     page driving somebody's local Baby. And nothing contradicted the reporter, because
+     the app displayed its version *nowhere* -- so a stale install and a current one
+     look identical, and a feature that never arrived is indistinguishable from a
+     feature that was never built.
+
+     **The cause is still unknown, and this entry does not claim otherwise.** The
+     generated `installer.nsi` was read end to end and looks right: `MAINBINARYNAME` is
+     `baby-shell`, so `CheckIfAppIsRunning` does find the running app; there is no
+     `SetOverwrite off`; `$INSTDIR` resolves through `RestorePreviousInstallLocation`
+     against a clean, unquoted `HKCU\Software\tanishq\Baby`. Finding out means
+     reproducing the run on a clean VM, which is the release gate, not a desk exercise.
+
+     What ships instead is the pair of things that would have caught it in one glance.
+     The running version is now the first line of Setup & repair -- `app` read out of
+     the payload that was actually imported, `shell` exported by the native shell as
+     `BABY_SHELL_VERSION`, and a plain warning when the two disagree, which is exactly
+     the half-applied shape the disk evidence showed. `shell` is absent whenever the
+     shell attached to a backend it did not spawn, and that reads as unknown rather
+     than as a mismatch: a warning every developer sees permanently is a warning
+     nobody reads. And a `NSIS_HOOK_POSTINSTALL` now reads the version back **out of
+     the file it just wrote** and aborts if it is not the one being installed. Reading
+     back what landed is the only check a skipped copy cannot satisfy -- comparing
+     against anything the installer already holds in memory would have passed on this
+     very install. Compiled and run against real NSIS across four payloads, including
+     the mutation that drops the closing quote and lets 6.0.20 satisfy a check for
+     6.0.2.
+
+165. **The chat list only updated when you ticked "Show archived".**
+     Reported as a summary that appears only behind the archived filter. The filter was
+     innocent, and so was the API: `/api/conversations` and the same call with
+     `include_archived=true` returned identical rows against the reporter's own
+     backend, none of them archived.
+
+     `HistorySidebar` refreshed on mount, when the archived filter flipped, and when the
+     active conversation id changed. **Chatting changes none of those.** So a row's
+     title, message count and timestamp went stale, and a brand-new conversation --
+     which only crosses `list_conversations`' `HAVING message_count > 0` once its first
+     turn lands -- never appeared at all. Ticking the checkbox changed the refresh
+     callback's identity, which re-ran the effect. The checkbox was never revealing the
+     chat; it was the only thing in the UI still reloading the list.
+
+     Underneath it, the same fact twice over. `turn_start` carries `conversation_id`
+     (`core/bus.py`, published by `core/agent.py`, forwarded whole by the pump) and the
+     socket handler **threw it away** -- so the store could only learn the live id from
+     the very refresh it was supposed to trigger, which is a cycle with no entry point.
+     And the one `turn_start` the server writes by hand, the game-mode escape hatch that
+     skips the bus, skipped the contract with it and sent a bare frame. One event with
+     two shapes is how a client ends up handling neither.
+
+     The list now reloads on a completed turn, off a `turnsCompleted` counter in the
+     store. It is incremented *before* the guard that protects a viewed past chat, not
+     after: that guard exists for the frozen transcript, and a turn landing while you
+     read an old chat still changed the live conversation. Counting behind it would
+     have put the staleness straight back for anyone who clicks a chat mid-answer.
+
+     *And clicking a chat now opens it.* It used to load a read-only viewer with a
+     "Resume here" button, so getting back into a conversation took two clicks and the
+     first one looked like it had failed. It resumes directly now, and falls back to
+     the viewer only on the backend's 409 -- reassigning the agent's conversation
+     mid-turn would rehydrate the wrong context, so there the viewer is the honest
+     answer and a toast says why. The omnibox deliberately still peeks: a search hit is
+     something you look at, not something you switch the live session to.
+
+     **Not fixed, on purpose: the row label is not a written summary.** It is the
+     conversation's title, derived as explicit title, then the summary's first line,
+     then the first user message. Generating a real summary means a model call per
+     conversation, which is a router change this release's frozen ground forbids. It is
+     a follow-up, not an oversight.

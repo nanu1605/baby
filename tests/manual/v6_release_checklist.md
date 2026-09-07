@@ -323,10 +323,10 @@ The W5 fix. Verify both branches.
 
 ### What 6.0.2 changed, and what only a person can confirm
 
-Four of these were reported from a real desktop, which is the point: a VM matrix
-cannot see any of them, because they are about *using* Baby rather than installing
-it. The automated side is green; these are the parts a machine in this repo cannot
-prove.
+These were reported from a real desktop, which is the point: a VM matrix cannot see
+most of them, because they are about *using* Baby rather than installing it. The one
+exception is the upgrade check below, and it is the most important row on this page.
+The automated side is green; these are the parts a machine in this repo cannot prove.
 
 - [ ] **The "Get a key" links open a browser.** In the wizard and again in Setup &
       repair, click each of the three. A real browser window must open on the
@@ -400,6 +400,59 @@ prove.
       new WebSocket("ws://127.0.0.1:8765/ws/chat").onerror = () => console.log("refused")
       ```
       It must log `refused`. From Baby's own window that same line connects.
+
+### The upgrade actually applies (6.0.2, and the release gate)
+
+**A 6.0.2 installer was run over an existing 6.0.0 install, reported that it had
+finished, and replaced nothing.** Not the shell, not `payload\ui\server.py`, not
+`pyproject.toml`, not `uninstall.exe`, not the registry version. Only filenames that
+had never existed before appeared. The cause is not known; the point of these rows is
+to find it, and to prove the new check refuses to call that a success.
+
+Run each on a VM that already has **6.0.0 installed and provisioned**, not a clean one.
+
+- [ ] **Upgrade with Baby fully quit.** Quit from the tray (not just the window),
+      confirm no `baby-shell.exe` is running, then run the 6.0.2 installer. It must
+      finish without the new error dialog. Then check all four: `DisplayVersion` under
+      `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Baby` reads 6.0.2;
+      `payload\pyproject.toml` reads 6.0.2; `baby-shell.exe` has today's date; and
+      Setup & repair opens with **Baby 6.0.2** on its first line.
+- [ ] **Upgrade with Baby running.** Start Baby, leave it running, run the installer.
+      It should offer to close Baby. Let it. Then re-check the same four.
+- [ ] **Upgrade with Baby running and the close refused.** Same again, but decline
+      when it offers to close Baby. It must abort with a message -- it must NOT report
+      that it finished.
+- [ ] **The half-applied warning stays quiet when it should.** Confirm the negative:
+      a single version and no warning after a clean upgrade, and no warning on a
+      source checkout either, where the shell version is absent and has to read as
+      unknown rather than as a mismatch.
+- [ ] **The installer refuses to lie.** If any upgrade row above ends with the old
+      version still on disk, the installer must have shown the "did not install"
+      dialog and landed on its failure page. An upgrade that says *Completed* over
+      unchanged files is the bug -- capture the installer log and the four values
+      above before doing anything else, because that is the reproduction nobody has
+      yet.
+
+### The chat list keeps up (6.0.2)
+
+Reported: chats appeared only when "Show archived" was ticked. Verified against the
+built bundle on a stub backend; these rows are the same checks against a real one.
+
+- [ ] **A reply updates the list without touching the filter.** With "Show archived"
+      unticked, send a message. The row's timestamp and message count must update on
+      their own.
+- [ ] **A new chat appears on its own.** Click "+ New chat", send one message. The new
+      row must appear, titled from that message, highlighted as active -- with the
+      checkbox still unticked.
+- [ ] **Clicking a chat opens it.** Click a past chat: the transcript loads and the
+      composer is there, ready to type. Not a read-only banner.
+- [ ] **Clicking mid-answer opens it read-only.** Ask Baby something slow, and while
+      it is answering click a different chat. It must open read-only with a toast
+      explaining why -- not do nothing, and not switch the conversation underneath the
+      running reply.
+- [ ] **Game mode still names its conversation.** Type `game mode on`. The list must
+      not lose track of which chat is active -- that path writes its own `turn_start`
+      frame and is the only turn in the app that never reaches the bus.
 
 ## 6. Regression on the real box
 

@@ -2,9 +2,11 @@
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
-Five fixes, four of them reported from running 6.0.1 on an actual machine rather
-than a VM. Every one is about *using* Baby rather than installing it, which is
-why the clean-VM matrix never saw them.
+Fixes reported from running Baby on an actual machine rather than a VM -- five
+found on 6.0.1, and four more found by running the 6.0.2 candidate itself. Almost
+every one is about *using* Baby rather than installing it, which is why the
+clean-VM matrix never saw them. The exception is the last one, which is about
+installing: an upgrade that reported success and changed nothing.
 
 - **The "Get a key" links now open.** In the first-run wizard and the repair
   panel, the links to OpenRouter, Google Gemini and NVIDIA did nothing at all --
@@ -71,6 +73,26 @@ why the clean-VM matrix never saw them.
   Requests that come from another site are now refused. Nothing you do in Baby
   changes, and the tray keeps working. This gap was not new, but Baby now runs from
   the moment you log in, so it is no longer only open while you are using it.
+
+- **Baby now shows which version it is, and the installer proves it landed.** A
+  6.0.2 installer was run over an existing 6.0.0 install, reported that it had
+  finished, and replaced nothing -- so a feature that had shipped looked like a
+  feature that was missing, and there was no way to tell from inside the app,
+  because Baby displayed its version nowhere. Setup & repair now opens with the
+  version that is actually running, and says so plainly when the app window and the
+  files underneath it disagree. The installer now reads the version back out of the
+  files it just wrote, and stops with an error instead of reporting success when
+  they are not the ones it was carrying.
+
+- **Chats appear in the list as soon as you have them.** A new conversation, or a
+  new reply in the one you are already in, did not show up in the chat list until
+  something else made it reload -- and ticking "Show archived" happened to be the
+  only thing in the app that did, which made the checkbox look like it was hiding
+  your chats. The list now updates the moment a reply lands. Clicking a chat also
+  opens it properly now, ready to continue, instead of a read-only view with a
+  second button to press; while Baby is mid-answer it still opens read-only and
+  tells you why, because switching conversations underneath a running reply would
+  answer with the wrong context.
 
 **Known, unfixed:** links inside Baby's own replies still do nothing in the app
 window, for the same reason the signup links did. Fixing that means opening
