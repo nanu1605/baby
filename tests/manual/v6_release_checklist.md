@@ -425,6 +425,20 @@ argument for its own tag rather than waiting to be batched.
 - [ ] **A first run of the candidate binary itself.** A rebuild is a different file
       even when the source is identical, so each candidate gets its own run rather
       than inheriting the last one's. Record the size and SHA256 here.
+
+      Candidate, built from a clean tree at `a43a226`:
+      ```
+      Baby_6.0.2_x64-setup.exe   19,050,127 bytes
+      3461DB6910166524F686D0C28611106A71959267227C55331F8D3F2FB23459BF
+      ```
+      Verified before it left this machine: 72 payload `.py` files, 0 content
+      differences against HEAD (43 differ in line endings only, which is
+      `core.autocrlf` and not a change); the SPA `dist` identical to the one just
+      built; all seven fixes present in the payload; 0 secret-shaped files; no
+      `tests/`; `uv.exe` bundled. That last one is not decoration — the first
+      attempt at this build ran the plain `npm run build`, which stages **no**
+      `uv.exe`, and a fresh install of it would have stopped at "First-run setup
+      files are missing." Step 33 above exists for exactly that and was skipped.
 - [ ] Merge the PR.
 - [ ] Tag `v6.0.2`.
 - [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.
