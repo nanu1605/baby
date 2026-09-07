@@ -190,6 +190,226 @@ def test_it_is_a_no_op_off_windows(monkeypatch, exe):
     assert autostart.state(exe)["can_enable"] is False
 
 
+
+# --- the installer asks, once, and writes what the app would write -------------
+#
+# Reported twice: "the setup should ask me while installing whether to start Baby on
+# startup." The toggle in Setup & repair was not what was being asked for.
+#
+# MUI's finish page has exactly two checkbox slots and Tauri's template spends both
+# (desktop shortcut, run on finish), and the four hooks it exposes all run inside
+# sections, where no control can be drawn on that page. A third checkbox would mean
+# forking the 1100-line template and owning it across Tauri upgrades. So the question
+# is a Yes/No in NSIS_HOOK_POSTINSTALL instead, and these gates cover the parts of
+# that decision which can actually break.
+
+
+def _autostart_block() -> list[str]:
+    """The question and its guards, lifted out of the shipped hook.
+
+    The executable test below compiles these lines verbatim, so it exercises what
+    ships rather than a paraphrase -- the same approach the reinstall guard and the
+    version check use.
+    """
+    hook = _NSH.read_text(encoding="utf-8")
+    assert "!macro NSIS_HOOK_POSTINSTALL" in hook, "nothing runs after the install"
+    body = hook.split("!macro NSIS_HOOK_POSTINSTALL", 1)[1].split("!macroend", 1)[0]
+    lines = body.splitlines()
+    start = next(
+        (i for i, ln in enumerate(lines) if "ReadRegStr $R4 HKCU" in ln), None
+    )
+    assert start is not None, "the installer no longer reads the current Run value"
+    end = next(
+        (i for i in range(start, len(lines)) if lines[i].strip() == "baby_autostart_done:"),
+        None,
+    )
+    assert end is not None, "the question never reaches an end label"
+    return [ln.rstrip() for ln in lines[start : end + 1]]
+
+
+def test_the_installer_asks_before_writing_anything():
+    nsh = _NSH.read_text(encoding="utf-8")
+    body = nsh.split("!macro NSIS_HOOK_POSTINSTALL", 1)[1].split("!macroend", 1)[0]
+    assert "MB_YESNO" in body, (
+        "the installer writes a startup entry without asking, which is the opposite "
+        "of what was requested"
+    )
+    ask = body.index("MB_YESNO")
+    write = body.index('WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run"')
+    assert ask < write, "it writes the Run value before asking about it"
+
+
+def test_a_silent_install_is_never_given_a_startup_entry():
+    """Nobody is at the keyboard to consent, and nobody sees the result.
+
+    Two independent things have to hold, because NSIS skips a MessageBox entirely in
+    a silent install and CONTINUES -- so a prompt with no scripted default falls
+    through to whatever follows it, which here would be the write.
+    """
+    nsh = _NSH.read_text(encoding="utf-8")
+    macro = nsh.split("!macro NSIS_HOOK_POSTINSTALL", 1)[1].split("!macroend", 1)[0]
+    assert "${Silent}" in macro, "a silent install can now add a startup entry"
+    assert "$PassiveMode" in macro, "a passive install can now add a startup entry"
+    assert macro.index("${Silent}") < macro.index("MB_YESNO")
+    assert macro.index("$PassiveMode") < macro.index("MB_YESNO")
+    # And the prompt itself declines by default, so the guard is not load-bearing
+    # on its own.
+    prompt = next(ln for ln in macro.splitlines() if "MB_YESNO" in ln)
+    assert "/SD IDNO" in prompt, (
+        "a skipped prompt falls through to the write; the silent default must be No"
+    )
+
+
+def test_an_upgrade_does_not_re_ask_or_turn_it_off():
+    """A machine that already chose has chosen. Re-asking every patch trains people
+    to click through, and defaulting to No on an upgrade would silently undo the
+    setting -- the one-way trip pointing the other way."""
+    body = "\n".join(_autostart_block())
+    assert "ReadRegStr" in body, "the installer no longer looks at the current state"
+    assert body.index("ReadRegStr") < body.index("StrCpy $R5"), (
+        "it decides what to write before checking what is already there"
+    )
+
+
+def test_the_installer_writes_exactly_what_the_app_writes():
+    """If these two disagree, the toggle in Setup & repair and the installer's
+    question describe different things, and whichever ran last wins silently."""
+    body = "\n".join(_autostart_block())
+    nsh = _NSH.read_text(encoding="utf-8")
+    assert _RUN_KEY in nsh, "the installer writes to a different key than core/autostart"
+    assert '"Baby"' in nsh, "a different value name than core/autostart uses"
+    # core/autostart.command() is f'"{exe}" --minimized'. The NSIS literal has to be
+    # the same shape, quotes included.
+    assert '\'"$INSTDIR\\${MAINBINARYNAME}.exe" --minimized\'' in body, (
+        "the installer's Run value no longer matches core.autostart.command()"
+    )
+    sample = autostart.command(r"C:\X\baby-shell.exe")
+    assert sample == '"C:\\X\\baby-shell.exe" --minimized'
+    assert sample.startswith('"') and sample.endswith(" --minimized"), (
+        "core.autostart.command changed shape; the NSIS literal above must follow"
+    )
+
+
+_ASK_PROBE = """!include LogicLib.nsh
+!define MAINBINARYNAME "baby-shell"
+Name "baby-autostart-ask-probe"
+OutFile "ask.exe"
+InstallDir "{instdir}"
+SilentInstall silent
+RequestExecutionLevel user
+
+!define BABY_TEST_RUN_KEY "{runkey}"
+
+Section
+  Push $R4
+  Push $R5
+{body}
+  Pop $R5
+  Pop $R4
+  FileOpen $R0 "$EXEDIR\\\\ran.txt" w
+  FileWrite $R0 "ran"
+  FileClose $R0
+SectionEnd
+"""
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NSIS is Windows-only")
+def test_the_question_holds_against_real_nsis(tmp_path):
+    r"""Compile the shipped guards and run them against a scratch registry key.
+
+    The prompt itself is replaced by a scripted answer -- a MessageBox cannot be
+    clicked from a test -- but everything that can actually break is real: which key
+    is read, whether an existing value is left alone, and the exact string written.
+
+    A scratch key under HKCU\Software\baby-test is used rather than the real Run key,
+    because a test suite that writes the real one would make the developer's own
+    machine start Baby at logon.
+    """
+    import shutil
+    import subprocess
+    import winreg
+
+    makensis = shutil.which("makensis.exe") or str(
+        Path.home() / "AppData" / "Local" / "tauri" / "NSIS" / "makensis.exe"
+    )
+    if not Path(makensis).exists():
+        pytest.skip("makensis.exe not installed")
+
+    scratch = r"Software\baby-test\autostart-probe"
+    instdir = str(tmp_path / "app")
+
+    def build(answer_yes: bool) -> Path:
+        # The prompt cannot be clicked from a test, so replace that ONE line with the
+        # branch each answer takes: Yes falls through, No jumps to the end label the
+        # real IDNO jumps to. Every other line is the shipped one, verbatim.
+        lines = []
+        for ln in _autostart_block():
+            ln = ln.replace(_RUN_KEY, scratch)
+            if "MB_YESNO" in ln:
+                assert "IDNO baby_autostart_done" in ln, (
+                    "the prompt no longer jumps to baby_autostart_done on No"
+                )
+                ln = "" if answer_yes else "Goto baby_autostart_done"
+            lines.append(ln)
+        body = "\n".join("  " + ln for ln in lines if ln)
+        script = tmp_path / f"ask_{'yes' if answer_yes else 'no'}.nsi"
+        script.write_text(
+            _ASK_PROBE.format(
+                instdir=instdir, runkey=scratch, body=body
+            ).replace("\\\\\\\\", "\\\\"),
+            encoding="utf-8",
+        )
+        subprocess.run([makensis, str(script)], cwd=tmp_path, timeout=180, check=True)
+        out = tmp_path / "ask.exe"
+        renamed = tmp_path / f"ask_{'yes' if answer_yes else 'no'}.exe"
+        out.replace(renamed)
+        return renamed
+
+    def read_scratch() -> str | None:
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, scratch) as key:
+                return str(winreg.QueryValueEx(key, "Baby")[0])
+        except OSError:
+            return None
+
+    def clear_scratch() -> None:
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, scratch)
+        except OSError:
+            pass
+
+    yes, no = build(True), build(False)
+    try:
+        # Yes, from nothing: writes the quoted path plus the flag.
+        clear_scratch()
+        subprocess.run([str(yes), "/S"], cwd=tmp_path, timeout=180, check=True)
+        written = read_scratch()
+        assert written == f'"{instdir}\\baby-shell.exe" --minimized', (
+            f"the installer wrote {written!r}, which is not what core/autostart writes"
+        )
+
+        # No: writes nothing at all.
+        clear_scratch()
+        subprocess.run([str(no), "/S"], cwd=tmp_path, timeout=180, check=True)
+        assert read_scratch() is None, "declining still added a startup entry"
+
+        # Already set: left exactly as it was, not overwritten with this INSTDIR.
+        sentinel = '"C:\\Somewhere Else\\baby-shell.exe" --minimized'
+        with winreg.CreateKeyEx(
+            winreg.HKEY_CURRENT_USER, scratch, 0, winreg.KEY_SET_VALUE
+        ) as key:
+            winreg.SetValueEx(key, "Baby", 0, winreg.REG_SZ, sentinel)
+        subprocess.run([str(yes), "/S"], cwd=tmp_path, timeout=180, check=True)
+        assert read_scratch() == sentinel, (
+            "an upgrade rewrote a Run value the user had already chosen"
+        )
+    finally:
+        clear_scratch()
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r"Software\baby-test")
+        except OSError:
+            pass
+
 # --- the uninstaller has to take it with them ---------------------------------
 
 

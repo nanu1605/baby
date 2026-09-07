@@ -166,6 +166,60 @@
     Abort "Baby ${VERSION} did not install -- the files on disk were not replaced."
   ${EndIf}
 
+  ; --- "Start Baby when you sign in?" -------------------------------------------
+  ;
+  ; Asked HERE and not on the finish page because MUI gives that page exactly two
+  ; checkbox slots and Tauri's template already spends both (desktop shortcut, run
+  ; on finish). The four hooks it exposes all run inside sections, so none of them
+  ; can draw a third control there. A real checkbox would mean forking the 1100-line
+  ; template and owning it across every Tauri upgrade, which is a bigger liability
+  ; than a modal is an inconvenience.
+  ;
+  ; Reached only after the version check above, so a half-applied install aborts
+  ; before anyone is asked what it should do at logon.
+  ;
+  ; The value written here has to be byte-identical to the one core/autostart.py
+  ; writes, or the toggle in Setup & repair and this question describe different
+  ; things. tests/test_autostart.py compares the two.
+  Push $R4
+  Push $R5
+
+  ; Silent and passive installs answer nothing, so they get no startup entry. A
+  ; scripted deploy that adds one without being asked is worse than one that does
+  ; not: nobody is at the keyboard to consent, and nobody sees the result.
+  ${If} ${Silent}
+    Goto baby_autostart_done
+  ${EndIf}
+  ${If} $PassiveMode = 1
+    Goto baby_autostart_done
+  ${EndIf}
+
+  ; Already on? Then this is an upgrade of a machine that already chose. Leave it
+  ; exactly as it is and say nothing -- re-asking every patch release trains people
+  ; to click through, and an upgrade that silently turns the setting OFF because a
+  ; default said so is the one-way-trip bug pointing the other way.
+  ClearErrors
+  ReadRegStr $R4 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Baby"
+  ${IfNot} ${Errors}
+  ${AndIf} $R4 != ""
+    Goto baby_autostart_done
+  ${EndIf}
+
+  MessageBox MB_YESNO|MB_ICONQUESTION /SD IDNO "Start Baby when you sign in to Windows?$\r$\n$\r$\nBaby will be waiting in the notification area rather than opening a window. You can change this at any time in Setup & repair." IDNO baby_autostart_done
+
+  ; Quoted, because an install path like C:\Users\Anna Maria\... is one unquoted
+  ; space away from Windows trying to run C:\Users\Anna.
+  StrCpy $R5 '"$INSTDIR\${MAINBINARYNAME}.exe" --minimized'
+  ClearErrors
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Baby" "$R5"
+  ${If} ${Errors}
+    MessageBox MB_ICONEXCLAMATION "Baby could not be added to Windows startup. You can turn it on later in Setup & repair."
+  ${EndIf}
+
+  baby_autostart_done:
+  Pop $R5
+  Pop $R4
+
   Pop $R9
   Pop $R8
   Pop $R7
