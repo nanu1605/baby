@@ -10,15 +10,17 @@ import asyncio
 import logging
 import os
 import sys
+import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from core import paths
+from core import autostart, diagnostics, paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.safety import SafetyGate
@@ -293,8 +295,75 @@ def _restart_needed_to_apply(
     return not isinstance(provider, CloudRouter)
 
 
+#: Hosts a page can be served from and still be running on this machine. A page on
+#: the open web can never claim one, which is the entire point.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+#: Methods that change something. GET/HEAD are left alone: the pages are not secret,
+#: and a cross-origin GET cannot read the response anyway.
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _origin_is_local(origin: str | None) -> bool:
+    r"""Whether a request carrying this ``Origin`` came from a page on this machine.
+
+    Baby binds 127.0.0.1, which sounds like it settles the question and does not.
+    Browsers do NOT apply the same-origin policy to WebSockets and send no preflight
+    for one, so any page on the open web could open ``ws://127.0.0.1:8765/ws/chat``
+    and hold a conversation with Baby -- reading the replies, driving the tools. The
+    same went for the POSTs that take no JSON body (``/kill``, ``/conversation/new``,
+    ``/api/setup/provision``), which a plain cross-origin form submission reaches.
+    That was true before "start Baby with Windows" existed; what autostart changes is
+    that the listener is now up from logon rather than only while Baby is open.
+
+    A MISSING ``Origin`` is allowed. Only browsers send one, and Baby's own native
+    clients are not browsers -- the Rust tray speaks raw tungstenite to
+    ``/ws/activity`` and sends no ``Origin`` at all. Refusing that would take the
+    tray's colour away to close a hole the tray cannot be on the other side of.
+
+    A PRESENT ``Origin`` must be loopback, and the port is deliberately not checked:
+    the WebView2 window is served from ``:8765``, the dev SPA from Vite's ``:5173``
+    (whose proxy forwards the browser's own ``Origin``), and pinning either would
+    break one of them for no gain. Anyone who can serve a page FROM this machine can
+    already reach the port without a browser. ``"null"`` -- a ``file://`` page or a
+    sandboxed frame -- has no host and is refused.
+    """
+    if origin is None or not origin.strip():
+        return True
+    try:
+        host = urlsplit(origin.strip()).hostname
+    except ValueError:
+        return False
+    return (host or "").lower() in _LOOPBACK_HOSTS
+
+
+async def _ws_origin_ok(ws: WebSocket) -> bool:
+    """Refuse a cross-origin handshake, before accepting it.
+
+    The HTTP middleware cannot do this job: a WebSocket handshake never reaches it.
+    Closing before ``accept()`` makes Starlette answer the handshake with a 403, so
+    the page never gets a socket rather than getting one that is then hung up on.
+    """
+    if _origin_is_local(ws.headers.get("origin")):
+        return True
+    await ws.close(code=1008)  # 1008: policy violation
+    return False
+
+
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
+
+    @app.middleware("http")
+    async def _refuse_cross_origin_writes(request: Request, call_next):
+        """One gate for every write, so a new endpoint is covered the day it lands."""
+        if request.method in _WRITE_METHODS and not _origin_is_local(
+            request.headers.get("origin")
+        ):
+            return JSONResponse(
+                {"error": "Refused: this request came from another site."},
+                status_code=403,
+            )
+        return await call_next(request)
+
     # Set when the first-run wizard stamps a router mode this process cannot honour;
     # run_ui watches the event and exits with RESTART_EXIT_CODE so the shell can bring
     # the backend straight back on the stamped mode. See _restart_needed_to_apply.
@@ -326,6 +395,24 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.get("/classic")
     async def classic():
+        return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/brain")
+    async def brain():
+        """The mirror of /classic: always reachable, whatever ui.frontend says.
+
+        Switching to the classic UI used to be a one-way trip. The link is a plain
+        navigation to /classic, nothing persists a choice, and the classic shell
+        had no control to come back -- so the only way out was restarting Baby,
+        because the shell navigates to / on launch.
+
+        A back-link to / would not do: with ui.frontend=classic, / IS the classic
+        UI, so the button would appear to do nothing. Hence a route that names the
+        SPA directly. It degrades the same way / does -- an unbuilt dist serves
+        classic rather than a 404, since a dead end is what this is fixing.
+        """
+        if (APP_DIST / "index.html").is_file():
+            return FileResponse(APP_DIST / "index.html")
         return FileResponse(WEB_DIR / "index.html")
 
     @app.get("/api/graph")
@@ -467,6 +554,22 @@ def create_app(ctx: UIContext) -> FastAPI:
             # W3: dependencies fetched + functionally verified (skips the dep step on
             # a re-entry after a completed provision).
             "provisioned": bool(_setup.get("provisioned")),
+        }
+        # "Start Baby with Windows". Read from the registry every time rather than
+        # mirrored into setup.json -- the user can turn it off in Task Manager's
+        # Startup tab, and a cached flag would then have the toggle lying about
+        # the state of their machine. BABY_SHELL_EXE is set only by the native
+        # shell, and without it there is nothing to point a Run value at.
+        data["autostart"] = autostart.state(os.environ.get("BABY_SHELL_EXE"))
+        # Which build is ACTUALLY running. A 6.0.2 installer once reported success
+        # over an untouched 6.0.0 install and changed nothing; the app displayed no
+        # version anywhere, so a stale install looked exactly like a current one and
+        # the missing feature read as a missing feature. `app` is the payload that got
+        # imported; `shell` is what the native shell says it is, and is None whenever
+        # the shell attached to a backend it did not spawn -- unknown, never a mismatch.
+        data["version"] = {
+            "app": diagnostics.app_version(),
+            "shell": os.environ.get("BABY_SHELL_VERSION") or None,
         }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
@@ -672,6 +775,47 @@ def create_app(ctx: UIContext) -> FastAPI:
             "provisioned": bool(state.get("provisioned")),
         }
 
+    @app.post("/api/setup/autostart")
+    async def api_setup_autostart(body: dict):
+        r"""Turn "start Baby with Windows" on or off.
+
+        Writes HKCU\...\Run -- per-user, no admin, and removable from Windows'
+        own startup list as well as from here. Baby comes up minimised to the
+        tray: an assistant that seizes the screen on every boot is one the user
+        turns off.
+
+        Turning it ON is refused without BABY_SHELL_EXE rather than guessing an
+        install path. Only the native shell sets it, and a Run value pointing at
+        nothing would fail silently every boot with nothing to explain why.
+
+        Turning it OFF needs no such path -- deleting the value is the same call
+        whatever wrote it. Requiring the exe for both meant a backend the shell had
+        merely attached to could not switch autostart off at all.
+        """
+        if "enabled" not in body:
+            return JSONResponse({"error": "enabled is required"}, status_code=400)
+        exe = os.environ.get("BABY_SHELL_EXE")
+        want = bool(body["enabled"])
+        if not autostart.supported():
+            return JSONResponse(
+                {"error": "Baby can only start with Windows on Windows."},
+                status_code=400,
+            )
+        if want and not exe:
+            return JSONResponse(
+                {
+                    "error": "Baby can only add itself to Windows startup when it is "
+                    "running from the installed app."
+                },
+                status_code=400,
+            )
+        if want:
+            ok = await asyncio.to_thread(autostart.enable, exe)
+        else:
+            ok = await asyncio.to_thread(autostart.disable)
+        # Report what the registry SAYS, not what we asked it for.
+        return {"enabled": autostart.enabled(), "ok": ok}
+
     @app.post("/api/setup/provision")
     async def api_setup_provision():
         """Kick off first-run dependency provisioning for the chosen mode (W3). Runs
@@ -695,8 +839,16 @@ def create_app(ctx: UIContext) -> FastAPI:
             try:
                 await provision.provision(mode, on_event=on_event)
             except Exception as exc:  # noqa: BLE001 -- surface, never crash the server
+                # Classify it, exactly as every dep-level failure already does. This
+                # path used to write str(exc) straight onto the row, which is how
+                # "Cannot send a request, as the client has been closed." -- an
+                # internal httpx message from huggingface_hub's shared client --
+                # reached a user as the explanation for a failed install. The raw
+                # text is kept as `detail` for diagnostics; `message` is what any
+                # reader should show.
+                cls = provision.classify_error(str(exc))
                 on_event({"dep": "provision", "phase": "error", "status": "error",
-                          "detail": str(exc)[:200]})
+                          "detail": str(exc)[:200], **cls})
             finally:
                 app.state.provisioning = False
                 app.state.provision_task = None
@@ -795,6 +947,27 @@ def create_app(ctx: UIContext) -> FastAPI:
             "keys": keymod.key_status(mode),
             "can_finish": keymod.can_finish(mode),
         }
+
+    @app.post("/api/setup/keys/signup")
+    async def api_setup_keys_signup(body: dict):
+        """Open a provider's signup page in the user's real browser.
+
+        The shell is a WebView2 window with no new-window handler, so the wizard's
+        `<a target="_blank">` was silently dropped and the links did nothing -- the
+        one step where a user without a key has to leave the app.
+
+        The client sends an ENV NAME, never a URL, and it is resolved against the
+        frozen KEYS tuple. That is the whole security argument: anything that can
+        reach 127.0.0.1:8765 can call this, so it must not be able to choose the
+        destination. A `url` in the body is ignored, not honoured.
+        """
+        from core import keys as keymod
+
+        s = keymod.spec(str(body.get("env") or ""))
+        if s is None:
+            return JSONResponse({"error": "unknown key"}, status_code=400)
+        opened = await asyncio.to_thread(webbrowser.open, s.signup_url)
+        return {"env": s.env, "opened": bool(opened), "url": s.signup_url}
 
     @app.post("/api/setup/keys/validate")
     async def api_setup_keys_validate(request: Request):
@@ -1092,6 +1265,8 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.websocket("/ws/chat")
     async def ws_chat(ws: WebSocket):
+        if not await _ws_origin_ok(ws):
+            return
         await ws.accept()
         pump = asyncio.create_task(_pump(ws, _CHAT_KINDS, ui_only=True))
         try:
@@ -1110,7 +1285,17 @@ def create_app(ctx: UIContext) -> FastAPI:
                 game = parse_game_command(text)
                 if game is not None and hasattr(ctx.agent.provider, "set_game_mode"):
                     line = await ctx.agent.provider.set_game_mode(game)
-                    await ws.send_json({"type": "turn_start"})
+                    # Same shape as the bus frame (core/bus.py documents
+                    # turn_start {conversation_id}). This path skips the bus, and
+                    # skipping the contract with it left the client two shapes to
+                    # handle for one event -- so the sidebar went stale after a
+                    # game-mode toggle and after nothing else.
+                    await ws.send_json(
+                        {
+                            "type": "turn_start",
+                            "conversation_id": ctx.agent.conversation_id,
+                        }
+                    )
                     await ws.send_json({"type": "token", "text": line})
                     await ws.send_json(
                         {"type": "turn_end", "reply": line, "status": "ok", "brain": {}}
@@ -1133,6 +1318,8 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.websocket("/ws/activity")
     async def ws_activity(ws: WebSocket):
+        if not await _ws_origin_ok(ws):
+            return
         await ws.accept()
         pump = asyncio.create_task(_pump(ws, _ACTIVITY_KINDS, ui_only=False))
         try:
@@ -1247,6 +1434,8 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.websocket("/ws/state")
     async def ws_state(ws: WebSocket):
+        if not await _ws_origin_ok(ws):
+            return
         await ws.accept()
         pump = asyncio.create_task(_state_pump(ws))
         try:

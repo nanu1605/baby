@@ -4,6 +4,7 @@ import {
   getSetupHealth,
   getSetupKeys,
   getSetupStatus,
+  postAutostart,
   postSetupMode,
   postSetupProvision,
 } from "../api/client";
@@ -40,6 +41,8 @@ export default function RepairPanel() {
   const open = useBrain((s) => s.repairOpen);
   const close = useBrain((s) => s.closeRepair);
   const setup = useBrain((s) => s.stats?.setup);
+  const autostart = useBrain((s) => s.stats?.autostart);
+  const version = useBrain((s) => s.stats?.version);
 
   const [health, setHealth] = useState<SetupHealth | null>(null);
   const [checking, setChecking] = useState(false);
@@ -48,6 +51,12 @@ export default function RepairPanel() {
   const [repairing, setRepairing] = useState(false);
   const [diag, setDiag] = useState<DiagnosticsReport | null>(null);
   const [note, setNote] = useState("");
+  // Every hook lives ABOVE the `if (!open) return null` below. This one was added
+  // under it, next to the handler that uses it, and that alone crashed the whole
+  // app the moment anyone opened Settings: the closed panel ran 19 hooks, the open
+  // one 20, and React throws "Rendered more hooks than during the previous render"
+  // -- an invariant, not a dev-only warning, so the shipped build did it too.
+  const [autoBusy, setAutoBusy] = useState(false);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -121,6 +130,28 @@ export default function RepairPanel() {
     setRepairing(true);
   };
 
+  // The registry is the source of truth, so the button reports what came back
+  // rather than assuming the write landed -- the user may have Baby's startup
+  // entry blocked from Task Manager, and a toggle that flips anyway would lie.
+  const toggleAutostart = async () => {
+    if (!autostart?.supported) return;
+    if (!autostart.enabled && !autostart.can_enable) return;
+    setNote("");
+    setAutoBusy(true);
+    const now = await postAutostart(!autostart.enabled);
+    if (!alive.current) return;
+    setAutoBusy(false);
+    if (now === autostart.enabled) {
+      setNote("Couldn't change the Windows startup setting.");
+      return;
+    }
+    setNote(
+      now
+        ? "Baby will start with Windows, minimised to the tray. Click the tray icon to open it."
+        : "Baby will no longer start with Windows.",
+    );
+  };
+
   const switchMode = async (mode: InstallMode) => {
     setNote("");
     const r = await postSetupMode(mode);
@@ -152,6 +183,64 @@ export default function RepairPanel() {
             ✕
           </button>
         </div>
+
+        {/* Which build is running, before anything else in the dialog.
+            A 6.0.2 installer reported success over an untouched 6.0.0 install and
+            replaced nothing. The app showed its version nowhere, so the stale install
+            was indistinguishable from a current one and the features it was missing
+            read as features that were never built. One line ends that class of report.
+
+            `shell` is null when the shell attached to a backend it did not spawn --
+            unknown, and deliberately NOT rendered as a mismatch. */}
+        {version && (
+          <p className="repair-version">
+            Baby <strong>{version.app}</strong>
+            {version.shell && version.shell !== version.app && (
+              <span className="repair-bad">
+                {" "}— but the app window is {version.shell}. An update only half
+                applied. Quit Baby from the tray and run the installer again.
+              </span>
+            )}
+          </p>
+        )}
+
+        {/* First, and under its own name.
+            This shipped inside "How Baby runs", below two buttons about local vs
+            cloud, four sections down a scrolling dialog. It was reported as missing
+            from the build that contains it, which is the same thing as missing. A
+            preference the user chooses is not a repair action and does not belong
+            filed behind one. */}
+        {autostart?.supported && (
+          <section className="repair-section">
+            <h3>Start with Windows</h3>
+            <p className="repair-note">
+              {autostart.enabled
+                ? "Baby starts automatically when you sign in, minimised to the tray. Click the tray icon to open it."
+                : "Baby only starts when you open it. Turn this on and it will be ready every time you sign in, waiting in the tray rather than on screen."}
+            </p>
+            {/* Turning it OFF is always offered when it is on, even where Baby
+                cannot turn it on: a setting you can switch on and not off is the
+                bug this release is named after. */}
+            {!autostart.enabled && !autostart.can_enable && (
+              <p className="repair-note">
+                This copy of Baby is running from a checkout rather than the
+                installed app, so it has no shortcut to add to startup.
+              </p>
+            )}
+            <div className="repair-actions">
+              <button
+                type="button"
+                className="repair-btn"
+                disabled={autoBusy || (!autostart.enabled && !autostart.can_enable)}
+                onClick={toggleAutostart}
+              >
+                {autostart.enabled
+                  ? "Don't start with Windows"
+                  : "Start Baby with Windows"}
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="repair-section">
           <h3>Is everything working?</h3>

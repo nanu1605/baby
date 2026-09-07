@@ -135,6 +135,11 @@ export function rowBar(
 export function rowNote(status: string, ev: SetupProgressEvent | undefined): string {
   if (status === "pending") return "";
   if (status === "working" && ev?.detail) return ev.detail;
+  // A failed row used to render the bare word "error" and nothing else, so the
+  // repair panel's list told you WHICH step broke and never why -- the reason was
+  // sitting unread in the same event. Prefer the classified message; fall back to
+  // the raw detail only when there is no classification.
+  if (_ERROR.has(status)) return ev?.message ?? ev?.detail ?? status;
   return status;
 }
 

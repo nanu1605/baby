@@ -1,5 +1,108 @@
 # Changelog
 
+## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
+
+Fixes reported from running Baby on an actual machine rather than a VM -- five
+found on 6.0.1, and more found by running the 6.0.2 candidate itself. Almost every
+one is about *using* Baby rather than installing it, which is why the clean-VM
+matrix never saw them.
+
+- **The "Get a key" links now open.** In the first-run wizard and the repair
+  panel, the links to OpenRouter, Google Gemini and NVIDIA did nothing at all --
+  on the single step where a user without a key has to leave the app. They were
+  plain `<a target="_blank">`, and Baby's window is a WebView2 with no new-window
+  handler, so the click was silently dropped. Clicking one now asks the backend to
+  open the page in the real browser. The link sends the key's *name*, never a URL,
+  so nothing reaching Baby's local port can choose where the browser goes.
+
+- **The top bar no longer clips itself, and overlays no longer sit under it.**
+  Three separate causes. The bar had `overflow-x: auto`, which quietly makes an
+  element a scroll container on *both* axes, so it clipped its own contents
+  vertically. Four fixed panels wrote the bar's height out by hand as 52px while
+  the bar actually measured 55, so they overlapped it. And the bar could not fit
+  the window Baby ships in -- it needed 1336px against a 1280px default, with the
+  only relief at 720px, so every realistic desktop size overflowed. Height is now
+  one value, and the bar sheds the gauge digits, then the gauges, then the
+  wordmark as the window narrows. Stop, the icon buttons and the UI switch stay to
+  the narrowest size.
+
+- **The classic UI is no longer a one-way trip.** Switching to it left no way
+  back: nothing remembers the choice, the classic shell had no control for it, and
+  Baby opens the new UI on launch -- so returning meant restarting the app. There
+  is now a "new UI" link in the classic header.
+
+- **Baby can start with Windows.** Previously it only ever started when you opened
+  it; after a reboot you launched it by hand. There is now a toggle in Setup &
+  repair. It comes up minimised to the tray rather than taking the screen, needs
+  no admin, can be switched off from Windows' own startup list, and is removed
+  when Baby is uninstalled. Starting this way stays honest about itself: the tray
+  reads "starting", then "ready" only once the backend really is, and turns red
+  with the reason if it never comes up -- rather than sitting green over nothing.
+  Nothing flashes on screen at logon, opening Baby from its shortcut always shows
+  the window even when the backend is down, and the switch to turn startup back
+  off is always there, however Baby happens to be running.
+
+- **Two setup failures that explained themselves badly.** A run that broke where
+  no download step was active reported raw library text -- "Cannot send a request,
+  as the client has been closed." -- as the reason your install failed; it now
+  reads as a sentence naming the fix. A failed step in the repair panel showed the
+  bare word "error" with the reason sitting unused beside it. And re-running setup
+  with no network on a machine that already had every file said the download
+  server was unreachable, about downloads that had already finished; it now loads
+  what is on disk.
+
+- **Opening Setup & repair no longer blanks the app.** A mistake in the startup
+  toggle above meant the settings dialog crashed the moment it opened, on every
+  route into it — which is also why "start with Windows" looked absent from a build
+  that had it. Both fixed, and it is now the first thing in that dialog, under its
+  own heading, rather than filed under "How Baby runs" below the local/cloud
+  buttons.
+
+- **The search box no longer overlaps the chat panel.** It was centred on the
+  window while the space it belongs to sits between the chat list and the chat
+  panel, so at Baby's default size it ran underneath the panel's tabs. It now
+  centres on the area it actually occupies, and follows it when either side is
+  collapsed.
+
+- **Other websites can no longer talk to Baby.** Baby listens on your own machine,
+  which sounds like it settles this and does not: browsers let any page open a
+  WebSocket to a local port without asking, so a site you visited could hold a
+  conversation with your Baby -- reading the replies and using the tools. A handful
+  of buttons were reachable the same way, including the one that shuts Baby down.
+  Requests that come from another site are now refused. Nothing you do in Baby
+  changes, and the tray keeps working. This gap was not new, but Baby now runs from
+  the moment you log in, so it is no longer only open while you are using it.
+
+- **The installer asks whether Baby should start with Windows.** Right after it
+  finishes copying files: yes and Baby waits in the notification area from the next
+  time you sign in, no and nothing changes. Either way you can change your mind in
+  Setup & repair. Upgrading does not ask again and does not disturb the answer you
+  already gave, and an unattended install is never given a startup entry it was not
+  asked for.
+
+- **Baby now shows which version it is running.** It displayed that nowhere, which
+  made a stale install and a current one look identical -- so a feature that had
+  shipped was indistinguishable from a feature that was never built, and that cost
+  a round of chasing the wrong bug. Setup & repair now opens with the version, and
+  says so plainly if the app window and the files underneath it ever disagree. The
+  installer also reads the version back out of the files it just wrote and stops
+  with an error rather than reporting success if they are not the ones it carried.
+
+- **Chats appear in the list as soon as you have them.** A new conversation, or a
+  new reply in the one you are already in, did not show up in the chat list until
+  something else made it reload -- and ticking "Show archived" happened to be the
+  only thing in the app that did, which made the checkbox look like it was hiding
+  your chats. The list now updates the moment a reply lands. Clicking a chat also
+  opens it properly now, ready to continue, instead of a read-only view with a
+  second button to press; while Baby is mid-answer it still opens read-only and
+  tells you why, because switching conversations underneath a running reply would
+  answer with the wrong context.
+
+**Known, unfixed:** links inside Baby's own replies still do nothing in the app
+window, for the same reason the signup links did. Fixing that means opening
+arbitrary URLs, which is a wider change than this release wants. Copy the address
+into a browser for now.
+
 ## v6.0.1 -- setup failure reporting (2026-09-04)
 
 - **Full mode now installs the local brain instead of asking for it.** Picking

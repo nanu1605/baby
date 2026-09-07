@@ -2311,3 +2311,463 @@ Running log of non-obvious choices made during the build. Newest last.
      assuming it did would have been the exact move the rule exists to prevent. It
      still lands the way every other change does -- a PR, squash-merged -- rather
      than as a direct push, so nothing about how master is written to changes.
+
+156. **The signup links were dead, and the app has no way to open any external
+     URL.** Reported from a real desktop: "Get a OpenRouter key" and its two
+     siblings did nothing. They are plain `<a target="_blank">` in `KeyField.tsx`,
+     shared by the wizard and the repair panel, and the shell is a WebView2 window
+     with **no** new-window handler, **no** `invoke_handler`, and no opener plugin
+     -- the SPA does not even depend on `@tauri-apps/api`. CSP is `null`, so that
+     was not it. The click was simply dropped, on the one step where a user without
+     a key has to leave the app.
+
+     Fixed narrowly, by decision: the click asks the BACKEND to open the page,
+     reusing the `webbrowser` call `ui/tray.py` already makes. The client sends the
+     key's env NAME and the backend resolves it against the frozen `KEYS` tuple.
+     That is the whole security argument -- anything that can reach
+     `127.0.0.1:8765` can call this endpoint, so the destination must not be the
+     caller's to choose. A `url` in the body is ignored rather than honoured, and a
+     test sends one to prove it. The `href` stays so the address is visible on
+     hover and still works in a browser, and a failed request falls through to the
+     default rather than swallowing the click.
+
+     **Still broken, deliberately:** links inside a model's reply. `markdown.ts`
+     stamps `target="_blank"` on every one of them, so they are dead for the same
+     reason. Fixing that means opening ARBITRARY urls, which needs either a Rust
+     new-window handler in the shell or an endpoint that accepts any http(s) URL --
+     a wider surface than a patch release should take on unreviewed. Logged here
+     rather than left to be rediscovered.
+
+157. **The top bar clipped itself, and four overlays sat underneath it.** Three
+     unrelated causes behind one screenshot, all measured in a live browser rather
+     than reasoned about.
+
+     `.topbar` had `overflow-x: auto` and no height of its own. Setting one axis to
+     a non-visible overflow computes the OTHER axis from `visible` to `auto`, so
+     the bar was a scroll container vertically too: anything taller than the box
+     was clipped instead of growing it, and the horizontal scrollbar then ate
+     height from the inside.
+
+     The inspector, the side panel, its backdrop and the omnibox each wrote the
+     bar's height out by hand as `52px` (the omnibox `64px`). The bar was
+     content-derived and measured **55px**, so they started underneath it. It is
+     now one token, `--topbar-h`, and the bar states it.
+
+     And the bar could not fit the window it ships in. Nothing in it wraps or
+     shrinks, so its intrinsic width measured **1336px** against a 1280x800
+     default, with the only relief at 720px -- leaving every realistic desktop
+     width overflowing. A compaction ladder drops the gauge digits, then the
+     gauges, then the wordmark and token count, then the render-tier chip. Measured
+     after: 1180px at 1280, 683px at 900. The controls survive to the narrowest
+     width, because a bar you cannot act from is worse than one missing a number
+     you can read elsewhere.
+
+     **Worth knowing for anyone measuring this again: `scrollWidth` lies here.**
+     `margin-left: auto` on the last child absorbs the free space, so the flex row
+     reports no overflow at all while overflowing. The intrinsic width only comes
+     out under `width: max-content`. That is why the bug survived this long.
+
+     One thing NOT explained: the scrambled text in the strip above Baby's own
+     header in the reporter's screenshots. It is outside everything `app.css`
+     controls and does not reproduce in a browser tab, so it needs the shell.
+     Logged rather than guessed at.
+
+158. **The classic UI was a one-way trip, and the dev server could not have shown
+     it.** The switch is a plain navigation to `/classic`; nothing persists the
+     choice; the classic shell has no control to come back; and the Rust shell
+     opens `/` on every launch. So the only way back was restarting Baby.
+
+     The fix is a `/brain` route -- the mirror of `/classic` -- plus a link in the
+     classic header. A back-link to `/` would NOT have worked: with
+     `ui.frontend=classic` the root IS the classic UI, so the button would appear
+     dead in exactly the configuration that most needs it. `/brain` degrades the
+     way `/` already does, serving classic when `dist` is unbuilt, because a dead
+     end is the thing being fixed.
+
+     Why nobody caught it in dev: `vite.config.ts` proxies `/api`, `/stats` and the
+     rest to the backend but not `/classic`, `/brain` or `/static`, so the header's
+     UI switch was a 404 on the dev server. The one thing you could not exercise
+     there was the round trip between the two UIs. Those three now proxy.
+
+159. **Baby can start with Windows, via a per-user Run key.** Nothing shipped did
+     this. `scripts/autostart.ps1` registers Task Scheduler entries but is
+     hardcoded to a dev checkout, and `scripts/` is not in the installer payload at
+     all -- `stage_payload.ps1` enumerates what ships and that directory is absent.
+     So an installed Baby started only when someone clicked it.
+
+     `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` over a Startup shortcut
+     or a scheduled task: no admin, so the installer's no-admin promise holds; one
+     `winreg` call in the same module and hive `provision.py` already writes
+     `OLLAMA_CONTEXT_LENGTH` to, so no new dependency; and removable from Windows'
+     own startup list as well as from Baby. The registry is the ONLY source of
+     truth -- a flag mirrored into `setup.json` would drift the moment someone
+     switched Baby off in Task Manager's Startup tab, and the toggle would then lie
+     about their machine.
+
+     **The shell gains `--minimized`, and this is the part worth being careful
+     about.** The obvious move is to reuse `--attach-only`, which the old autostart
+     task passed. That would ship a broken feature: `--attach-only` means "never
+     spawn a backend, wait for the always-on service to bind", and at logon there
+     is no such service -- Baby would wait out its timeout and then report that the
+     service did not come up. `--minimized` spawns exactly as a normal launch does
+     and skips only the AUTOMATIC reveal; the tray's "Open Baby" and the
+     single-instance callback still show, because those are the user asking. A
+     failure while minimised writes its message and reddens the tray rather than
+     throwing a window at someone who has just logged in; clicking the tray shows
+     the message.
+
+     The shell also exports `BABY_SHELL_EXE`. The backend writes the Run value but
+     cannot know that path, and deriving it from a guessed install directory is how
+     you ship a startup entry pointing at nothing -- a thing that fails silently
+     every boot with nothing to trace it back to. Without the variable the endpoint
+     refuses and says why.
+
+     The uninstaller deletes the value on any real uninstall, deliberately OUTSIDE
+     the delete-app-data guard. It is not user data: someone who unticks that box
+     is asking to keep their conversations, not a startup entry for an app they
+     just removed.
+
+     **Caught by the existing gate, not by a new one.** Hoisting the two uninstall
+     guards changed which conditional follows the `GetFullPathName` pair, and
+     `test_the_reinstall_guard_holds_against_real_nsis` compiles exactly those
+     lines with `makensis` -- so it correctly reported that an upgrade would now
+     delete the user's keys and history. The conditions were reordered (the same
+     `A AND B` either way) and the reason is written into the hook, because the
+     next person to tidy it will not otherwise know the order is load-bearing.
+
+160. **The two failures logged in #153, fixed -- and #153's proposed lever was
+     wrong.**
+
+     *The raw library string.* The provision endpoint caught whatever ended the
+     walk and wrote `str(exc)` straight onto the row, so an exception raised where
+     no dep step was running -- the final re-verify is the clear case -- reached
+     the user verbatim. Observed: "Cannot send a request, as the client has been
+     closed.", which is httpx scolding `huggingface_hub` about its module-global
+     client and means nothing to someone installing an assistant. It now goes
+     through `classify_error` like every dep-level failure already did, with a new
+     `stale_client` kind that names the reopen -- a dead in-process transport is
+     not fixed by retrying in the same window, the same lesson as #151. The raw
+     text stays as `detail` for a diagnostics paste.
+
+     `rowNote` also rendered a failed row as the bare word "error", so the repair
+     panel said WHICH step broke and never why, with the reason unread in the same
+     event. An existing test pinned that behaviour; it was the bug, so it was
+     rewritten rather than worked around.
+
+     *The offline re-provision.* `huggingface_hub` resolves the ref over the
+     network BEFORE consulting the cache, so a machine holding every byte was told
+     the download server was unreachable about a download that had already
+     finished. A hub step whose failure is network-class now retries once against
+     the cache alone -- and only when the cache is genuinely complete: no
+     `.incomplete` files, a populated `snapshots/`, and the expected size. A
+     partial download stays resumable (forcing it offline would turn a retry into a
+     permanent failure with a worse message), an empty one keeps its honest network
+     error, and a corrupt one is never retried against its own bad bytes.
+
+     **The lever is `local_files_only`, not `HF_HUB_OFFLINE`.** #153 guessed the
+     env var. It is wrong for this version: `constants.py` reads it once into a
+     module-level constant when `huggingface_hub` is imported, so setting it during
+     provisioning does nothing whatsoever while looking exactly like a fix. Both
+     loaders take an explicit `local_files_only` argument; a test pins the argument
+     and the reason, so the next person does not "simplify" it back to an env var
+     that cannot work.
+
+161. **Autostart shipped four ways to fail quietly, all found by re-reading #159
+     rather than by running it.** Worth recording as a group, because they share one
+     mistake: every one of them was invisible in exactly the mode the feature exists
+     for. A window is the thing that tells a user what happened, and `--minimized`
+     removes it -- so every path that used to end at the window had to be checked
+     again, and none of them had been.
+
+     *The tray said "Baby - ready" while nothing was running.* It is built at
+     `Status::Ready` and only ever moves when `run_activity_tray` connects to
+     `/ws/activity` -- which a backend that never came up never allows. Before
+     autostart that was cosmetic: the splash was on screen carrying the real error.
+     At logon the tray IS the whole UI, so a failed start looked exactly like a
+     successful one. The tray now starts at `Starting` (amber, "Baby - starting..."),
+     and `show_failure` -- the failure half of `show_splash_message`, split out --
+     reddens it with "Baby - not running. Click to see why." A comment written during
+     #159 claimed "the tray is already red from the same condition". It was not. That
+     claim is now true, which is the only reason it is allowed to stay.
+
+     *`--minimized` was read from argv every time it was asked.* It describes the
+     LAUNCH, not the process, so a shell started at logon stayed silent for its
+     entire life. The sharp edge: after a failed logon start, double-clicking the
+     shortcut brought up NOTHING. The single-instance callback saw no backend, re-ran
+     attach-or-spawn, hit the same failure, and wrote the message into a window still
+     hidden by a flag set at boot. It is now `AppState::minimized`, seeded once and
+     cleared the moment anyone asks for the window -- `show_main` (tray icon, tray
+     menu) and the single-instance callback, on both branches. A test pins that argv
+     is read exactly once, at the seed.
+
+     *The window was created visible and hidden in `setup()`.* Too late: Tauri creates
+     the window before `setup` runs, so a logon start really did throw a 1280x800
+     splash on screen and take it away again, at the busiest moment of the machine's
+     day. `tauri.conf.json` now carries `"visible": false` and `setup()` SHOWS the
+     window unless minimised -- the same one branch, moved to the side of the gap that
+     works.
+
+     *The off switch disappeared whenever the shell attached to a backend it did not
+     spawn.* `autostart.state()` folded two questions into one flag: `supported` meant
+     both "Windows has this setting" and "we know an exe to register". `BABY_SHELL_EXE`
+     is set only by a shell that SPAWNED its backend, so anyone attached to an
+     always-on service or a `run.py` left running lost the entire section -- including
+     the control to turn autostart off, while it was on. That is the same one-way trip
+     as #158, shipped in the same release that fixed it. `state()` now reports
+     `can_enable` separately, the endpoint requires the exe only for `enabled: true`
+     (deleting a Run value needs no path, whatever wrote it), and the panel shows the
+     off switch whenever the setting is on.
+
+     **What this cost, and what it did not buy.** The findings came from an
+     adversarial pass over the release candidate whose verification stage never ran --
+     22 of its 24 agents died on a session limit, and its "0 confirmed" was an
+     artifact of counting zero votes, not a verdict. The four were confirmed by
+     reading `main.rs` and `core/autostart.py` directly, which is why they are fixed
+     here rather than filed. Ten mutations, ten caught. But every gate is a
+     source-shape gate: they prove the four things are still written down, not that
+     the shell behaves. Only a real logon proves that, and it is on the checklist.
+
+162. **Any web page could talk to Baby, and autostart is what made that worth
+     fixing now.** Binding `127.0.0.1` sounds like it settles the question and does
+     not. Browsers do not apply the same-origin policy to WebSockets and send no
+     preflight for one, so a page on the open web could open
+     `ws://127.0.0.1:8765/ws/chat` on a visitor's own machine and hold a
+     conversation with their Baby -- reading the replies, driving the tools. The
+     three POSTs that take no JSON body (`/kill`, `/conversation/new`,
+     `/api/setup/provision`) were reachable the same way, by a plain cross-origin
+     form submission: no JSON content type means no preflight to refuse. There was
+     no CORS middleware and no `Origin` check anywhere in `ui/server.py`.
+
+     None of that was new. What #159 changed is how long it is true for: the
+     listener is now up from logon rather than only while someone has Baby open.
+     Shipping an always-on version of an existing gap, in the release immediately
+     before the build gets code-signed, is the version of it that has to be
+     answered rather than filed -- so it was fixed here and not in 6.1.
+
+     **The rule is one line and deliberately narrow.** A MISSING `Origin` passes:
+     only browsers send one, and Baby's own tray is not a browser -- it speaks raw
+     tungstenite to `/ws/activity` and sends none. Refusing that would have taken
+     the tray's colour away to close a hole the tray cannot be on the other side
+     of, and anything able to set arbitrary headers on this port is not a web page,
+     so nothing is bought by refusing it. A PRESENT `Origin` must have a LOOPBACK
+     HOST, parsed with `urlsplit` rather than matched as a substring --
+     `http://127.0.0.1.evil.example` and `http://evil.example/#127.0.0.1` both
+     contain the string and neither is local; a test pins both, and a mutation that
+     swaps the parse for `in` fails on them.
+
+     **The port is not checked, on purpose.** The shell's window is served from
+     `:8765` and the dev SPA from Vite's `:5173`, whose proxy forwards the browser's
+     own `Origin` -- pinning either breaks the other for nothing. Someone who can
+     serve a page FROM this machine can already reach the port without a browser, so
+     the port number was never what was doing the work.
+
+     Writes go through one HTTP middleware, so an endpoint added tomorrow is covered
+     the day it lands rather than the day someone remembers. GET is left alone: a
+     cross-origin GET cannot read its own response, and blocking it would break the
+     pages themselves. Sockets need their own guard because **a WebSocket handshake
+     never reaches HTTP middleware** -- each route closes with 1008 before
+     `accept()`.
+
+     **Measured, not assumed.** The TestClient reports a `WebSocketDisconnect`
+     whether a socket was refused or accepted-and-hung-up, which is exactly the
+     distinction the security claim rests on. Against a real uvicorn with a raw
+     socket: a cross-origin handshake gets `HTTP/1.1 403 Forbidden`, while both no
+     `Origin` and a loopback `Origin` get `101 Switching Protocols`. Six mutations,
+     six caught.
+
+     **Still open, and not touched here.** Nothing authenticates anything. This
+     stops a remote *page*; it does not stop another program on the same machine,
+     which can send any headers it likes. That is a real limit of the model Baby has
+     had since #119 and wants a considered answer, not one bolted onto a patch.
+
+163. **Two reports against the 6.0.2 candidate, and the second one was a crash.**
+     Both came from running the installed build; neither was reachable by anything
+     in this repo. Diagnosed against the reporter's OWN running install over
+     `127.0.0.1:8765`, which is the only honest source here (#140) -- `/stats` gave
+     `{"supported": true, "enabled": false, "can_enable": true}` and the served
+     bundle was byte-for-byte the one just built, so "the option is not there" could
+     not be a stale install and had to be the page.
+
+     *The search box overlapped the chat panel.* `.omnibox` was
+     `position: fixed; left: 50%`, which centres on the WINDOW -- but the canvas sits
+     between a 240px history sidebar and a 380px chat panel, so the box sat half the
+     difference too far right and ran ~18px under the panel, over the Chat/Activity
+     tabs, at the 1280x800 size Baby ships in. Measured after the fix: 51px clear on
+     the right, 60px on the left, centre within 1px.
+
+     Widening the window would not have helped -- the offset is half the difference
+     between two insets and does not shrink -- and no constant could be subtracted
+     either, because both insets collapse independently (26px each). So the box is
+     now `position: absolute` inside a new `.graph-area`, the canvas column, and
+     centres on whatever that currently is. Verified live at three widths and in all
+     three collapse states: canvas 663 -> 1017 -> 1231px, centre error 1px in every
+     one, nothing to keep in sync.
+
+     *Opening Settings blanked the entire app.* The real reason the startup toggle
+     was reported missing from the build that contains it. `RepairPanel` had
+     `const [autoBusy, setAutoBusy] = useState(false)` written BELOW
+     `if (!open) return null` -- added next to the handler that used it, in #159's
+     own commit. Closed, the component ran 19 hooks; open, 20. React answers that
+     with `Rendered more hooks than during the previous render`, which is an
+     **invariant and not a dev-only warning**, so the production bundle threw it too.
+     Every route to the app's only settings surface ended in a white screen.
+
+     **Nothing here could have caught it, and that is the finding.** The repo has no
+     DOM or component tests by design (`ui/app/vitest.config.ts` says so), there is
+     no eslint, and `tsc` does not model the Rules of Hooks. A crash on the settings
+     dialog passed 1102 pytest, 206 vitest, a clean typecheck, cargo, ruff, a
+     ten-of-ten mutation run and a full payload audit -- and was found by opening the
+     page. **The gap is not test COUNT, it is that no gate ever rendered a
+     component.** Adding eslint is the real answer and is a build-chain change this
+     patch will not make; instead a pytest source-shape gate walks every `.tsx`, per
+     top-level function, and fails on a hook below a guard return. Written against
+     the PATTERN, not against `RepairPanel`: the last guard here that listed the
+     offenders it knew about (#149) watched the next component be added beside them
+     and inherit the bug. It has its own test proving it fails on the exact shape
+     that shipped, because a source-shape gate that cannot fail is decoration.
+
+     *And the toggle was buried even once it rendered.* It sat inside "How Baby
+     runs", below two buttons about local-vs-cloud, four sections down a scrolling
+     dialog. It is now the FIRST section, under the heading "Start with Windows",
+     visible without scrolling. A preference the user picks is not a repair action
+     and does not belong filed behind one. A report of "missing" against a feature
+     that is present is still a report about the feature.
+
+164. **I diagnosed a broken installer from a filesystem I cannot read.**
+     The third report against the 6.0.2 candidate was "still no option to start on
+     startup". I checked the reporter's machine and concluded their install was
+     6.0.0 -- that the 6.0.2 installer had reported success and replaced nothing.
+     **That conclusion was wrong, and every measurement behind it came from the same
+     poisoned well.**
+
+     What I read: `DisplayVersion` 6.0.0 in `HKCU\...\Uninstall\Baby`; a
+     `baby-shell.exe` dated September 3 with no `BABY_SHELL_EXE` string in it; a
+     1549-line `payload\ui\server.py` with no autostart route; `payload\pyproject.toml`
+     saying 6.0.0; the payload's `index.html` pointing at the old bundle. Five
+     independent-looking facts, all agreeing. **All five were stale copies.**
+
+     This session runs inside an MSIX container, so every process it spawns gets a
+     redirected `%LOCALAPPDATA%` with per-file copy-on-write: files the container has
+     touched read back as the container's old copy, files it never touched fall
+     through to the real ones, and **a directory listing cannot tell the two apart**.
+     That is written down in this project's own notes, from the last time it happened.
+     I read it, quoted it in an earlier entry, and then walked straight into it --
+     because five agreeing measurements feel like corroboration when they are one
+     measurement repeated.
+
+     What the live process said, once I asked it instead of the disk: the backend's
+     own environment carried `BABY_SHELL_VERSION=6.0.2`, a variable that exists only
+     in a shell built that same hour, set by its parent; `/stats` reported
+     `{"app": "6.0.2", "shell": "6.0.2"}`, with `app` read out of the `pyproject.toml`
+     beside the `core/` that was actually imported. And the decisive one, because it
+     rules out "the backend is running the repo": a marker appended to the repo's
+     `ui/app/dist/index.html` did **not** appear in what the server returned. The
+     installed payload was 6.0.2 the whole time.
+
+     **The earlier report was explained by the same evidence I had already collected
+     and misread.** At the time it was made, `/stats` answered `can_enable: true` --
+     and `can_enable` requires `BABY_SHELL_EXE`, which only a 6.0.2 shell sets. That
+     single field proved the install was current, in the same response I used to argue
+     it was stale.
+
+     **Rule, now paid for twice: when the filesystem and a running process disagree
+     about that process, the process wins.** Ask the live API, read the target's
+     environment block, or plant a marker and see whether it comes back. And a set of
+     measurements that all share one mechanism is one measurement, however many of
+     them there are.
+
+     What survives is the code, which is worth having on its own terms and is why this
+     entry is not simply deleted. Baby now shows the version it is running as the first
+     line of Setup & repair -- `app` from the payload that was imported, `shell` from
+     `BABY_SHELL_VERSION`, and a warning when they disagree; absent reads as unknown,
+     never as a mismatch. And `NSIS_HOOK_POSTINSTALL` reads the version back out of the
+     file it just wrote and aborts rather than reporting success. Neither was needed for
+     the bug I thought I had found. Both would have ended my misdiagnosis in one glance,
+     which is the actual argument for them.
+
+165. **The chat list only updated when you ticked "Show archived".**
+     Reported as a summary that appears only behind the archived filter. The filter was
+     innocent, and so was the API: `/api/conversations` and the same call with
+     `include_archived=true` returned identical rows against the reporter's own
+     backend, none of them archived.
+
+     `HistorySidebar` refreshed on mount, when the archived filter flipped, and when the
+     active conversation id changed. **Chatting changes none of those.** So a row's
+     title, message count and timestamp went stale, and a brand-new conversation --
+     which only crosses `list_conversations`' `HAVING message_count > 0` once its first
+     turn lands -- never appeared at all. Ticking the checkbox changed the refresh
+     callback's identity, which re-ran the effect. The checkbox was never revealing the
+     chat; it was the only thing in the UI still reloading the list.
+
+     Underneath it, the same fact twice over. `turn_start` carries `conversation_id`
+     (`core/bus.py`, published by `core/agent.py`, forwarded whole by the pump) and the
+     socket handler **threw it away** -- so the store could only learn the live id from
+     the very refresh it was supposed to trigger, which is a cycle with no entry point.
+     And the one `turn_start` the server writes by hand, the game-mode escape hatch that
+     skips the bus, skipped the contract with it and sent a bare frame. One event with
+     two shapes is how a client ends up handling neither.
+
+     The list now reloads on a completed turn, off a `turnsCompleted` counter in the
+     store. It is incremented *before* the guard that protects a viewed past chat, not
+     after: that guard exists for the frozen transcript, and a turn landing while you
+     read an old chat still changed the live conversation. Counting behind it would
+     have put the staleness straight back for anyone who clicks a chat mid-answer.
+
+     *And clicking a chat now opens it.* It used to load a read-only viewer with a
+     "Resume here" button, so getting back into a conversation took two clicks and the
+     first one looked like it had failed. It resumes directly now, and falls back to
+     the viewer only on the backend's 409 -- reassigning the agent's conversation
+     mid-turn would rehydrate the wrong context, so there the viewer is the honest
+     answer and a toast says why. The omnibox deliberately still peeks: a search hit is
+     something you look at, not something you switch the live session to.
+
+     **Not fixed, on purpose: the row label is not a written summary.** It is the
+     conversation's title, derived as explicit title, then the summary's first line,
+     then the first user message. Generating a real summary means a model call per
+     conversation, which is a router change this release's frozen ground forbids. It is
+     a follow-up, not an oversight.
+
+166. **The installer now asks whether Baby should start with Windows.**
+     Reported twice, and the second time unmistakably: *"the setup should contain an
+     option where it asks the user while installing whether he needs to start Baby on
+     startup or not."* The toggle added in #161 lives in Setup & repair, which is a
+     different thing from being asked while installing — and #164 is what happens when
+     a "the feature is missing" report gets answered with anything other than the
+     feature.
+
+     **It is a Yes/No dialog, not a checkbox, and that was forced.** MUI's finish page
+     has exactly two checkbox slots; Tauri's template spends both, on the desktop
+     shortcut and run-on-finish. The four hooks the template exposes
+     (`PRE`/`POSTINSTALL`, `PRE`/`POSTUNINSTALL`) all run inside sections, where no
+     control can be drawn on that page, and a define placed in the hooks include is
+     consumed by the first `MUI_PAGE_*` inserted — the welcome page — not the finish
+     page. A third checkbox therefore means setting `bundle.windows.nsis.template` and
+     owning a fork of a 1100-line upstream installer across every Tauri upgrade. **A
+     forked installer template quietly diverging from upstream is a worse failure than
+     a modal is an inconvenience**, so the question is asked from `POSTINSTALL`.
+
+     Three things about it are load-bearing rather than incidental:
+
+     *It runs after the version check*, so a half-applied install aborts before anyone
+     is asked what it should do at logon.
+
+     *A silent or passive install is never asked and never gets an entry.* Nobody is at
+     the keyboard to consent and nobody would see the result. This needs **two** guards,
+     not one: NSIS does not fail a `MessageBox` in a silent install, it **skips it and
+     continues** — so a prompt with no scripted default falls straight through into the
+     branch after it, which here is the write. Hence `${Silent}`/`$PassiveMode` returns
+     *and* `/SD IDNO` on the prompt itself.
+
+     *An upgrade of a machine that already chose is not asked again.* The existing Run
+     value is read first and left exactly as it is. Re-asking every patch trains people
+     to click through, and defaulting to No on an upgrade would silently undo a setting
+     the user had chosen — the one-way trip of #161 pointing the other way.
+
+     The value written is `"<exe>" --minimized` under
+     `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, name `Baby` — byte-identical
+     to what `core/autostart.py` writes, because the installer's question and the app's
+     toggle have to describe the same thing or whichever ran last wins silently. A test
+     compares the NSIS literal against `autostart.command()` rather than trusting the
+     two to be kept in step by hand, and the guards are compiled with real NSIS and run
+     against a scratch registry key: Yes writes the exact string, No writes nothing, and
+     an existing value survives untouched.

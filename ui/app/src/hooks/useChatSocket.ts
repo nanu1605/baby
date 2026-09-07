@@ -32,6 +32,13 @@ export function useChatSocket(): void {
       switch (msg.type) {
         case "turn_start":
           b.startTurn();
+          // The live conversation id rides on this frame (core/bus.py) and was being
+          // thrown away, so the store only ever learned it FROM the sidebar refresh
+          // that was supposed to be triggered by it -- circular, and a brand-new
+          // conversation stayed invisible until something else forced a reload.
+          if (typeof msg.conversation_id === "number") {
+            b.setActiveConversationId(msg.conversation_id);
+          }
           break;
         case "token":
           b.appendToken(String(msg.text ?? ""));

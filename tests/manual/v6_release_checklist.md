@@ -1,4 +1,4 @@
-# v6.0.1 release checklist
+# v6.0.2 release checklist
 
 Everything here is **owner-run**. The dev box cannot validate a stranger's first
 launch, and nothing in this file is something Claude does: the merge, the tag, and
@@ -48,11 +48,11 @@ cannot prove.
       uv.exe` and a size in the tens of MB rather than ~3 MB:
       `ui/shell/src-tauri/payload/uv.exe`
 - [ ] Installer lands at
-      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.1_x64-setup.exe`
-      — check the **filename says 6.0.1**, not 6.0.0.
+      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.2_x64-setup.exe`
+      — check the **filename says 6.0.2**, not 6.0.1.
 - [ ] Generate the checksum file published alongside it:
       ```powershell
-      Get-FileHash .\Baby_6.0.1_x64-setup.exe -Algorithm SHA256 | Format-List
+      Get-FileHash .\Baby_6.0.2_x64-setup.exe -Algorithm SHA256 | Format-List
       ```
 
 ## 2. Clean-VM matrix
@@ -321,6 +321,154 @@ The W5 fix. Verify both branches.
       user still has. See DECISIONS #154. Both are removed by uninstalling Ollama
       from Add/Remove Programs and clearing the variable by hand.
 
+### What 6.0.2 changed, and what only a person can confirm
+
+These were reported from a real desktop, which is the point: a VM matrix cannot see
+most of them, because they are about *using* Baby rather than installing it. The one
+exception is the upgrade check below, and it is the most important row on this page.
+The automated side is green; these are the parts a machine in this repo cannot prove.
+
+- [ ] **The "Get a key" links open a browser.** In the wizard and again in Setup &
+      repair, click each of the three. A real browser window must open on the
+      provider's page. Verified in a dev browser that the click no longer navigates
+      the app and that the request fires; what is NOT verified is the browser
+      actually opening from a windowless backend process — `webbrowser.open` shells
+      out through Windows, and the installed backend runs with no console.
+- [ ] **Links in Baby's own replies still do nothing.** Ask Baby something that
+      makes it cite a URL and click it: expect nothing to happen. This is the
+      known, deliberate gap (DECISIONS #156) — confirm it is still only *that*,
+      and that clicking does not navigate the app away from the UI.
+- [ ] **Open Setup & repair.** The 🛠 in the top bar. The dialog must appear and the
+      app must stay on screen — a candidate shipped where this blanked the whole
+      window, on every route in, and nothing automated saw it. **"Start with
+      Windows" must be the first section**, visible without scrolling. Close and
+      reopen it twice: still fine.
+- [ ] **The search box must not touch the chat panel.** Press the omnibox open at the
+      default window size and look at its right edge against the Chat/Activity tabs.
+      Then collapse the chat panel, then the chat list, then both: it must re-centre
+      on the space that is left each time, never overlap either edge, and never leave
+      the window with a horizontal scrollbar.
+- [ ] **Resize the window from wide to narrow.** Drag it from full width down to
+      roughly 900px. The top bar must lose its gauges and wordmark rather than
+      clipping or growing a scrollbar, and **Stop**, the icon buttons and the UI
+      switch must survive to the narrowest size. Open the omnibox and the side
+      panel at a few widths: neither may tuck under the bar.
+- [ ] **The strip above the header.** The reporter's screenshots show scrambled
+      text in the title-bar row, in both UIs. It does not reproduce in a browser
+      tab, so it is a shell-level thing and is unfixed. Confirm whether it is still
+      there on this build, and whether it survives a window resize or a tray
+      "Reload UI" — that is the difference between a paint artifact and a bug.
+- [ ] **The UI round trip.** Click `classic UI`, then `new UI` in the classic
+      header, then back again. No restart at any point. Verified against a live
+      backend by navigation; clicking a link could not be exercised in the embedded
+      test browser, where even the untouched `classic UI` link does not navigate.
+- [ ] **Start with Windows — the whole cycle.** In Setup & repair, turn it on.
+      Confirm the value exists, then reboot:
+      ```powershell
+      Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name Baby
+      ```
+      Expect `"…\Baby.exe" --minimized`. After the reboot Baby must be **in the
+      tray with no window**, and **nothing may flash on screen** during the logon —
+      watch for it, that is the one thing this pass exists to catch. The tray starts
+      amber ("Baby - starting…") and goes green only once the backend is really up.
+      Click the tray icon: the window opens on a working UI, not a splash.
+- [ ] **A logon start that fails must say so.** With autostart on, rename
+      `%LOCALAPPDATA%\baby\.venv` and reboot. The tray must go **red**, reading
+      "Baby - not running. Click to see why." — not green, and not amber forever.
+      Click it: the window opens carrying the reason. Then, with the backend still
+      down, **launch Baby from its shortcut**: a window must appear. (Before this
+      release, both of those showed nothing at all.) Rename the venv back.
+- [ ] **The off switch survives an attached backend.** Start `run.py --all` by hand,
+      then open Baby's window: the "Start with Windows" section must still be there,
+      showing the current state, with the off switch usable. Only *turning it on* may
+      be unavailable in that configuration, and the panel must say why.
+- [ ] **Turn it off and reboot again.** Baby must not start. Then turn it on once
+      more and **uninstall** with autostart still enabled: the Run value must be
+      gone afterwards, whether or not you ticked "delete application data".
+- [ ] **A failed step says why.** In Setup & repair, break something (rename
+      `models\kokoro-v1.0.onnx`) and run Repair. The row must read a sentence, not
+      the bare word `error`.
+- [ ] **Nothing in Baby broke when other sites stopped being able to reach it.**
+      This is the one change nobody asked for, so it gets checked as a regression
+      rather than a feature: send a message, run a tool, switch install mode, save
+      a key, start a repair, and **watch the tray change colour** while a tool runs.
+      The tray is the sharp case — it connects over a WebSocket from the Rust shell,
+      not the browser, and a colour stuck on one value means its handshake is being
+      refused. Then confirm the block actually works: open any page in an ordinary
+      browser (a blank tab on some website, not a `file://` page) and run
+      ```js
+      new WebSocket("ws://127.0.0.1:8765/ws/chat").onerror = () => console.log("refused")
+      ```
+      It must log `refused`. From Baby's own window that same line connects.
+
+### Startup, asked and applied (6.0.2)
+
+The installer now asks. Everything below needs a real machine: the prompt, the
+registry write, and a logon.
+
+- [ ] **A fresh install asks.** On a machine with no Baby, run the installer. After
+      the files copy, it must ask whether to start Baby when you sign in. Answer
+      **Yes**, then check
+      `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` holds a `Baby` value equal
+      to `"<install dir>\baby-shell.exe" --minimized` -- quotes included.
+- [ ] **Answering No writes nothing.** Same again on a clean machine, answer **No**,
+      and confirm the `Baby` value is absent.
+- [ ] **It matches the in-app toggle.** After answering Yes, open Setup & repair: the
+      "Start with Windows" section must already read as on. Turn it off there and
+      confirm the Run value disappears. These two must never disagree.
+- [ ] **An upgrade does not re-ask and does not undo it.** With autostart on, install
+      over the top. It must NOT ask again, and the Run value must survive unchanged --
+      including still pointing at the right exe.
+- [ ] **A silent install gets nothing.** `Baby_6.0.2_x64-setup.exe /S`. No prompt, and
+      no `Baby` Run value afterwards.
+- [ ] **The logon cycle.** Reboot with it on: Baby comes up in the tray, no window
+      flashes, the tray icon opens it, and the backend answers. Break the venv and
+      reboot: the tray goes red rather than failing silently. Turn it off, reboot,
+      confirm it does not start. Uninstall with it on and confirm the Run value is
+      gone.
+
+### The version is visible (6.0.2)
+
+- [ ] **Setup & repair opens with the version.** It must read the version you just
+      installed. If it reads an older one, the install did not fully apply -- capture
+      `HKCU\...\Uninstall\Baby` `DisplayVersion`, `payload\pyproject.toml`, and
+      `baby-shell.exe`'s date before doing anything else.
+- [ ] **No false alarm in a source checkout.** Run from the repo: the shell version is
+      absent there and must read as unknown, with no half-applied warning.
+- [ ] **The installer refuses to lie.** If an install ever ends with the old version
+      still on disk, it must have shown the "did not install" dialog and landed on its
+      failure page rather than saying Completed.
+
+> **A warning about diagnosing this from a Claude Code session on this machine.**
+> The desktop app is an MSIX package, so a session's view of `%LOCALAPPDATA%\baby` is
+> a redirected copy-on-write overlay: some files read back as stale copies and some
+> fall through to the real ones, and a directory listing cannot tell which. During
+> 6.0.2 that produced five agreeing measurements and one confident, wrong conclusion
+> that the installer had silently failed. **Only the live process is authoritative** --
+> `/stats`, the backend's own environment block, or a marker planted in a file to see
+> whether the server returns it. See DECISIONS #164.
+
+### The chat list keeps up (6.0.2)
+
+Reported: chats appeared only when "Show archived" was ticked. Verified against the
+built bundle on a stub backend; these rows are the same checks against a real one.
+
+- [ ] **A reply updates the list without touching the filter.** With "Show archived"
+      unticked, send a message. The row's timestamp and message count must update on
+      their own.
+- [ ] **A new chat appears on its own.** Click "+ New chat", send one message. The new
+      row must appear, titled from that message, highlighted as active -- with the
+      checkbox still unticked.
+- [ ] **Clicking a chat opens it.** Click a past chat: the transcript loads and the
+      composer is there, ready to type. Not a read-only banner.
+- [ ] **Clicking mid-answer opens it read-only.** Ask Baby something slow, and while
+      it is answering click a different chat. It must open read-only with a toast
+      explaining why -- not do nothing, and not switch the conversation underneath the
+      running reply.
+- [ ] **Game mode still names its conversation.** Type `game mode on`. The list must
+      not lose track of which chat is active -- that path writes its own `turn_start`
+      frame and is the only turn in the app that never reaches the bus.
+
 ## 6. Regression on the real box
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.
@@ -335,42 +483,71 @@ Baby is still the same assistant — confirm v6 packaging did not disturb it.
 
 ## 7. Publish
 
-This one is a **patch on a release that is already public**. v6.0.0 is
-downloadable now, so anyone who installs before this ships gets the two bugs
-below; the fix is worth its own tag rather than waiting to be batched.
+Another **patch on a release that is already public**. v6.0.1 is downloadable now,
+so anyone installing before this ships meets all five bugs below; that is the
+argument for its own tag rather than waiting to be batched.
 
-- [x] **Re-run matrix row 9 against the 6.0.1 build.** Done on a clean VM against
-      the built installer: cut at 68 MB of 1.6 GB, the row said "no new data for
-      10m" at +10.1m and **gave up at +19.8m** with `kind=stalled`,
-      `retryable=true`; the `provision` row read a real sentence and a log scan for
-      `multiple values for argument` / `TypeError` / `Traceback` returned **0
-      hits**. Retry alone did not recover (it gave up again at +20.3m with the
-      network healthy) -- reopening Baby did, resuming from the cached 68 MB and
-      finishing. The retry wording has since been fixed to name the reopen; see
-      DECISIONS #151.
-- [x] **First run of the release candidate itself.** A rebuild is a different file
-      even when the source is identical, so each candidate got its own run rather
-      than inheriting one. The Ollama fix was proven on `445F130D`; `260168DB`
-      rebuilt it from a clean tree and was run again; `1F08096B` is the binary that
-      ships, built at `f13778d` after the stall-wording fix, and the owner
-      installed and ran that exact file on a fresh VM to the same result. Payload
-      verified byte-identical to HEAD before each run: 71 Python files, 0
-      differing, 0 missing, SPA dist rebuilt and matching.
+> **What v6.0.1 already proved, for reference.** Row 9 was re-run against that
+> build and passed: cut at 68 MB of 1.6 GB, the row said "no new data for 10m" at
+> +10.1m and gave up at +19.8m with `kind=stalled`, `retryable=true`, and a log
+> scan for `TypeError` / `Traceback` returned 0 hits. Its Ollama fix was proven on
+> three separate clean-VM runs, one per candidate binary, and the shipped
+> `1F08096B` was installed and run by the owner. None of that transfers to 6.0.2:
+> Phase 5 changed the provisioning failure path again.
 
+- [ ] **Re-run matrix row 9 against the 6.0.2 build.** The hub steps now retry
+      once against the cache when the network fails, and the `provision` row is
+      classified rather than raw — both live exactly where row 9 pulls the plug.
+      Cutting the network mid-download must still give up with a retryable error,
+      and the row must still name the reopen.
+- [ ] **A first run of the candidate binary itself.** A rebuild is a different file
+      even when the source is identical, so each candidate gets its own run rather
+      than inheriting the last one's. Record the size and SHA256 here.
+
+      Candidate, built from a clean tree at `51169e7`:
       ```
-      Baby_6.0.1_x64-setup.exe   19,046,592 bytes
-      1F08096BB97ED8D69FA80A3C483F0F09093C2E025C625737DCA7C5AEDAA5EE9B
+      Baby_6.0.2_x64-setup.exe   19,068,522 bytes
+      68447A3E162413A0EFDB6ED64124787E84935E582FB540B765B8CDC1E2D84B4E
       ```
-- [x] Merge the PR. Squashed to `528f63f`, matching how every previous release
-      landed on master.
-- [x] Tag `v6.0.1`. Annotated, on `528f63f`.
-- [x] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`. Both
-      attached, marked latest. Verified the way a user would: downloaded both
-      assets back from the Release page and confirmed the `.exe` hashes to the
-      line in `SHA256SUMS.txt` and to the built binary.
-- [x] Leave the v6.0.0 release up. Its `.exe` and checksum stay valid for anyone
-      who already has them, and deleting a published asset breaks the hash a user
-      may have written down. Confirmed still published.
+      First candidate whose installer **asks** about starting with Windows, which is
+      what was reported twice; the earlier ones only had the toggle in Setup & repair.
+
+      Supersedes `045D204B…` (clean at `ba55c75`), `7FE4B724…` (at `88c588d`) and
+      `3461DB69…` (at `a43a226`, the RepairPanel crash). **Every candidate before this
+      one installs correctly** — the claim that `7FE4B724…` was run over a 6.0.0
+      install and replaced nothing was my own misreading of an MSIX-redirected
+      filesystem, corrected in DECISIONS #164. Do not go looking for that bug.
+
+      Verified as an artifact rather than as source, as every candidate since
+      `3461DB69…` has been: a production React bundle is a different artifact whose
+      invariants only fire when you run it. For the SPA that meant driving the built
+      `dist` against a scripted stub backend — the version line quiet when the two
+      versions agree, carrying the warning when they disagree, quiet when the shell
+      version is absent; a new chat appearing in the list on its own with "Show
+      archived" untouched; clicking a chat firing `resume` first and leaving a live
+      composer; a refused resume falling back to the viewer with one toast. For the
+      installer hook it meant compiling it with real NSIS and running the guards
+      against a scratch registry key.
+
+      **The prompt's syntax broke the build once** — NSIS takes `/SD` after the
+      message text, and the lifted-block tests replace that line to model an answer,
+      so nothing compiled the prompt itself. `test_the_whole_hook_compiles` now
+      compiles the shipped hooks file, both macros, and is the cheapest gate here.
+
+      Verified before it left this machine: 72 payload `.py` files, 0 content
+      differences against HEAD (43 differ in line endings only, which is
+      `core.autocrlf` and not a change); the SPA `dist` identical to the one just
+      built; all seven fixes present in the payload; 0 secret-shaped files; no
+      `tests/`; `uv.exe` bundled. That last one is not decoration — the first
+      attempt at this build ran the plain `npm run build`, which stages **no**
+      `uv.exe`, and a fresh install of it would have stopped at "First-run setup
+      files are missing." Step 33 above exists for exactly that and was skipped.
+- [ ] Merge the PR.
+- [ ] Tag `v6.0.2`.
+- [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.
+- [ ] Leave v6.0.0 and v6.0.1 up. Their `.exe`s and checksums stay valid for
+      anyone who already has them, and deleting a published asset breaks a hash
+      someone may have written down.
 - [ ] Release body links the SmartScreen walkthrough
       (`docs/INSTALL.md`) — a first-time user meeting an unexplained blue warning
       is the most likely reason a download gets abandoned.

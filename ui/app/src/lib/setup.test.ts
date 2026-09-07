@@ -463,10 +463,47 @@ describe("rowNote", () => {
     expect(rowNote("pending", undefined)).toBe("");
   });
 
-  it("never dresses up a finished or failed row", () => {
+  it("never dresses up a finished row", () => {
     const ev = { dep: "wakeword", phase: "download", status: "done", detail: "wake-word models ready" };
     expect(rowNote("done", ev)).toBe("done");
-    expect(rowNote("error", { ...ev, status: "error" })).toBe("error");
+  });
+
+  // A failed row used to render the bare word "error", so the repair panel's list
+  // said WHICH step broke and never why -- with the reason sitting unread in the
+  // same event. This assertion used to pin that behaviour; it was the bug.
+  it("says why a row failed instead of the word 'error'", () => {
+    expect(
+      rowNote("error", {
+        dep: "embedder",
+        phase: "error",
+        status: "error",
+        kind: "no_network",
+        message: "Couldn't reach the download server.",
+        detail: "getaddrinfo failed",
+      }),
+    ).toBe("Couldn't reach the download server.");
+  });
+
+  it("prefers the classified message over the raw detail", () => {
+    // detail carries library text -- httpx scolding huggingface_hub, in the case
+    // this was found in. It is for a diagnostics paste, not for a person.
+    const note = rowNote("error", {
+      dep: "provision",
+      phase: "error",
+      status: "error",
+      kind: "stale_client",
+      message: "Close Baby and reopen it, then run setup again.",
+      detail: "Cannot send a request, as the client has been closed.",
+    });
+    expect(note).toBe("Close Baby and reopen it, then run setup again.");
+    expect(note).not.toContain("client has been closed");
+  });
+
+  it("falls back to detail, then to the status, when there is no message", () => {
+    const base = { dep: "kokoro", phase: "error", status: "error" };
+    expect(rowNote("error", { ...base, detail: "ran out of disk" })).toBe("ran out of disk");
+    expect(rowNote("error", base)).toBe("error");
+    expect(rowNote("fail", undefined)).toBe("fail");
   });
 });
 

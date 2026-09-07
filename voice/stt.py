@@ -35,6 +35,7 @@ class SpeechToText:
         cpu_threads: int = 8,
         beam_size: int = 1,
         hotwords: str = "",
+        local_files_only: bool = False,
     ) -> None:
         self.model_name = model
         self.device = device
@@ -44,6 +45,8 @@ class SpeechToText:
         # Names Whisper mishears with the owner's accent ("ollama" → "ullama");
         # passed as decoder bias every window, unlike initial_prompt.
         self.hotwords = hotwords
+        # See Embedder: only provisioning's offline retry sets this.
+        self.local_files_only = local_files_only
         self._model = None
 
     def load(self) -> None:
@@ -54,6 +57,7 @@ class SpeechToText:
             device=self.device,
             compute_type=self.compute_type,
             cpu_threads=self.cpu_threads,
+            local_files_only=self.local_files_only,
         )
 
     def transcribe(self, pcm16) -> tuple[str, str]:
