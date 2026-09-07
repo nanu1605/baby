@@ -224,12 +224,16 @@ Still uncovered by any of the above, and still yours to run:
 Until 6.0.1 this could not finish at all, and the dev box could not show it: Ollama
 is already running there, so the whole branch is skipped.
 
-- [ ] **Pick Full on a clean machine with no Ollama.** The "Ollama runtime" row must
+- [x] **Pick Full on a clean machine with no Ollama.** The "Ollama runtime" row must
       install it by itself -- counting up ("installing Ollama (2m)"), not sitting on
       one word -- and reach a tick. No UAC prompt for this step: the install is
       per-user. Then the 9B pulls and "Verifying everything works" passes.
-      Machine-verified once on a clean VM (6 minutes, non-elevated); confirm on real
-      hardware.
+      Measured twice on a clean VM: once by the harness against build `445F130D`
+      (6 minutes, non-elevated), and once by the owner against the release
+      candidate `260168DB`, working as expected.
+- [ ] **Confirm the same on real hardware.** Both runs above were VMs. A real box
+      differs in the ways that matter here: a GPU, a working audio device, and
+      whatever is already installed and competing for the port.
 - [ ] **Confirm the context length actually got set**, or the local brain silently
       serves a truncated context and everything just feels stupider:
       ```powershell
@@ -328,6 +332,12 @@ below; the fix is worth its own tag rather than waiting to be batched.
       hits**. Retry alone did not recover (it gave up again at +20.3m with the
       network healthy) -- reopening Baby did, resuming from the cached 68 MB and
       finishing. The retry wording is worth a second look; see DECISIONS #151.
+- [x] **First run of the release candidate itself.** The Ollama fix was proven on
+      build `445F130D`, which no longer exists; the candidate on the Release page
+      is `260168DB` (same source, clean tree at `0d2b58f`, payload byte-identical
+      to HEAD). The owner installed and ran that exact binary on a fresh VM and it
+      behaved as expected, so the shipped bytes are covered, not just their
+      predecessor.
 - [ ] Merge the PR.
 - [ ] Tag `v6.0.1`.
 - [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.

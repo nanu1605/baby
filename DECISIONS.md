@@ -2209,6 +2209,12 @@ Running log of non-obvious choices made during the build. Newest last.
      ready -- all required components work", `provisioned: true`. That is a
      complete Full-mode first run, which no shipped build has ever managed.
 
+     That run was build `445F130D`. The candidate that ships is `260168DB` --
+     same source, rebuilt from a clean tree, payload byte-identical to HEAD --
+     and the owner installed and ran that exact binary on a fresh VM to the same
+     result. The bytes on the Release page are covered, not only their
+     predecessor.
+
      **Not proven:** the "use cloud only instead" button rendering on a live
      failure. Its decision function is unit-tested seven ways and mutation-tested
      on both branches, and the repo's convention is to test the logic rather than
