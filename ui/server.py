@@ -1285,7 +1285,17 @@ def create_app(ctx: UIContext) -> FastAPI:
                 game = parse_game_command(text)
                 if game is not None and hasattr(ctx.agent.provider, "set_game_mode"):
                     line = await ctx.agent.provider.set_game_mode(game)
-                    await ws.send_json({"type": "turn_start"})
+                    # Same shape as the bus frame (core/bus.py documents
+                    # turn_start {conversation_id}). This path skips the bus, and
+                    # skipping the contract with it left the client two shapes to
+                    # handle for one event -- so the sidebar went stale after a
+                    # game-mode toggle and after nothing else.
+                    await ws.send_json(
+                        {
+                            "type": "turn_start",
+                            "conversation_id": ctx.agent.conversation_id,
+                        }
+                    )
                     await ws.send_json({"type": "token", "text": line})
                     await ws.send_json(
                         {"type": "turn_end", "reply": line, "status": "ok", "brain": {}}
