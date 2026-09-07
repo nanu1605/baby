@@ -338,6 +338,16 @@ prove.
       makes it cite a URL and click it: expect nothing to happen. This is the
       known, deliberate gap (DECISIONS #156) — confirm it is still only *that*,
       and that clicking does not navigate the app away from the UI.
+- [ ] **Open Setup & repair.** The 🛠 in the top bar. The dialog must appear and the
+      app must stay on screen — a candidate shipped where this blanked the whole
+      window, on every route in, and nothing automated saw it. **"Start with
+      Windows" must be the first section**, visible without scrolling. Close and
+      reopen it twice: still fine.
+- [ ] **The search box must not touch the chat panel.** Press the omnibox open at the
+      default window size and look at its right edge against the Chat/Activity tabs.
+      Then collapse the chat panel, then the chat list, then both: it must re-centre
+      on the space that is left each time, never overlap either edge, and never leave
+      the window with a horizontal scrollbar.
 - [ ] **Resize the window from wide to narrow.** Drag it from full width down to
       roughly 900px. The top bar must lose its gauges and wordmark rather than
       clipping or growing a scrollbar, and **Stop**, the icon buttons and the UI

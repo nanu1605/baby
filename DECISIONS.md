@@ -2579,3 +2579,56 @@ Running log of non-obvious choices made during the build. Newest last.
      stops a remote *page*; it does not stop another program on the same machine,
      which can send any headers it likes. That is a real limit of the model Baby has
      had since #119 and wants a considered answer, not one bolted onto a patch.
+
+163. **Two reports against the 6.0.2 candidate, and the second one was a crash.**
+     Both came from running the installed build; neither was reachable by anything
+     in this repo. Diagnosed against the reporter's OWN running install over
+     `127.0.0.1:8765`, which is the only honest source here (#140) -- `/stats` gave
+     `{"supported": true, "enabled": false, "can_enable": true}` and the served
+     bundle was byte-for-byte the one just built, so "the option is not there" could
+     not be a stale install and had to be the page.
+
+     *The search box overlapped the chat panel.* `.omnibox` was
+     `position: fixed; left: 50%`, which centres on the WINDOW -- but the canvas sits
+     between a 240px history sidebar and a 380px chat panel, so the box sat half the
+     difference too far right and ran ~18px under the panel, over the Chat/Activity
+     tabs, at the 1280x800 size Baby ships in. Measured after the fix: 51px clear on
+     the right, 60px on the left, centre within 1px.
+
+     Widening the window would not have helped -- the offset is half the difference
+     between two insets and does not shrink -- and no constant could be subtracted
+     either, because both insets collapse independently (26px each). So the box is
+     now `position: absolute` inside a new `.graph-area`, the canvas column, and
+     centres on whatever that currently is. Verified live at three widths and in all
+     three collapse states: canvas 663 -> 1017 -> 1231px, centre error 1px in every
+     one, nothing to keep in sync.
+
+     *Opening Settings blanked the entire app.* The real reason the startup toggle
+     was reported missing from the build that contains it. `RepairPanel` had
+     `const [autoBusy, setAutoBusy] = useState(false)` written BELOW
+     `if (!open) return null` -- added next to the handler that used it, in #159's
+     own commit. Closed, the component ran 19 hooks; open, 20. React answers that
+     with `Rendered more hooks than during the previous render`, which is an
+     **invariant and not a dev-only warning**, so the production bundle threw it too.
+     Every route to the app's only settings surface ended in a white screen.
+
+     **Nothing here could have caught it, and that is the finding.** The repo has no
+     DOM or component tests by design (`ui/app/vitest.config.ts` says so), there is
+     no eslint, and `tsc` does not model the Rules of Hooks. A crash on the settings
+     dialog passed 1102 pytest, 206 vitest, a clean typecheck, cargo, ruff, a
+     ten-of-ten mutation run and a full payload audit -- and was found by opening the
+     page. **The gap is not test COUNT, it is that no gate ever rendered a
+     component.** Adding eslint is the real answer and is a build-chain change this
+     patch will not make; instead a pytest source-shape gate walks every `.tsx`, per
+     top-level function, and fails on a hook below a guard return. Written against
+     the PATTERN, not against `RepairPanel`: the last guard here that listed the
+     offenders it knew about (#149) watched the next component be added beside them
+     and inherit the bug. It has its own test proving it fails on the exact shape
+     that shipped, because a source-shape gate that cannot fail is decoration.
+
+     *And the toggle was buried even once it rendered.* It sat inside "How Baby
+     runs", below two buttons about local-vs-cloud, four sections down a scrolling
+     dialog. It is now the FIRST section, under the heading "Start with Windows",
+     visible without scrolling. A preference the user picks is not a repair action
+     and does not belong filed behind one. A report of "missing" against a feature
+     that is present is still a report about the feature.

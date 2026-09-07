@@ -92,6 +92,40 @@ def test_the_bar_can_actually_narrow(app_css: str):
     )
 
 
+def test_the_omnibox_is_centred_on_the_canvas_not_the_window(app_css: str):
+    """Reported from a real desktop: the search box overlapped the chat panel.
+
+    `position: fixed` + `left: 50%` centres on the WINDOW, but the canvas sits
+    between a 240px history sidebar and a 380px chat panel -- so the box was offset
+    by half the difference and ran ~18px under the panel at the 1280x800 default.
+    Widening the window does not help; the offset does not shrink. Both insets also
+    collapse independently, so no constant could have been subtracted either. It is
+    absolutely positioned inside its own column instead.
+    """
+    rule = _rule(app_css, ".omnibox")
+    assert "position: absolute" in rule, (
+        "the omnibox is fixed to the viewport again, so it is centred on the window "
+        "while the canvas it belongs to is inset by the sidebar and the chat panel"
+    )
+    assert "position: fixed" not in rule
+    assert re.search(r"\.graph-area\s*\{[^}]*position:\s*relative", app_css), (
+        ".graph-area lost `position: relative`, so the omnibox's `absolute` escapes "
+        "to the nearest positioned ancestor and the overlap comes straight back"
+    )
+
+
+def test_the_omnibox_renders_inside_the_canvas_column():
+    """The CSS above only works if the markup puts it there. It used to be a sibling
+    of <main>, which is why centring it on the viewport looked reasonable."""
+    app_tsx = (_ROOT / "ui" / "app" / "src" / "App.tsx").read_text(encoding="utf-8")
+    m = re.search(r'<div className="graph-area">(.*?)</div>', app_tsx, re.S)
+    assert m, "the .graph-area wrapper is gone from App.tsx"
+    assert "<Omnibox />" in m.group(1), (
+        "the omnibox has been moved back out of the canvas column, so it centres on "
+        "the window again and overlaps the chat panel"
+    )
+
+
 def _rule(css: str, selector: str) -> str:
     """The declaration block for `selector` at the top level of the sheet."""
     m = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css)

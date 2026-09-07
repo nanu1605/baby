@@ -50,6 +50,12 @@ export default function RepairPanel() {
   const [repairing, setRepairing] = useState(false);
   const [diag, setDiag] = useState<DiagnosticsReport | null>(null);
   const [note, setNote] = useState("");
+  // Every hook lives ABOVE the `if (!open) return null` below. This one was added
+  // under it, next to the handler that uses it, and that alone crashed the whole
+  // app the moment anyone opened Settings: the closed panel ran 19 hooks, the open
+  // one 20, and React throws "Rendered more hooks than during the previous render"
+  // -- an invariant, not a dev-only warning, so the shipped build did it too.
+  const [autoBusy, setAutoBusy] = useState(false);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -123,8 +129,6 @@ export default function RepairPanel() {
     setRepairing(true);
   };
 
-  const [autoBusy, setAutoBusy] = useState(false);
-
   // The registry is the source of truth, so the button reports what came back
   // rather than assuming the write landed -- the user may have Baby's startup
   // entry blocked from Task Manager, and a toggle that flips anyway would lie.
@@ -178,6 +182,44 @@ export default function RepairPanel() {
             ✕
           </button>
         </div>
+
+        {/* First, and under its own name.
+            This shipped inside "How Baby runs", below two buttons about local vs
+            cloud, four sections down a scrolling dialog. It was reported as missing
+            from the build that contains it, which is the same thing as missing. A
+            preference the user chooses is not a repair action and does not belong
+            filed behind one. */}
+        {autostart?.supported && (
+          <section className="repair-section">
+            <h3>Start with Windows</h3>
+            <p className="repair-note">
+              {autostart.enabled
+                ? "Baby starts automatically when you sign in, minimised to the tray. Click the tray icon to open it."
+                : "Baby only starts when you open it. Turn this on and it will be ready every time you sign in, waiting in the tray rather than on screen."}
+            </p>
+            {/* Turning it OFF is always offered when it is on, even where Baby
+                cannot turn it on: a setting you can switch on and not off is the
+                bug this release is named after. */}
+            {!autostart.enabled && !autostart.can_enable && (
+              <p className="repair-note">
+                This copy of Baby is running from a checkout rather than the
+                installed app, so it has no shortcut to add to startup.
+              </p>
+            )}
+            <div className="repair-actions">
+              <button
+                type="button"
+                className="repair-btn"
+                disabled={autoBusy || (!autostart.enabled && !autostart.can_enable)}
+                onClick={toggleAutostart}
+              >
+                {autostart.enabled
+                  ? "Don't start with Windows"
+                  : "Start Baby with Windows"}
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="repair-section">
           <h3>Is everything working?</h3>
@@ -260,38 +302,6 @@ export default function RepairPanel() {
               Switch to cloud only
             </button>
           </div>
-          {autostart?.supported && (
-            <>
-              <p className="repair-note">
-                {autostart.enabled
-                  ? "Baby starts with Windows, minimised to the tray."
-                  : "Baby only starts when you open it."}
-              </p>
-              {/* Turning it OFF is always offered when it is on, even here, where
-                  Baby cannot turn it on: a setting you can switch on and not off is
-                  the bug this release is named after. */}
-              {!autostart.enabled && !autostart.can_enable && (
-                <p className="repair-note">
-                  This copy of Baby is running from a checkout rather than the
-                  installed app, so it has no shortcut to add to startup.
-                </p>
-              )}
-              <div className="repair-actions">
-                <button
-                  type="button"
-                  className="repair-btn"
-                  disabled={
-                    autoBusy || (!autostart.enabled && !autostart.can_enable)
-                  }
-                  onClick={toggleAutostart}
-                >
-                  {autostart.enabled
-                    ? "Don't start with Windows"
-                    : "Start Baby with Windows"}
-                </button>
-              </div>
-            </>
-          )}
         </section>
 
         <section className="repair-section">

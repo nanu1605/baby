@@ -50,6 +50,19 @@ why the clean-VM matrix never saw them.
   server was unreachable, about downloads that had already finished; it now loads
   what is on disk.
 
+- **Opening Setup & repair no longer blanks the app.** A mistake in the startup
+  toggle above meant the settings dialog crashed the moment it opened, on every
+  route into it — which is also why "start with Windows" looked absent from a build
+  that had it. Both fixed, and it is now the first thing in that dialog, under its
+  own heading, rather than filed under "How Baby runs" below the local/cloud
+  buttons.
+
+- **The search box no longer overlaps the chat panel.** It was centred on the
+  window while the space it belongs to sits between the chat list and the chat
+  panel, so at Baby's default size it ran underneath the panel's tabs. It now
+  centres on the area it actually occupies, and follows it when either side is
+  collapsed.
+
 - **Other websites can no longer talk to Baby.** Baby listens on your own machine,
   which sounds like it settles this and does not: browsers let any page open a
   WebSocket to a local port without asking, so a site you visited could hold a
