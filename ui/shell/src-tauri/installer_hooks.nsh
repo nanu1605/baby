@@ -205,7 +205,7 @@
     Goto baby_autostart_done
   ${EndIf}
 
-  MessageBox MB_YESNO|MB_ICONQUESTION /SD IDNO "Start Baby when you sign in to Windows?$\r$\n$\r$\nBaby will be waiting in the notification area rather than opening a window. You can change this at any time in Setup & repair." IDNO baby_autostart_done
+  MessageBox MB_YESNO|MB_ICONQUESTION "Start Baby when you sign in to Windows?$\r$\n$\r$\nBaby will be waiting in the notification area rather than opening a window. You can change this at any time in Setup & repair." /SD IDNO IDNO baby_autostart_done
 
   ; Quoted, because an install path like C:\Users\Anna Maria\... is one unquoted
   ; space away from Windows trying to run C:\Users\Anna.

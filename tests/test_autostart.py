@@ -410,6 +410,70 @@ def test_the_question_holds_against_real_nsis(tmp_path):
         except OSError:
             pass
 
+
+_COMPILE_PROBE = """!include LogicLib.nsh
+!include FileFunc.nsh
+!define VERSION "6.0.2"
+!define MAINBINARYNAME "baby-shell"
+Var PassiveMode
+!include "{hook}"
+Name "baby-hook-compile-probe"
+OutFile "hook.exe"
+InstallDir "$EXEDIR\\\\inst"
+SilentInstall silent
+RequestExecutionLevel user
+Section Install
+  StrCpy $PassiveMode 0
+  !insertmacro NSIS_HOOK_POSTINSTALL
+SectionEnd
+Section Uninstall
+  !insertmacro NSIS_HOOK_POSTUNINSTALL
+SectionEnd
+"""
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NSIS is Windows-only")
+def test_the_whole_hook_compiles(tmp_path):
+    """Compile the shipped hooks file itself, both macros, exactly as bundled.
+
+    The lifted-block tests elsewhere in this file replace the prompt line to model
+    an answer -- so the prompt's own SYNTAX was never compiled by anything, and it
+    shipped wrong: NSIS takes `/SD` after the message text, and putting it before
+    made the text parse as a jump label. Nothing here noticed. `tauri build` did,
+    at the end of a five-minute rebuild:
+
+        could not resolve label "Start Baby when you sign in to Windows? ..."
+
+    A hook that cannot compile is not a failing test, it is a release that cannot be
+    built -- so the cheapest possible gate is the right one.
+    """
+    import shutil
+    import subprocess
+
+    makensis = shutil.which("makensis.exe") or str(
+        Path.home() / "AppData" / "Local" / "tauri" / "NSIS" / "makensis.exe"
+    )
+    if not Path(makensis).exists():
+        pytest.skip("makensis.exe not installed")
+
+    script = tmp_path / "hook.nsi"
+    script.write_text(
+        _COMPILE_PROBE.format(hook=str(_NSH).replace("\\", "\\\\")), encoding="utf-8"
+    )
+    r = subprocess.run(
+        [makensis, str(script)],
+        cwd=tmp_path,
+        timeout=180,
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, (
+        "installer_hooks.nsh does not compile, so the installer cannot be built:\\n"
+        + (r.stdout or "")[-1500:]
+        + (r.stderr or "")[-500:]
+    )
+    assert (tmp_path / "hook.exe").is_file()
+
 # --- the uninstaller has to take it with them ---------------------------------
 
 
