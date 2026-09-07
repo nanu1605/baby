@@ -228,9 +228,9 @@ is already running there, so the whole branch is skipped.
       install it by itself -- counting up ("installing Ollama (2m)"), not sitting on
       one word -- and reach a tick. No UAC prompt for this step: the install is
       per-user. Then the 9B pulls and "Verifying everything works" passes.
-      Measured twice on a clean VM: once by the harness against build `445F130D`
-      (6 minutes, non-elevated), and once by the owner against the release
-      candidate `260168DB`, working as expected.
+      Measured on a clean VM three times: by the harness against build `445F130D`
+      (6 minutes, non-elevated), and by the owner against `260168DB` and then
+      `1F08096B`, the binary that ships. Working as expected each time.
 - [ ] **Confirm the same on real hardware.** Both runs above were VMs. A real box
       differs in the ways that matter here: a GPU, a working audio device, and
       whatever is already installed and competing for the port.
@@ -348,12 +348,19 @@ below; the fix is worth its own tag rather than waiting to be batched.
       network healthy) -- reopening Baby did, resuming from the cached 68 MB and
       finishing. The retry wording has since been fixed to name the reopen; see
       DECISIONS #151.
-- [x] **First run of the release candidate itself.** The Ollama fix was proven on
-      build `445F130D`, which no longer exists; the candidate on the Release page
-      is `260168DB` (same source, clean tree at `0d2b58f`, payload byte-identical
-      to HEAD). The owner installed and ran that exact binary on a fresh VM and it
-      behaved as expected, so the shipped bytes are covered, not just their
-      predecessor.
+- [x] **First run of the release candidate itself.** A rebuild is a different file
+      even when the source is identical, so each candidate got its own run rather
+      than inheriting one. The Ollama fix was proven on `445F130D`; `260168DB`
+      rebuilt it from a clean tree and was run again; `1F08096B` is the binary that
+      ships, built at `f13778d` after the stall-wording fix, and the owner
+      installed and ran that exact file on a fresh VM to the same result. Payload
+      verified byte-identical to HEAD before each run: 71 Python files, 0
+      differing, 0 missing, SPA dist rebuilt and matching.
+
+      ```
+      Baby_6.0.1_x64-setup.exe   19,046,592 bytes
+      1F08096BB97ED8D69FA80A3C483F0F09093C2E025C625737DCA7C5AEDAA5EE9B
+      ```
 - [ ] Merge the PR.
 - [ ] Tag `v6.0.1`.
 - [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.

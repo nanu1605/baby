@@ -2229,11 +2229,13 @@ Running log of non-obvious choices made during the build. Newest last.
      ready -- all required components work", `provisioned: true`. That is a
      complete Full-mode first run, which no shipped build has ever managed.
 
-     That run was build `445F130D`. The candidate that ships is `260168DB` --
-     same source, rebuilt from a clean tree, payload byte-identical to HEAD --
-     and the owner installed and ran that exact binary on a fresh VM to the same
-     result. The bytes on the Release page are covered, not only their
-     predecessor.
+     That run was build `445F130D`, and two rebuilds followed it -- `260168DB`
+     from a clean tree, then `1F08096B` at `f13778d` once #151's wording fix
+     landed. A rebuild is a different file even when the source is identical, so
+     each got its own clean-VM run rather than inheriting the previous one's, and
+     each had its payload verified byte-identical to HEAD first. `1F08096B` is
+     what ships, and it was run. The bytes on the Release page are covered, not
+     only their predecessors.
 
      **Not proven:** the "use cloud only instead" button rendering on a live
      failure. Its decision function is unit-tested seven ways and mutation-tested
