@@ -361,12 +361,16 @@ below; the fix is worth its own tag rather than waiting to be batched.
       Baby_6.0.1_x64-setup.exe   19,046,592 bytes
       1F08096BB97ED8D69FA80A3C483F0F09093C2E025C625737DCA7C5AEDAA5EE9B
       ```
-- [ ] Merge the PR.
-- [ ] Tag `v6.0.1`.
-- [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.
-- [ ] Leave the v6.0.0 release up. Its `.exe` and checksum stay valid for anyone
+- [x] Merge the PR. Squashed to `528f63f`, matching how every previous release
+      landed on master.
+- [x] Tag `v6.0.1`. Annotated, on `528f63f`.
+- [x] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`. Both
+      attached, marked latest. Verified the way a user would: downloaded both
+      assets back from the Release page and confirmed the `.exe` hashes to the
+      line in `SHA256SUMS.txt` and to the built binary.
+- [x] Leave the v6.0.0 release up. Its `.exe` and checksum stay valid for anyone
       who already has them, and deleting a published asset breaks the hash a user
-      may have written down.
+      may have written down. Confirmed still published.
 - [ ] Release body links the SmartScreen walkthrough
       (`docs/INSTALL.md`) — a first-time user meeting an unexplained blue warning
       is the most likely reason a download gets abandoned.

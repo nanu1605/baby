@@ -2277,3 +2277,30 @@ Running log of non-obvious choices made during the build. Newest last.
      not uninstall, so removing it would reconfigure software the user still has.
      Recorded in the uninstall checklist as a known leftover rather than left to be
      discovered.
+
+155. **The owner lifted the "never merge, tag or publish" rule a second time, for
+     6.0.1.** Recorded because #152 called the v6.0.0 lift a non-precedent, and a
+     rule that gets waived without the waiver being written down stops meaning
+     anything. The instruction was explicit and named all three actions.
+
+     What was checked before touching anything, since the rule exists to make a
+     human look: PR `MERGEABLE`/`CLEAN`; no `config.yaml`, `.env`, `.db`, key or
+     credential-shaped path anywhere in the diff; `tests/test_safety.py` untouched;
+     `pytest` 1037 and `ruff` clean; the built `.exe` hashing equal to the line in
+     its own `SHA256SUMS.txt`.
+
+     One thing the merge itself surfaced. Checking out `master` rewrote the working
+     tree through `core.autocrlf`, so `core/bus.py` on disk became CRLF while the
+     copy staged into the installer at build time is LF -- a hash mismatch with no
+     content difference. Verified as such (71 payload files: 0 content differences,
+     1 line-endings-only) and **not** rebuilt: a rebuild produces different bytes
+     that no clean-VM run has covered, which is a real risk taken on to fix nothing.
+     The lesson is about the check, not the file -- "byte-identical to HEAD" is a
+     claim about a working tree in a particular line-ending state, so a payload
+     comparison has to separate content from encoding or it will cry wolf exactly
+     when someone is about to publish.
+
+     Published as `1F08096B`, the binary the owner had already run on a clean VM,
+     and verified from the far side: both assets downloaded back from the Release
+     page, the `.exe` hashing to its stated checksum and to the local build.
+     v6.0.0 left up.
