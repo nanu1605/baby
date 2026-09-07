@@ -2249,3 +2249,29 @@ Running log of non-obvious choices made during the build. Newest last.
      `provision` row can carry a raw library string -- "Cannot send a request, as
      the client has been closed." -- the same shape as #150, though the banner is
      unaffected because `firstError` takes the classified row first.
+
+154. **`OLLAMA_CONTEXT_LENGTH` stays a registry write, reviewed and kept.** Raised
+     as an open question when #153 shipped -- keep the `HKCU\Environment` write, or
+     drop it to a documented manual step -- and settled by the owner as keep.
+
+     Why it is the right side of the trade. The `/v1` endpoint ignores
+     `options.num_ctx` (verified, `core/providers/ollama.py`), so nothing Baby sends
+     per-request can raise the served context; this variable is the only lever.
+     Without it the local brain silently serves a truncated context -- not an error,
+     not a failed check, just worse answers with no symptom to chase. A manual step
+     would be skipped by exactly the users this installer exists for, and the
+     failure mode is invisible, which is the combination that makes documentation a
+     bad substitute for doing it. `scripts/setup.ps1` has always set it; the shipped
+     build not doing so was the gap, not the write.
+
+     Cost, stated rather than glossed. It is best-effort -- `OSError` is swallowed,
+     because a degraded context is not worth failing an install over. It is
+     per-user and needs no admin. It is global to Ollama, so it applies to every
+     tool on that machine that talks to the daemon, not only Baby -- acceptable
+     because 8192 is a raise, not a cap, and a user who wants something else can
+     overwrite it. And it is **not removed on uninstall**: the uninstaller's hook
+     handles `%LOCALAPPDATA%\baby` and nothing in `HKCU\Environment`. Deliberate.
+     The variable configures Ollama, which Baby installs but does not own and does
+     not uninstall, so removing it would reconfigure software the user still has.
+     Recorded in the uninstall checklist as a known leftover rather than left to be
+     discovered.

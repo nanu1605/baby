@@ -309,6 +309,17 @@ The W5 fix. Verify both branches.
       by an installer runs in place, a standalone one copies itself to `%TEMP%`.
       `tests/test_uninstall.py::test_the_reinstall_guard_holds_against_real_nsis`
       does this automatically wherever `makensis.exe` is installed.
+- [ ] **Two things a full uninstall deliberately leaves behind.** Neither is a bug;
+      confirm they are still what is expected rather than assuming.
+      ```powershell
+      [Environment]::GetEnvironmentVariable("OLLAMA_CONTEXT_LENGTH", "User")  # 8192
+      winget list --id Ollama.Ollama
+      ```
+      Ollama itself stays installed -- Baby installs it but does not own it, and
+      removing another app on the way out would be worse than leaving it -- and the
+      context-length variable stays with it, because it configures the daemon the
+      user still has. See DECISIONS #154. Both are removed by uninstalling Ollama
+      from Add/Remove Programs and clearing the variable by hand.
 
 ## 6. Regression on the real box
 
