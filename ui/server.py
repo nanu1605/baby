@@ -20,7 +20,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from core import autostart, paths
+from core import autostart, diagnostics, paths
 from core.agent import AgentCore
 from core.bus import EventBus
 from core.safety import SafetyGate
@@ -561,6 +561,16 @@ def create_app(ctx: UIContext) -> FastAPI:
         # the state of their machine. BABY_SHELL_EXE is set only by the native
         # shell, and without it there is nothing to point a Run value at.
         data["autostart"] = autostart.state(os.environ.get("BABY_SHELL_EXE"))
+        # Which build is ACTUALLY running. A 6.0.2 installer once reported success
+        # over an untouched 6.0.0 install and changed nothing; the app displayed no
+        # version anywhere, so a stale install looked exactly like a current one and
+        # the missing feature read as a missing feature. `app` is the payload that got
+        # imported; `shell` is what the native shell says it is, and is None whenever
+        # the shell attached to a backend it did not spawn -- unknown, never a mismatch.
+        data["version"] = {
+            "app": diagnostics.app_version(),
+            "shell": os.environ.get("BABY_SHELL_VERSION") or None,
+        }
         router = getattr(ctx.agent.provider, "active", None)
         if router is not None:
             data["router"] = router

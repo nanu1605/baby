@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -244,6 +245,17 @@ def _stub_autostart(monkeypatch, *, supported=True, start=False):
     return state
 
 
+def _pyproject_version() -> str:
+    """The version in the repo's own pyproject -- the number /stats has to echo."""
+    import tomllib
+
+    root = Path(__file__).resolve().parent.parent
+    return tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))[
+        "project"
+    ]["version"]
+
+
+
 def test_autostart_endpoint_round_trips(tmp_path, monkeypatch):
     monkeypatch.setenv("BABY_SHELL_EXE", r"C:\Users\x\AppData\Local\Programs\Baby\Baby.exe")
     state = _stub_autostart(monkeypatch)
@@ -266,6 +278,77 @@ def test_autostart_endpoint_round_trips(tmp_path, monkeypatch):
         }
     finally:
         asyncio.run(db.close())
+
+
+
+# --- which build is running (v6.0.2) -----------------------------------------------
+#
+# A 6.0.2 installer reported success over a 6.0.0 install and replaced nothing. The
+# app displayed its version nowhere, so the stale install was indistinguishable from a
+# current one and the features it lacked read as features that were never built.
+
+
+def test_stats_reports_the_version_that_is_actually_running(tmp_path, monkeypatch):
+    """The number has to come from the payload on disk, not from a literal.
+
+    Asserting it merely equals the repo's current version is not enough -- that
+    passes for a hardcoded constant too, right up until the day the constant is the
+    stale one. So the resolver is replaced with a sentinel: only a /stats that really
+    asks the payload can echo it back.
+    """
+    monkeypatch.setenv("BABY_SHELL_VERSION", "9.9.9-shell")
+    monkeypatch.setattr(server.diagnostics, "app_version", lambda: "9.9.9-payload")
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        version = client.get("/stats").json()["version"]
+        assert version["app"] == "9.9.9-payload", (
+            "the reported version is a constant, not the payload that got imported"
+        )
+        assert version["shell"] == "9.9.9-shell"
+    finally:
+        asyncio.run(db.close())
+
+
+def test_the_reported_version_is_the_repos_own(tmp_path, monkeypatch):
+    """And unmocked, it is the real one -- so the resolver cannot quietly return
+    "unknown" forever while the wiring test above keeps passing."""
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        assert client.get("/stats").json()["version"]["app"] == _pyproject_version()
+    finally:
+        asyncio.run(db.close())
+
+
+def test_an_attached_backend_reports_an_unknown_shell_rather_than_a_mismatch(
+    tmp_path, monkeypatch
+):
+    """BABY_SHELL_VERSION is absent whenever the shell attached to a backend it did
+    not spawn -- and in a source checkout, where there is no shell at all. Reporting
+    that as a version would put a permanent "half-applied upgrade" warning in front of
+    every developer, which is how a real warning stops being read."""
+    monkeypatch.delenv("BABY_SHELL_VERSION", raising=False)
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        version = client.get("/stats").json()["version"]
+        assert version["shell"] is None
+        assert version["app"] == _pyproject_version()
+    finally:
+        asyncio.run(db.close())
+
+
+def test_the_shell_tells_the_backend_which_shell_it_is():
+    """The backend reads its own version out of the payload it imported and cannot
+    know the shell's -- guessing it would report a mismatch that does not exist, or
+    hide one that does. So the shell exports it, beside BABY_SHELL_EXE."""
+    rs = (
+        Path(__file__).resolve().parent.parent
+        / "ui" / "shell" / "src-tauri" / "src" / "main.rs"
+    ).read_text(encoding="utf-8")
+    assert "BABY_SHELL_VERSION" in rs, "the shell no longer reports its version"
+    line = next(ln for ln in rs.splitlines() if "BABY_SHELL_VERSION" in ln)
+    assert "CARGO_PKG_VERSION" in line, (
+        "the version is written out by hand, so it can drift from the build it ships in"
+    )
 
 
 def test_turning_autostart_on_is_refused_without_an_installed_exe(tmp_path, monkeypatch):

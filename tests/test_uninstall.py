@@ -469,6 +469,132 @@ def test_the_reinstall_guard_holds_against_real_nsis(tmp_path):
     )
 
 
+# --- the install actually landed (v6.0.2) -------------------------------------------
+#
+# A 6.0.2 installer was run over a 6.0.0 install and reported that it had finished.
+# Measured on that machine afterwards: DisplayVersion still 6.0.0, uninstall.exe still
+# the 6.0.0 one, baby-shell.exe still the 6.0.0 binary, payload\ui\server.py still the
+# 1549-line 6.0.0 file. Only filenames that had never existed appeared. The user's
+# report was that a feature was missing, and it was -- the build carrying it never
+# landed, and nothing in the installer or the app contradicted them.
+
+
+def _postinstall_body() -> list[str]:
+    """The verification block itself, lifted out of the shipped hook.
+
+    The executable test below compiles these lines verbatim, so it exercises what
+    ships rather than a paraphrase -- the same approach the reinstall guard uses.
+    """
+    hook = _HOOKS.read_text(encoding="utf-8")
+    assert "!macro NSIS_HOOK_POSTINSTALL" in hook, "the install is verified by nothing"
+    body = hook.split("!macro NSIS_HOOK_POSTINSTALL", 1)[1].split("!macroend", 1)[0]
+    lines = body.splitlines()
+    start = next(
+        (i for i, ln in enumerate(lines) if ln.strip().startswith("StrCpy $R6 0")), None
+    )
+    assert start is not None, "the verification no longer starts from a cleared flag"
+    end = next(
+        (i for i in range(start, len(lines)) if lines[i].strip() == "baby_verify_verdict:"),
+        None,
+    )
+    assert end is not None, "the verification never reaches a verdict"
+    return [ln.strip() for ln in lines[start : end + 1]]
+
+
+def test_the_installer_checks_what_it_actually_wrote():
+    """Reading the version back out of the file just written is the only check that a
+    skipped copy cannot satisfy. Comparing against anything the installer already
+    holds in memory would pass on the very install this exists to catch."""
+    code = _hook_code()
+    assert "NSIS_HOOK_POSTINSTALL" in code, "nothing verifies the install"
+    body = code.split("!macro NSIS_HOOK_POSTINSTALL", 1)[1].split("!macroend", 1)[0]
+    assert r"$INSTDIR\payload\pyproject.toml" in body, (
+        "the check no longer reads the payload it just installed"
+    )
+    compares = [ln for ln in body.splitlines() if "StrCmp" in ln and "version" in ln]
+    assert compares, "nothing compares a version at all"
+    assert any("${VERSION}" in ln for ln in compares), (
+        "the comparison uses a hardcoded version, so it can never fail on a stale install"
+    )
+
+
+def test_a_failed_install_does_not_report_success():
+    """"Completed" is the word that sent a user away believing they had upgraded.
+    A mismatch has to reach the failure page, not just a non-zero exit code nobody
+    sees."""
+    code = _hook_code()
+    body = code.split("!macro NSIS_HOOK_POSTINSTALL", 1)[1].split("!macroend", 1)[0]
+    assert "MessageBox" in body, "a silent failure is the bug being fixed"
+    assert "Abort" in body, "the installer still lands on its success page"
+    assert "SetErrorLevel" in body, "a scripted install cannot tell that it failed"
+
+
+def test_the_verification_runs_after_the_files_are_written():
+    """POSTINSTALL, not PREINSTALL: verifying before the copy proves nothing."""
+    hook = _HOOKS.read_text(encoding="utf-8")
+    assert "NSIS_HOOK_PREINSTALL" not in hook
+
+
+_VERIFY_PROBE = """!include LogicLib.nsh
+!define VERSION "6.0.2"
+Name "baby-version-verify-probe"
+OutFile "verify.exe"
+InstallDir "$EXEDIR\\inst"
+SilentInstall silent
+RequestExecutionLevel user
+Section
+{body}
+  FileOpen $R0 "$EXEDIR\\verdict.txt" w
+  FileWrite $R0 "$R6"
+  FileClose $R0
+SectionEnd
+"""
+
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="NSIS is Windows-only")
+@pytest.mark.skipif(_makensis() is None, reason="makensis.exe not installed")
+def test_the_version_check_holds_against_real_nsis(tmp_path):
+    """Compile the shipped verification and run it against four payloads.
+
+    A static assertion cannot catch what actually threatens this check, which is the
+    string handling: NSIS has no substring compare, so the version is matched as a
+    fixed-length prefix INCLUDING its closing quote. Drop that quote and 6.0.20
+    satisfies a check for 6.0.2 -- the "prefix" case below is that mutation, run for
+    real rather than reasoned about.
+    """
+    script = tmp_path / "verify.nsi"
+    script.write_text(
+        _VERIFY_PROBE.format(body="\n".join("  " + ln for ln in _postinstall_body())),
+        encoding="utf-8",
+    )
+    subprocess.run([_makensis(), str(script)], cwd=tmp_path, timeout=180, check=True)
+    probe = tmp_path / "verify.exe"
+    payload = tmp_path / "inst" / "payload"
+    payload.mkdir(parents=True)
+    pyproject = payload / "pyproject.toml"
+    verdict = tmp_path / "verdict.txt"
+
+    def run(content: str | None) -> str:
+        if content is None:
+            pyproject.unlink(missing_ok=True)
+        else:
+            pyproject.write_text(content, encoding="utf-8")
+        verdict.unlink(missing_ok=True)
+        subprocess.run([str(probe), "/S"], cwd=tmp_path, timeout=180, check=True)
+        return _verdict(verdict)
+
+    assert run('[project]\nname = "baby"\nversion = "6.0.2"\n') == "1", (
+        "a correct install is reported as a failure"
+    )
+    assert run('[project]\nname = "baby"\nversion = "6.0.0"\n') == "0", (
+        "the exact install this check exists to catch passes it"
+    )
+    assert run('[project]\nname = "baby"\nversion = "6.0.20"\n') == "0", (
+        "the closing quote is gone, so a longer version satisfies a shorter one"
+    )
+    assert run(None) == "0", "a payload that is not there at all passes"
+
+
 def test_install_doc_says_an_upgrade_keeps_the_data():
     """The checkbox now behaves differently depending on how the uninstaller was
     reached. Anyone who wants a clean slate has to be told the route that works."""

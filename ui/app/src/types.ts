@@ -148,6 +148,8 @@ export interface Stats {
   /** v6 first-run wizard state (core/paths.py setup.json + is_installed). */
   setup?: SetupState;
   autostart?: AutostartState;
+  /** Which build is running (v6.0.2). See VersionState. */
+  version?: VersionState;
   /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
   local_model_loaded?: boolean;
   tokens?: {
@@ -179,6 +181,16 @@ export interface SetupState {
 /** /stats.autostart — "start Baby with Windows", read live from HKCU\...\Run.
  *  `supported` is false off Windows and in a source checkout, where there is no
  *  installed exe for a Run value to point at. */
+export interface VersionState {
+  /** The payload that actually got imported, read from its own pyproject.toml. */
+  app: string;
+  /**
+   * What the native shell reports (BABY_SHELL_VERSION). null whenever the shell
+   * attached to a backend it did not spawn, which is unknown -- not a mismatch.
+   */
+  shell: string | null;
+}
+
 export interface AutostartState {
   /** Windows. Whether the setting exists at all, and so whether to show it. */
   supported: boolean;

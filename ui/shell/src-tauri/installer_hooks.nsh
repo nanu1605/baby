@@ -70,6 +70,110 @@
 ; POSTUNINSTALL runs after the template's own deletion block, where both variables
 ; are still in scope.
 
+; ---------------------------------------------------------------------------------
+; Baby v6.0.2 -- refuse to report success over an install that did not change.
+;
+; A 6.0.2 installer was run over an existing 6.0.0 install and reported that it had
+; finished. It had not. Measured on that machine afterwards: DisplayVersion still
+; 6.0.0, uninstall.exe still the 6.0.0 one, baby-shell.exe still the 6.0.0 binary,
+; and payload\ui\server.py still the 1549-line 6.0.0 file with no autostart route in
+; it. The only things that appeared were filenames that had not existed before --
+; core\autostart.py and the new hashed bundles. Every pre-existing file survived.
+;
+; The user's report was "the new feature is missing", and it was: the build that has
+; it never landed. Nothing contradicted them, because an installer that lies about
+; finishing is indistinguishable from a build that shipped without the feature.
+;
+; That is worse than any single missing toggle. An upgrade that silently no-ops means
+; NOTHING reaches an existing user -- not the fixes, and not the cross-origin check
+; that stops a web page driving their local Baby.
+;
+; Why it happened is still unknown; the generated installer.nsi reads correctly
+; (MAINBINARYNAME is baby-shell so the running-app check does find it, there is no
+; SetOverwrite off, and $INSTDIR resolves through a clean registry value). So this
+; hook does not claim to fix the cause. It makes the symptom impossible to miss:
+; read the version back OUT of the payload that is now on disk and compare it to the
+; version this installer was built to deliver. Reading the file we just wrote is the
+; only check that cannot be fooled by the copy having been skipped.
+;
+; It runs at the END of Section Install, after the files and the shortcuts, so a
+; mismatch here means the copy did not take. MessageBox then Abort: the installer
+; must land on its failure page, because "Completed" is the exact word that sent a
+; user away believing they had upgraded.
+;
+; Registers are pushed and popped because a hook has no claim on them.
+
+!macro NSIS_HOOK_POSTINSTALL
+  Push $R4  ; file handle
+  Push $R5  ; line just read
+  Push $R6  ; 1 once the expected version line is seen
+  Push $R7  ; length of the line we are looking for
+  Push $R8  ; scratch: leading slice of $R5, then trailing character
+  Push $R9  ; whatever version we DID find, for the message
+
+  StrCpy $R6 0
+  StrCpy $R9 ""
+  ; The whole line, closing quote included, so "6.0.20" cannot satisfy a check for
+  ; "6.0.2". Compared as a prefix so the trailing newline never matters.
+  StrLen $R7 'version = "${VERSION}"'
+
+  ClearErrors
+  FileOpen $R4 "$INSTDIR\payload\pyproject.toml" r
+  IfErrors baby_verify_verdict
+
+  baby_verify_loop:
+    ClearErrors
+    FileRead $R4 $R5
+    IfErrors baby_verify_eof
+    StrCpy $R8 $R5 $R7
+    StrCmp $R8 'version = "${VERSION}"' 0 baby_verify_keep_looking
+    StrCpy $R6 1
+    Goto baby_verify_eof
+  baby_verify_keep_looking:
+    ; Not our version -- but if it is A version line, remember it so the message can
+    ; name what is actually installed instead of only what should have been.
+    StrCpy $R8 $R5 11
+    StrCmp $R8 'version = "' 0 baby_verify_loop
+    StrCpy $R9 $R5
+    Goto baby_verify_loop
+
+  baby_verify_eof:
+    FileClose $R4
+
+  baby_verify_verdict:
+  ${If} $R6 <> 1
+    ; Trim the newline off the line we are about to show the user.
+    ${Do}
+      StrCpy $R8 $R9 1 -1
+      ${If} $R8 == "$\r"
+      ${OrIf} $R8 == "$\n"
+        StrCpy $R9 $R9 -1
+      ${Else}
+        ${ExitDo}
+      ${EndIf}
+    ${Loop}
+    ${If} $R9 == ""
+      StrCpy $R9 "nothing"
+    ${EndIf}
+    MessageBox MB_ICONSTOP "Baby ${VERSION} did not install.$\r$\n$\r$\nThe files in $INSTDIR still report $R9, so the copy did not take and nothing was upgraded.$\r$\n$\r$\nQuit Baby completely from the tray icon (not just the window), then run this installer again."
+    SetErrorLevel 1
+    Pop $R9
+    Pop $R8
+    Pop $R7
+    Pop $R6
+    Pop $R5
+    Pop $R4
+    Abort "Baby ${VERSION} did not install -- the files on disk were not replaced."
+  ${EndIf}
+
+  Pop $R9
+  Pop $R8
+  Pop $R7
+  Pop $R6
+  Pop $R5
+  Pop $R4
+!macroend
+
 !macro NSIS_HOOK_POSTUNINSTALL
   Push $R4
   Push $R5

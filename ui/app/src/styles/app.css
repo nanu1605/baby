@@ -1952,6 +1952,16 @@ body[data-motion="lite"] .msg.assistant.streaming .md-plain::after {
   font-size: var(--fs-md);
   cursor: pointer;
 }
+/* The running version, directly under the dialog header. Quiet by default -- it is
+   reassurance, not a control -- but it carries .repair-bad inline when the shell and
+   the payload disagree, which is a half-applied upgrade and not a detail. */
+.repair-version {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .repair-section {
   border-top: 1px solid var(--line);
   padding-top: var(--sp-3);

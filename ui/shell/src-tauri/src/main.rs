@@ -337,6 +337,11 @@ fn spawn_backend(app: &AppHandle, layout: &Layout) {
     if let Ok(exe) = std::env::current_exe() {
         cmd.env("BABY_SHELL_EXE", exe);
     }
+    // And which shell that is. The backend reads its own version out of the payload it
+    // imported; this is the other half, and the pair is what makes a half-applied
+    // upgrade visible instead of silent. Absent whenever we ATTACHED to a backend we
+    // did not spawn, which the UI reads as unknown rather than as a mismatch.
+    cmd.env("BABY_SHELL_VERSION", env!("CARGO_PKG_VERSION"));
     // Only export BABY_HOME when the layout actually splits (installed). In dev the
     // two dirs are identical, so leaving it unset keeps the cwd-relative behavior
     // byte-identical to before.

@@ -42,6 +42,7 @@ export default function RepairPanel() {
   const close = useBrain((s) => s.closeRepair);
   const setup = useBrain((s) => s.stats?.setup);
   const autostart = useBrain((s) => s.stats?.autostart);
+  const version = useBrain((s) => s.stats?.version);
 
   const [health, setHealth] = useState<SetupHealth | null>(null);
   const [checking, setChecking] = useState(false);
@@ -182,6 +183,26 @@ export default function RepairPanel() {
             ✕
           </button>
         </div>
+
+        {/* Which build is running, before anything else in the dialog.
+            A 6.0.2 installer reported success over an untouched 6.0.0 install and
+            replaced nothing. The app showed its version nowhere, so the stale install
+            was indistinguishable from a current one and the features it was missing
+            read as features that were never built. One line ends that class of report.
+
+            `shell` is null when the shell attached to a backend it did not spawn --
+            unknown, and deliberately NOT rendered as a mismatch. */}
+        {version && (
+          <p className="repair-version">
+            Baby <strong>{version.app}</strong>
+            {version.shell && version.shell !== version.app && (
+              <span className="repair-bad">
+                {" "}— but the app window is {version.shell}. An update only half
+                applied. Quit Baby from the tray and run the installer again.
+              </span>
+            )}
+          </p>
+        )}
 
         {/* First, and under its own name.
             This shipped inside "How Baby runs", below two buttons about local vs
