@@ -436,11 +436,18 @@ argument for its own tag rather than waiting to be batched.
       even when the source is identical, so each candidate gets its own run rather
       than inheriting the last one's. Record the size and SHA256 here.
 
-      Candidate, built from a clean tree at `a43a226`:
+      Candidate, built from a clean tree at `88c588d`:
       ```
-      Baby_6.0.2_x64-setup.exe   19,050,127 bytes
-      3461DB6910166524F686D0C28611106A71959267227C55331F8D3F2FB23459BF
+      Baby_6.0.2_x64-setup.exe   19,056,383 bytes
+      7FE4B7241A6056BF07060F2F0E44F64E27BF67981322CD849EFF1C5B11813E3A
       ```
+      Supersedes `3461DB69…` (clean at `a43a226`), which shipped a `RepairPanel`
+      that crashed the app on open. That one was verified only against the Vite dev
+      server, which runs the source; this one was checked by serving the built
+      `dist` — the exact files in the payload — against a live backend, opening and
+      closing Setup & repair twice with no React error. **A production React bundle
+      is a different artifact from its source, and the crash was a production
+      invariant.**
       Verified before it left this machine: 72 payload `.py` files, 0 content
       differences against HEAD (43 differ in line endings only, which is
       `core.autocrlf` and not a change); the SPA `dist` identical to the one just
