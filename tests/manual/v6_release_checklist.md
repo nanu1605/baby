@@ -401,37 +401,52 @@ The automated side is green; these are the parts a machine in this repo cannot p
       ```
       It must log `refused`. From Baby's own window that same line connects.
 
-### The upgrade actually applies (6.0.2, and the release gate)
+### Startup, asked and applied (6.0.2)
 
-**A 6.0.2 installer was run over an existing 6.0.0 install, reported that it had
-finished, and replaced nothing.** Not the shell, not `payload\ui\server.py`, not
-`pyproject.toml`, not `uninstall.exe`, not the registry version. Only filenames that
-had never existed before appeared. The cause is not known; the point of these rows is
-to find it, and to prove the new check refuses to call that a success.
+The installer now asks. Everything below needs a real machine: the prompt, the
+registry write, and a logon.
 
-Run each on a VM that already has **6.0.0 installed and provisioned**, not a clean one.
+- [ ] **A fresh install asks.** On a machine with no Baby, run the installer. After
+      the files copy, it must ask whether to start Baby when you sign in. Answer
+      **Yes**, then check
+      `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` holds a `Baby` value equal
+      to `"<install dir>\baby-shell.exe" --minimized` -- quotes included.
+- [ ] **Answering No writes nothing.** Same again on a clean machine, answer **No**,
+      and confirm the `Baby` value is absent.
+- [ ] **It matches the in-app toggle.** After answering Yes, open Setup & repair: the
+      "Start with Windows" section must already read as on. Turn it off there and
+      confirm the Run value disappears. These two must never disagree.
+- [ ] **An upgrade does not re-ask and does not undo it.** With autostart on, install
+      over the top. It must NOT ask again, and the Run value must survive unchanged --
+      including still pointing at the right exe.
+- [ ] **A silent install gets nothing.** `Baby_6.0.2_x64-setup.exe /S`. No prompt, and
+      no `Baby` Run value afterwards.
+- [ ] **The logon cycle.** Reboot with it on: Baby comes up in the tray, no window
+      flashes, the tray icon opens it, and the backend answers. Break the venv and
+      reboot: the tray goes red rather than failing silently. Turn it off, reboot,
+      confirm it does not start. Uninstall with it on and confirm the Run value is
+      gone.
 
-- [ ] **Upgrade with Baby fully quit.** Quit from the tray (not just the window),
-      confirm no `baby-shell.exe` is running, then run the 6.0.2 installer. It must
-      finish without the new error dialog. Then check all four: `DisplayVersion` under
-      `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Baby` reads 6.0.2;
-      `payload\pyproject.toml` reads 6.0.2; `baby-shell.exe` has today's date; and
-      Setup & repair opens with **Baby 6.0.2** on its first line.
-- [ ] **Upgrade with Baby running.** Start Baby, leave it running, run the installer.
-      It should offer to close Baby. Let it. Then re-check the same four.
-- [ ] **Upgrade with Baby running and the close refused.** Same again, but decline
-      when it offers to close Baby. It must abort with a message -- it must NOT report
-      that it finished.
-- [ ] **The half-applied warning stays quiet when it should.** Confirm the negative:
-      a single version and no warning after a clean upgrade, and no warning on a
-      source checkout either, where the shell version is absent and has to read as
-      unknown rather than as a mismatch.
-- [ ] **The installer refuses to lie.** If any upgrade row above ends with the old
-      version still on disk, the installer must have shown the "did not install"
-      dialog and landed on its failure page. An upgrade that says *Completed* over
-      unchanged files is the bug -- capture the installer log and the four values
-      above before doing anything else, because that is the reproduction nobody has
-      yet.
+### The version is visible (6.0.2)
+
+- [ ] **Setup & repair opens with the version.** It must read the version you just
+      installed. If it reads an older one, the install did not fully apply -- capture
+      `HKCU\...\Uninstall\Baby` `DisplayVersion`, `payload\pyproject.toml`, and
+      `baby-shell.exe`'s date before doing anything else.
+- [ ] **No false alarm in a source checkout.** Run from the repo: the shell version is
+      absent there and must read as unknown, with no half-applied warning.
+- [ ] **The installer refuses to lie.** If an install ever ends with the old version
+      still on disk, it must have shown the "did not install" dialog and landed on its
+      failure page rather than saying Completed.
+
+> **A warning about diagnosing this from a Claude Code session on this machine.**
+> The desktop app is an MSIX package, so a session's view of `%LOCALAPPDATA%\baby` is
+> a redirected copy-on-write overlay: some files read back as stale copies and some
+> fall through to the real ones, and a directory listing cannot tell which. During
+> 6.0.2 that produced five agreeing measurements and one confident, wrong conclusion
+> that the installer had silently failed. **Only the live process is authoritative** --
+> `/stats`, the backend's own environment block, or a marker planted in a file to see
+> whether the server returns it. See DECISIONS #164.
 
 ### The chat list keeps up (6.0.2)
 

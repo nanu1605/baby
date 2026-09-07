@@ -2633,57 +2633,57 @@ Running log of non-obvious choices made during the build. Newest last.
      and does not belong filed behind one. A report of "missing" against a feature
      that is present is still a report about the feature.
 
-164. **An installer that reported success and installed nothing.**
+164. **I diagnosed a broken installer from a filesystem I cannot read.**
      The third report against the 6.0.2 candidate was "still no option to start on
-     startup". The option was there. Opened on the running backend during the
-     investigation: "Start with Windows" is the first section of Setup & repair, the
-     button is live, six headings render, no React error. What was wrong was the
-     machine.
+     startup". I checked the reporter's machine and concluded their install was
+     6.0.0 -- that the 6.0.2 installer had reported success and replaced nothing.
+     **That conclusion was wrong, and every measurement behind it came from the same
+     poisoned well.**
 
-     **It was running 6.0.0.** Measured, not inferred: `DisplayVersion` in
-     `HKCU\...\Uninstall\Baby` still said 6.0.0; `baby-shell.exe` was the September 3
-     binary, and a string scan found no `BABY_SHELL_EXE` in it at all while the 6.0.2
-     binary has it (`BABY_SHELL_TRAY` is in both, so the scan works); the installed
-     `payload\ui\server.py` was the 1549-line 6.0.0 file with no `/api/setup/autostart`
-     and no origin gate, against 1778 lines in the repo; `payload\pyproject.toml` said
-     6.0.0; the payload's `index.html` still pointed at the 6.0.0 bundle; and
-     `uninstall.exe` had never been rewritten. There was no second install anywhere --
-     searched the whole user profile, both Program Files, and the uninstall keys under
-     HKCU, HKLM and Wow6432Node.
+     What I read: `DisplayVersion` 6.0.0 in `HKCU\...\Uninstall\Baby`; a
+     `baby-shell.exe` dated September 3 with no `BABY_SHELL_EXE` string in it; a
+     1549-line `payload\ui\server.py` with no autostart route; `payload\pyproject.toml`
+     saying 6.0.0; the payload's `index.html` pointing at the old bundle. Five
+     independent-looking facts, all agreeing. **All five were stale copies.**
 
-     The reporter ran the installer and it told them it had finished. Only filenames
-     that had never existed before appeared in the payload -- `core\autostart.py` and
-     the new hashed bundles. Every file that was already there survived untouched.
+     This session runs inside an MSIX container, so every process it spawns gets a
+     redirected `%LOCALAPPDATA%` with per-file copy-on-write: files the container has
+     touched read back as the container's old copy, files it never touched fall
+     through to the real ones, and **a directory listing cannot tell the two apart**.
+     That is written down in this project's own notes, from the last time it happened.
+     I read it, quoted it in an earlier entry, and then walked straight into it --
+     because five agreeing measurements feel like corroboration when they are one
+     measurement repeated.
 
-     **This is worse than the toggle that prompted it.** An upgrade that silently
-     no-ops means nothing at all reaches an existing user: not the 6.0.1 fixes, not the
-     6.0.2 fixes, and not #162's cross-origin check, which is the one that stops a web
-     page driving somebody's local Baby. And nothing contradicted the reporter, because
-     the app displayed its version *nowhere* -- so a stale install and a current one
-     look identical, and a feature that never arrived is indistinguishable from a
-     feature that was never built.
+     What the live process said, once I asked it instead of the disk: the backend's
+     own environment carried `BABY_SHELL_VERSION=6.0.2`, a variable that exists only
+     in a shell built that same hour, set by its parent; `/stats` reported
+     `{"app": "6.0.2", "shell": "6.0.2"}`, with `app` read out of the `pyproject.toml`
+     beside the `core/` that was actually imported. And the decisive one, because it
+     rules out "the backend is running the repo": a marker appended to the repo's
+     `ui/app/dist/index.html` did **not** appear in what the server returned. The
+     installed payload was 6.0.2 the whole time.
 
-     **The cause is still unknown, and this entry does not claim otherwise.** The
-     generated `installer.nsi` was read end to end and looks right: `MAINBINARYNAME` is
-     `baby-shell`, so `CheckIfAppIsRunning` does find the running app; there is no
-     `SetOverwrite off`; `$INSTDIR` resolves through `RestorePreviousInstallLocation`
-     against a clean, unquoted `HKCU\Software\tanishq\Baby`. Finding out means
-     reproducing the run on a clean VM, which is the release gate, not a desk exercise.
+     **The earlier report was explained by the same evidence I had already collected
+     and misread.** At the time it was made, `/stats` answered `can_enable: true` --
+     and `can_enable` requires `BABY_SHELL_EXE`, which only a 6.0.2 shell sets. That
+     single field proved the install was current, in the same response I used to argue
+     it was stale.
 
-     What ships instead is the pair of things that would have caught it in one glance.
-     The running version is now the first line of Setup & repair -- `app` read out of
-     the payload that was actually imported, `shell` exported by the native shell as
-     `BABY_SHELL_VERSION`, and a plain warning when the two disagree, which is exactly
-     the half-applied shape the disk evidence showed. `shell` is absent whenever the
-     shell attached to a backend it did not spawn, and that reads as unknown rather
-     than as a mismatch: a warning every developer sees permanently is a warning
-     nobody reads. And a `NSIS_HOOK_POSTINSTALL` now reads the version back **out of
-     the file it just wrote** and aborts if it is not the one being installed. Reading
-     back what landed is the only check a skipped copy cannot satisfy -- comparing
-     against anything the installer already holds in memory would have passed on this
-     very install. Compiled and run against real NSIS across four payloads, including
-     the mutation that drops the closing quote and lets 6.0.20 satisfy a check for
-     6.0.2.
+     **Rule, now paid for twice: when the filesystem and a running process disagree
+     about that process, the process wins.** Ask the live API, read the target's
+     environment block, or plant a marker and see whether it comes back. And a set of
+     measurements that all share one mechanism is one measurement, however many of
+     them there are.
+
+     What survives is the code, which is worth having on its own terms and is why this
+     entry is not simply deleted. Baby now shows the version it is running as the first
+     line of Setup & repair -- `app` from the payload that was imported, `shell` from
+     `BABY_SHELL_VERSION`, and a warning when they disagree; absent reads as unknown,
+     never as a mismatch. And `NSIS_HOOK_POSTINSTALL` reads the version back out of the
+     file it just wrote and aborts rather than reporting success. Neither was needed for
+     the bug I thought I had found. Both would have ended my misdiagnosis in one glance,
+     which is the actual argument for them.
 
 165. **The chat list only updated when you ticked "Show archived".**
      Reported as a summary that appears only behind the archived filter. The filter was
@@ -2726,3 +2726,48 @@ Running log of non-obvious choices made during the build. Newest last.
      then the first user message. Generating a real summary means a model call per
      conversation, which is a router change this release's frozen ground forbids. It is
      a follow-up, not an oversight.
+
+166. **The installer now asks whether Baby should start with Windows.**
+     Reported twice, and the second time unmistakably: *"the setup should contain an
+     option where it asks the user while installing whether he needs to start Baby on
+     startup or not."* The toggle added in #161 lives in Setup & repair, which is a
+     different thing from being asked while installing — and #164 is what happens when
+     a "the feature is missing" report gets answered with anything other than the
+     feature.
+
+     **It is a Yes/No dialog, not a checkbox, and that was forced.** MUI's finish page
+     has exactly two checkbox slots; Tauri's template spends both, on the desktop
+     shortcut and run-on-finish. The four hooks the template exposes
+     (`PRE`/`POSTINSTALL`, `PRE`/`POSTUNINSTALL`) all run inside sections, where no
+     control can be drawn on that page, and a define placed in the hooks include is
+     consumed by the first `MUI_PAGE_*` inserted — the welcome page — not the finish
+     page. A third checkbox therefore means setting `bundle.windows.nsis.template` and
+     owning a fork of a 1100-line upstream installer across every Tauri upgrade. **A
+     forked installer template quietly diverging from upstream is a worse failure than
+     a modal is an inconvenience**, so the question is asked from `POSTINSTALL`.
+
+     Three things about it are load-bearing rather than incidental:
+
+     *It runs after the version check*, so a half-applied install aborts before anyone
+     is asked what it should do at logon.
+
+     *A silent or passive install is never asked and never gets an entry.* Nobody is at
+     the keyboard to consent and nobody would see the result. This needs **two** guards,
+     not one: NSIS does not fail a `MessageBox` in a silent install, it **skips it and
+     continues** — so a prompt with no scripted default falls straight through into the
+     branch after it, which here is the write. Hence `${Silent}`/`$PassiveMode` returns
+     *and* `/SD IDNO` on the prompt itself.
+
+     *An upgrade of a machine that already chose is not asked again.* The existing Run
+     value is read first and left exactly as it is. Re-asking every patch trains people
+     to click through, and defaulting to No on an upgrade would silently undo a setting
+     the user had chosen — the one-way trip of #161 pointing the other way.
+
+     The value written is `"<exe>" --minimized` under
+     `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, name `Baby` — byte-identical
+     to what `core/autostart.py` writes, because the installer's question and the app's
+     toggle have to describe the same thing or whichever ran last wins silently. A test
+     compares the NSIS literal against `autostart.command()` rather than trusting the
+     two to be kept in step by hand, and the guards are compiled with real NSIS and run
+     against a scratch registry key: Yes writes the exact string, No writes nothing, and
+     an existing value survives untouched.

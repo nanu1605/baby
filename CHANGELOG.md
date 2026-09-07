@@ -3,10 +3,9 @@
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
 Fixes reported from running Baby on an actual machine rather than a VM -- five
-found on 6.0.1, and four more found by running the 6.0.2 candidate itself. Almost
-every one is about *using* Baby rather than installing it, which is why the
-clean-VM matrix never saw them. The exception is the last one, which is about
-installing: an upgrade that reported success and changed nothing.
+found on 6.0.1, and more found by running the 6.0.2 candidate itself. Almost every
+one is about *using* Baby rather than installing it, which is why the clean-VM
+matrix never saw them.
 
 - **The "Get a key" links now open.** In the first-run wizard and the repair
   panel, the links to OpenRouter, Google Gemini and NVIDIA did nothing at all --
@@ -74,15 +73,20 @@ installing: an upgrade that reported success and changed nothing.
   changes, and the tray keeps working. This gap was not new, but Baby now runs from
   the moment you log in, so it is no longer only open while you are using it.
 
-- **Baby now shows which version it is, and the installer proves it landed.** A
-  6.0.2 installer was run over an existing 6.0.0 install, reported that it had
-  finished, and replaced nothing -- so a feature that had shipped looked like a
-  feature that was missing, and there was no way to tell from inside the app,
-  because Baby displayed its version nowhere. Setup & repair now opens with the
-  version that is actually running, and says so plainly when the app window and the
-  files underneath it disagree. The installer now reads the version back out of the
-  files it just wrote, and stops with an error instead of reporting success when
-  they are not the ones it was carrying.
+- **The installer asks whether Baby should start with Windows.** Right after it
+  finishes copying files: yes and Baby waits in the notification area from the next
+  time you sign in, no and nothing changes. Either way you can change your mind in
+  Setup & repair. Upgrading does not ask again and does not disturb the answer you
+  already gave, and an unattended install is never given a startup entry it was not
+  asked for.
+
+- **Baby now shows which version it is running.** It displayed that nowhere, which
+  made a stale install and a current one look identical -- so a feature that had
+  shipped was indistinguishable from a feature that was never built, and that cost
+  a round of chasing the wrong bug. Setup & repair now opens with the version, and
+  says so plainly if the app window and the files underneath it ever disagree. The
+  installer also reads the version back out of the files it just wrote and stops
+  with an error rather than reporting success if they are not the ones it carried.
 
 - **Chats appear in the list as soon as you have them.** A new conversation, or a
   new reply in the one you are already in, did not show up in the chat list until
