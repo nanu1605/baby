@@ -2107,6 +2107,26 @@ Running log of non-obvious choices made during the build. Newest last.
      has to act on it. Actually resuming in place would mean owning the hub's
      transfer, which is a much larger change than this release wants.
 
+     **Follow-up: the error text pointed at the one action that could not work.**
+     Re-running row 9 against the 6.0.1 build measured what happens when a user
+     obeys the message. It said "Retry -- it resumes from what is already
+     downloaded"; Retry gave up again 20 minutes later on a healthy 11 ms link,
+     with the `.incomplete` file's mtime frozen at the moment of the cut, so not
+     one byte moved. Closing and reopening Baby resumed from the cached 68 MB and
+     finished. Same root cause as the paragraph above -- the dead transfer belongs
+     to the process that lost it -- but stated as advice it was worse than saying
+     nothing, because a user who follows it exactly loses another twenty minutes
+     and concludes the installer is broken.
+
+     The message now names the reopen and ties the resume promise to it, and says
+     plainly that retrying without reopening tends to stall in the same place.
+     Wording only: the classifier's `kind`, its `retryable` flag and every caller
+     are untouched, and Retry stays on screen because it is harmless and other
+     stall causes do clear. A test asserts the reopen is named, that "resumes"
+     hangs off the reopen rather than off a bare retry, and that the old promise
+     has not crept back; mutation-tested three ways, including a mutant that gives
+     the correct advice and re-adds the false one alongside it.
+
 152. **6.0.1 ships on its own rather than waiting for something to batch with.**
      v6.0.0 is already public and downloadable, so the two matrix findings (#150,
      #151) are not sitting on a branch waiting for a release -- they are live in

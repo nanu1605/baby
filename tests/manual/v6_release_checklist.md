@@ -267,6 +267,10 @@ is already running there, so the whole branch is skipped.
       network does NOT revive an interrupted download -- that was measured, with
       the machine pinging the host at 32 ms while the row stayed dead -- so the
       recovery is the error plus a reopen, and the row has to reach it promptly.
+- [ ] **Read the error it gives up with.** It must tell you to close and reopen
+      Baby. Retrying without reopening was measured doing nothing at all -- another
+      20 minutes on an 11 ms link, byte count frozen -- so a message pointing at
+      Retry is pointing at the one action that cannot work.
 
 ## 5. Uninstall
 
@@ -331,7 +335,8 @@ below; the fix is worth its own tag rather than waiting to be batched.
       `multiple values for argument` / `TypeError` / `Traceback` returned **0
       hits**. Retry alone did not recover (it gave up again at +20.3m with the
       network healthy) -- reopening Baby did, resuming from the cached 68 MB and
-      finishing. The retry wording is worth a second look; see DECISIONS #151.
+      finishing. The retry wording has since been fixed to name the reopen; see
+      DECISIONS #151.
 - [x] **First run of the release candidate itself.** The Ollama fix was proven on
       build `445F130D`, which no longer exists; the candidate on the Release page
       is `260168DB` (same source, clean tree at `0d2b58f`, payload byte-identical

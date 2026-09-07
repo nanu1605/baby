@@ -51,6 +51,26 @@ def test_stall_is_its_own_error_kind():
     assert "resumes" in cls["message"]
 
 
+def test_a_stall_tells_the_user_to_reopen_not_merely_to_retry():
+    """Measured on a clean VM: after a stall, Retry gave up again twenty minutes
+    later on an 11 ms link without moving a byte, and closing and reopening Baby
+    resumed from the cached bytes and finished. The message used to say "Retry --
+    it resumes from what is already downloaded", which named the one action that
+    could not work. It must name the reopen, and must not present a bare retry as
+    the recovery."""
+    msg = provision.classify_error("whisper made no progress for 20 minutes")["message"]
+    low = msg.lower()
+
+    assert "reopen" in low, "the recovery that was actually measured is not named"
+    # The resume promise has to hang off the reopen, not off a bare retry.
+    assert re.search(r"reopen[^.]*resumes", low), (
+        "the message promises a resume without tying it to reopening: " + msg
+    )
+    assert not re.search(r"(?<![a-z])retry(?![a-z])[ ,-]*(it|and it)? ?resumes", low), (
+        "still tells the user a plain Retry resumes the transfer: " + msg
+    )
+
+
 def test_detail_reports_bytes_not_a_fixed_string():
     """The old row said "downloading (~471 MB)" for the whole fetch, so a healthy
     download and a dead backend looked identical. It must carry live numbers."""

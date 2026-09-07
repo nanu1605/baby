@@ -100,12 +100,20 @@ def classify_error(text: str) -> dict:
     # First: a step we gave up on ourselves. It reads like nothing else here, and the
     # advice is different -- the transfer was reachable, it just stopped moving.
     if _STALLED.search(t):
+        # The advice names a REOPEN, not Retry. Measured on a clean VM: after a
+        # stall, Retry gave up again 20 minutes later on a healthy 11 ms link and
+        # never moved a byte, while closing and reopening Baby resumed from the
+        # cached 68 MB and finished. An interrupted hub transfer does not revive
+        # inside the process that lost it, so pointing at Retry pointed at the one
+        # action that could not work.
         return {
             "kind": "stalled",
             "message": "That step stopped making progress, so it was given up on rather "
-            "than left hanging. Retry -- it resumes from what is already downloaded. If "
-            "it stalls in the same place again, suspect a proxy, a VPN, or antivirus "
-            "scanning the transfer.",
+            "than left hanging. Close Baby and reopen it: setup resumes from what is "
+            "already downloaded, and nothing is lost. Retrying without reopening tends "
+            "to stall in the same place, because an interrupted transfer doesn't revive "
+            "inside the same session. If a reopen stalls too, suspect a proxy, a VPN, or "
+            "antivirus scanning the transfer.",
             "retryable": True,
         }
     if _PROXY.search(t):

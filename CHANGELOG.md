@@ -41,6 +41,13 @@ purpose part-way through setup.
   *supposed* to stop growing; killing a slow model load would trade one hang for a
   worse bug.
 
+- **The stall error now names the recovery that works.** It used to say "Retry --
+  it resumes from what is already downloaded". Retrying was measured doing nothing:
+  20 more minutes on a healthy 11 ms link with not one byte moved, because the
+  dead transfer belongs to the process that lost it. Closing and reopening Baby
+  resumed from the cached bytes and finished. The message says that instead, and
+  says outright that a plain retry tends to stall in the same place.
+
 - **A failed download no longer reports a Python error.** Pulling the network
   mid-provision put `EventBus.publish() got multiple values for argument 'kind'`
   into the setup status, replacing the real reason on its way out of provisioning
