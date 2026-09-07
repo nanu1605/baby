@@ -489,18 +489,31 @@ argument for its own tag rather than waiting to be batched.
       even when the source is identical, so each candidate gets its own run rather
       than inheriting the last one's. Record the size and SHA256 here.
 
-      Candidate, built from a clean tree at `88c588d`:
+      Candidate, built from a clean tree at `ba55c75`:
       ```
-      Baby_6.0.2_x64-setup.exe   19,056,383 bytes
-      7FE4B7241A6056BF07060F2F0E44F64E27BF67981322CD849EFF1C5B11813E3A
+      Baby_6.0.2_x64-setup.exe   19,061,223 bytes
+      045D204B71C37BA3F709D8E2415728C77B97F9DF7D8A8277AFE7BD6B210F3A5D
       ```
-      Supersedes `3461DB69…` (clean at `a43a226`), which shipped a `RepairPanel`
-      that crashed the app on open. That one was verified only against the Vite dev
-      server, which runs the source; this one was checked by serving the built
-      `dist` — the exact files in the payload — against a live backend, opening and
-      closing Setup & repair twice with no React error. **A production React bundle
+      Supersedes `7FE4B724…` (clean at `88c588d`), which is functionally fine but
+      predates the two things this candidate exists for: the version line in Setup &
+      repair, and the installer's own check that what it wrote is what it carried.
+      **`7FE4B724…` is the binary that was run over a 6.0.0 install, reported that it
+      had finished, and replaced nothing** — so it is also the one to reproduce that
+      with, if the upgrade rows above want a before-and-after.
+
+      `7FE4B724…` in turn superseded `3461DB69…` (clean at `a43a226`), which shipped
+      a `RepairPanel` that crashed the app on open. That one was verified only
+      against the Vite dev server, which runs the source. **A production React bundle
       is a different artifact from its source, and the crash was a production
-      invariant.**
+      invariant.** Every candidate since has been checked by driving the built
+      `dist` — the exact files in the payload — rather than the source. For this one
+      that meant a scripted stub backend, because the version line and the game-mode
+      frame are backend changes that a live 6.0.0-era process cannot serve: the
+      version line renders quiet when the two versions agree, carries the
+      half-applied warning when they disagree, and stays quiet when the shell
+      version is absent; a new chat appears in the list on its own with "Show
+      archived" untouched; and clicking a chat resumes it, falling back to the
+      read-only viewer with a toast on the backend's 409.
       Verified before it left this machine: 72 payload `.py` files, 0 content
       differences against HEAD (43 differ in line endings only, which is
       `core.autocrlf` and not a change); the SPA `dist` identical to the one just
