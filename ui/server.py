@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import sys
+import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -795,6 +796,27 @@ def create_app(ctx: UIContext) -> FastAPI:
             "keys": keymod.key_status(mode),
             "can_finish": keymod.can_finish(mode),
         }
+
+    @app.post("/api/setup/keys/signup")
+    async def api_setup_keys_signup(body: dict):
+        """Open a provider's signup page in the user's real browser.
+
+        The shell is a WebView2 window with no new-window handler, so the wizard's
+        `<a target="_blank">` was silently dropped and the links did nothing -- the
+        one step where a user without a key has to leave the app.
+
+        The client sends an ENV NAME, never a URL, and it is resolved against the
+        frozen KEYS tuple. That is the whole security argument: anything that can
+        reach 127.0.0.1:8765 can call this, so it must not be able to choose the
+        destination. A `url` in the body is ignored, not honoured.
+        """
+        from core import keys as keymod
+
+        s = keymod.spec(str(body.get("env") or ""))
+        if s is None:
+            return JSONResponse({"error": "unknown key"}, status_code=400)
+        opened = await asyncio.to_thread(webbrowser.open, s.signup_url)
+        return {"env": s.env, "opened": bool(opened), "url": s.signup_url}
 
     @app.post("/api/setup/keys/validate")
     async def api_setup_keys_validate(request: Request):

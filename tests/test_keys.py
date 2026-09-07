@@ -825,3 +825,84 @@ def test_the_shipped_heavy_model_is_not_the_retired_one():
 
     cfg = yaml.safe_load(paths._TEMPLATE.read_text(encoding="utf-8"))
     assert cfg["models"]["nim_heavy"]["model"] != "z-ai/glm-5.2"
+
+
+# --- the signup links had nowhere to go (v6.0.2) ------------------------------
+# The wizard's "Get a <provider> key" links were plain <a target="_blank"> inside
+# a WebView2 window with no new-window handler, so clicking one did nothing --
+# on the single step where a user without a key has to leave the app.
+#
+# The endpoint takes an ENV NAME and resolves it against the frozen KEYS tuple.
+# Anything that can reach 127.0.0.1:8765 can call it, so the destination must not
+# be the caller's to choose. These tests exist to keep it that way.
+
+
+def _signup_spy(monkeypatch):
+    """Capture what would have been handed to the browser, and open nothing."""
+    opened: list[str] = []
+    import ui.server as server
+
+    monkeypatch.setattr(
+        server.webbrowser, "open", lambda url, *a, **k: (opened.append(url), True)[1]
+    )
+    return opened
+
+
+def test_signup_opens_the_providers_own_page(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    opened = _signup_spy(monkeypatch)
+    try:
+        for env, expect in (
+            ("OPENROUTER_API_KEY", "https://openrouter.ai/keys"),
+            ("GEMINI_API_KEY", "https://aistudio.google.com/apikey"),
+            ("NVIDIA_API_KEY", "https://build.nvidia.com/"),
+        ):
+            opened.clear()
+            r = client.post("/api/setup/keys/signup", json={"env": env})
+            assert r.status_code == 200, env
+            assert r.json() == {"env": env, "opened": True, "url": expect}
+            assert opened == [expect], env
+    finally:
+        _close(db)
+
+
+def test_signup_refuses_an_unknown_key_and_opens_nothing(tmp_path, monkeypatch):
+    client, db = _client(tmp_path, monkeypatch)
+    opened = _signup_spy(monkeypatch)
+    try:
+        for body in ({"env": "SECRET_KEY"}, {"env": ""}, {}):
+            r = client.post("/api/setup/keys/signup", json=body)
+            assert r.status_code == 400, body
+        assert opened == [], "a rejected request still reached the browser"
+    finally:
+        _close(db)
+
+
+def test_signup_will_not_open_a_url_the_caller_supplies(tmp_path, monkeypatch):
+    """The whole security argument for this endpoint. A caller names a KEY, never
+    a destination -- otherwise anything able to reach the local port could make
+    Baby open arbitrary pages in the user's browser."""
+    client, db = _client(tmp_path, monkeypatch)
+    opened = _signup_spy(monkeypatch)
+    try:
+        r = client.post(
+            "/api/setup/keys/signup",
+            json={
+                "env": "OPENROUTER_API_KEY",
+                "url": "https://evil.example/steal",
+                "signup_url": "https://evil.example/steal",
+            },
+        )
+        assert r.status_code == 200
+        assert opened == ["https://openrouter.ai/keys"]
+        assert "evil.example" not in r.text
+
+        # A URL smuggled in place of the env name is an unknown key, not a target.
+        opened.clear()
+        r = client.post(
+            "/api/setup/keys/signup", json={"env": "https://evil.example/steal"}
+        )
+        assert r.status_code == 400
+        assert opened == []
+    finally:
+        _close(db)
