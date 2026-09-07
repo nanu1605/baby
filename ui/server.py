@@ -706,14 +706,24 @@ def create_app(ctx: UIContext) -> FastAPI:
         tray: an assistant that seizes the screen on every boot is one the user
         turns off.
 
-        Refused without BABY_SHELL_EXE rather than guessing an install path. Only
-        the native shell sets it, and a Run value pointing at nothing would fail
-        silently every boot with nothing to explain why.
+        Turning it ON is refused without BABY_SHELL_EXE rather than guessing an
+        install path. Only the native shell sets it, and a Run value pointing at
+        nothing would fail silently every boot with nothing to explain why.
+
+        Turning it OFF needs no such path -- deleting the value is the same call
+        whatever wrote it. Requiring the exe for both meant a backend the shell had
+        merely attached to could not switch autostart off at all.
         """
         if "enabled" not in body:
             return JSONResponse({"error": "enabled is required"}, status_code=400)
         exe = os.environ.get("BABY_SHELL_EXE")
-        if not autostart.supported() or not exe:
+        want = bool(body["enabled"])
+        if not autostart.supported():
+            return JSONResponse(
+                {"error": "Baby can only start with Windows on Windows."},
+                status_code=400,
+            )
+        if want and not exe:
             return JSONResponse(
                 {
                     "error": "Baby can only add itself to Windows startup when it is "
@@ -721,7 +731,6 @@ def create_app(ctx: UIContext) -> FastAPI:
                 },
                 status_code=400,
             )
-        want = bool(body["enabled"])
         if want:
             ok = await asyncio.to_thread(autostart.enable, exe)
         else:

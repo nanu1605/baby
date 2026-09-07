@@ -130,6 +130,7 @@ export default function RepairPanel() {
   // entry blocked from Task Manager, and a toggle that flips anyway would lie.
   const toggleAutostart = async () => {
     if (!autostart?.supported) return;
+    if (!autostart.enabled && !autostart.can_enable) return;
     setNote("");
     setAutoBusy(true);
     const now = await postAutostart(!autostart.enabled);
@@ -266,11 +267,22 @@ export default function RepairPanel() {
                   ? "Baby starts with Windows, minimised to the tray."
                   : "Baby only starts when you open it."}
               </p>
+              {/* Turning it OFF is always offered when it is on, even here, where
+                  Baby cannot turn it on: a setting you can switch on and not off is
+                  the bug this release is named after. */}
+              {!autostart.enabled && !autostart.can_enable && (
+                <p className="repair-note">
+                  This copy of Baby is running from a checkout rather than the
+                  installed app, so it has no shortcut to add to startup.
+                </p>
+              )}
               <div className="repair-actions">
                 <button
                   type="button"
                   className="repair-btn"
-                  disabled={autoBusy}
+                  disabled={
+                    autoBusy || (!autostart.enabled && !autostart.can_enable)
+                  }
                   onClick={toggleAutostart}
                 >
                   {autostart.enabled

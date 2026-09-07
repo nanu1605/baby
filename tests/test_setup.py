@@ -262,12 +262,13 @@ def test_autostart_endpoint_round_trips(tmp_path, monkeypatch):
         assert client.get("/stats").json()["autostart"] == {
             "supported": True,
             "enabled": False,
+            "can_enable": True,
         }
     finally:
         asyncio.run(db.close())
 
 
-def test_autostart_is_refused_without_an_installed_exe(tmp_path, monkeypatch):
+def test_turning_autostart_on_is_refused_without_an_installed_exe(tmp_path, monkeypatch):
     """A source checkout is started by a developer typing a command. Writing a Run
     value that points at a guessed install path would fail silently every boot."""
     monkeypatch.delenv("BABY_SHELL_EXE", raising=False)
@@ -277,7 +278,29 @@ def test_autostart_is_refused_without_an_installed_exe(tmp_path, monkeypatch):
         r = client.post("/api/setup/autostart", json={"enabled": True})
         assert r.status_code == 400
         assert state["calls"] == [], "it tried to write anyway"
-        assert client.get("/stats").json()["autostart"]["supported"] is False
+        assert client.get("/stats").json()["autostart"]["can_enable"] is False
+    finally:
+        asyncio.run(db.close())
+
+
+def test_turning_autostart_off_never_needs_the_exe(tmp_path, monkeypatch):
+    """BABY_SHELL_EXE is missing whenever the shell ATTACHED to a backend it did not
+    spawn -- an always-on service, or a `run.py` left running. Requiring it for both
+    directions meant those users could not switch autostart off from inside Baby at
+    all, while /stats hid the section that would have told them it was on."""
+    monkeypatch.delenv("BABY_SHELL_EXE", raising=False)
+    state = _stub_autostart(monkeypatch, start=True)
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        stats = client.get("/stats").json()["autostart"]
+        assert stats == {"supported": True, "enabled": True, "can_enable": False}, (
+            "the repair panel keys the whole section off `supported`, so this is "
+            "the difference between an off switch and a one-way trip"
+        )
+        r = client.post("/api/setup/autostart", json={"enabled": False})
+        assert r.status_code == 200
+        assert r.json()["enabled"] is False
+        assert state["calls"] == [("disable", None)]
     finally:
         asyncio.run(db.close())
 

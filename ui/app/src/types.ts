@@ -180,8 +180,16 @@ export interface SetupState {
  *  `supported` is false off Windows and in a source checkout, where there is no
  *  installed exe for a Run value to point at. */
 export interface AutostartState {
+  /** Windows. Whether the setting exists at all, and so whether to show it. */
   supported: boolean;
+  /** Read live from the registry every time — never a mirrored flag. */
   enabled: boolean;
+  /**
+   * Whether it can be turned ON: that needs the shell's own path (BABY_SHELL_EXE),
+   * which a backend the shell only attached to does not have. Turning it OFF never
+   * needs it, which is why this is separate from `supported`.
+   */
+  can_enable: boolean;
 }
 
 /** GET /api/setup/plan — the ordered provisioning checklist for the chosen mode. */

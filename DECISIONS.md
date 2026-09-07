@@ -2471,3 +2471,58 @@ Running log of non-obvious choices made during the build. Newest last.
      loaders take an explicit `local_files_only` argument; a test pins the argument
      and the reason, so the next person does not "simplify" it back to an env var
      that cannot work.
+
+161. **Autostart shipped four ways to fail quietly, all found by re-reading #159
+     rather than by running it.** Worth recording as a group, because they share one
+     mistake: every one of them was invisible in exactly the mode the feature exists
+     for. A window is the thing that tells a user what happened, and `--minimized`
+     removes it -- so every path that used to end at the window had to be checked
+     again, and none of them had been.
+
+     *The tray said "Baby - ready" while nothing was running.* It is built at
+     `Status::Ready` and only ever moves when `run_activity_tray` connects to
+     `/ws/activity` -- which a backend that never came up never allows. Before
+     autostart that was cosmetic: the splash was on screen carrying the real error.
+     At logon the tray IS the whole UI, so a failed start looked exactly like a
+     successful one. The tray now starts at `Starting` (amber, "Baby - starting..."),
+     and `show_failure` -- the failure half of `show_splash_message`, split out --
+     reddens it with "Baby - not running. Click to see why." A comment written during
+     #159 claimed "the tray is already red from the same condition". It was not. That
+     claim is now true, which is the only reason it is allowed to stay.
+
+     *`--minimized` was read from argv every time it was asked.* It describes the
+     LAUNCH, not the process, so a shell started at logon stayed silent for its
+     entire life. The sharp edge: after a failed logon start, double-clicking the
+     shortcut brought up NOTHING. The single-instance callback saw no backend, re-ran
+     attach-or-spawn, hit the same failure, and wrote the message into a window still
+     hidden by a flag set at boot. It is now `AppState::minimized`, seeded once and
+     cleared the moment anyone asks for the window -- `show_main` (tray icon, tray
+     menu) and the single-instance callback, on both branches. A test pins that argv
+     is read exactly once, at the seed.
+
+     *The window was created visible and hidden in `setup()`.* Too late: Tauri creates
+     the window before `setup` runs, so a logon start really did throw a 1280x800
+     splash on screen and take it away again, at the busiest moment of the machine's
+     day. `tauri.conf.json` now carries `"visible": false` and `setup()` SHOWS the
+     window unless minimised -- the same one branch, moved to the side of the gap that
+     works.
+
+     *The off switch disappeared whenever the shell attached to a backend it did not
+     spawn.* `autostart.state()` folded two questions into one flag: `supported` meant
+     both "Windows has this setting" and "we know an exe to register". `BABY_SHELL_EXE`
+     is set only by a shell that SPAWNED its backend, so anyone attached to an
+     always-on service or a `run.py` left running lost the entire section -- including
+     the control to turn autostart off, while it was on. That is the same one-way trip
+     as #158, shipped in the same release that fixed it. `state()` now reports
+     `can_enable` separately, the endpoint requires the exe only for `enabled: true`
+     (deleting a Run value needs no path, whatever wrote it), and the panel shows the
+     off switch whenever the setting is on.
+
+     **What this cost, and what it did not buy.** The findings came from an
+     adversarial pass over the release candidate whose verification stage never ran --
+     22 of its 24 agents died on a session limit, and its "0 confirmed" was an
+     artifact of counting zero votes, not a verdict. The four were confirmed by
+     reading `main.rs` and `core/autostart.py` directly, which is why they are fixed
+     here rather than filed. Ten mutations, ten caught. But every gate is a
+     source-shape gate: they prove the four things are still written down, not that
+     the shell behaves. Only a real logon proves that, and it is on the checklist.

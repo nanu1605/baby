@@ -34,7 +34,12 @@ why the clean-VM matrix never saw them.
   it; after a reboot you launched it by hand. There is now a toggle in Setup &
   repair. It comes up minimised to the tray rather than taking the screen, needs
   no admin, can be switched off from Windows' own startup list, and is removed
-  when Baby is uninstalled.
+  when Baby is uninstalled. Starting this way stays honest about itself: the tray
+  reads "starting", then "ready" only once the backend really is, and turns red
+  with the reason if it never comes up -- rather than sitting green over nothing.
+  Nothing flashes on screen at logon, opening Baby from its shortcut always shows
+  the window even when the backend is down, and the switch to turn startup back
+  off is always there, however Baby happens to be running.
 
 - **Two setup failures that explained themselves badly.** A run that broke where
   no download step was active reported raw library text -- "Cannot send a request,

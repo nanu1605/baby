@@ -123,13 +123,20 @@ def disable() -> bool:
 def state(exe: str | Path | None) -> dict:
     """What /stats reports: whether the toggle can be offered, and its position.
 
-    `exe` is BABY_SHELL_EXE, which only the native shell sets. Without it there is
-    nothing to point a Run value at -- a source checkout is started by a developer
-    typing a command, not by a shortcut -- so the toggle is not offered.
+    `exe` is BABY_SHELL_EXE, which only the native shell sets, and it is needed to
+    turn the setting ON -- a Run value has to point at something, and a source
+    checkout is started by a developer typing a command, not by a shortcut.
+
+    It is NOT needed to read the setting or to turn it OFF, and folding the two into
+    one flag hid the whole section from anyone whose shell attached to a backend it
+    did not spawn (an always-on service, a `run.py` left running). Those users could
+    have Baby starting at every logon with no way inside the app to stop it -- the
+    same one-way trip this release exists to fix.
     """
     return {
-        "supported": supported() and bool(exe),
+        "supported": supported(),
         "enabled": enabled(),
+        "can_enable": supported() and bool(exe),
     }
 
 

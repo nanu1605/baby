@@ -358,8 +358,20 @@ prove.
       Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name Baby
       ```
       Expect `"…\Baby.exe" --minimized`. After the reboot Baby must be **in the
-      tray with no window**, and the backend must be up (the tray goes green).
+      tray with no window**, and **nothing may flash on screen** during the logon —
+      watch for it, that is the one thing this pass exists to catch. The tray starts
+      amber ("Baby - starting…") and goes green only once the backend is really up.
       Click the tray icon: the window opens on a working UI, not a splash.
+- [ ] **A logon start that fails must say so.** With autostart on, rename
+      `%LOCALAPPDATA%\baby\.venv` and reboot. The tray must go **red**, reading
+      "Baby - not running. Click to see why." — not green, and not amber forever.
+      Click it: the window opens carrying the reason. Then, with the backend still
+      down, **launch Baby from its shortcut**: a window must appear. (Before this
+      release, both of those showed nothing at all.) Rename the venv back.
+- [ ] **The off switch survives an attached backend.** Start `run.py --all` by hand,
+      then open Baby's window: the "Start with Windows" section must still be there,
+      showing the current state, with the off switch usable. Only *turning it on* may
+      be unavailable in that configuration, and the panel must say why.
 - [ ] **Turn it off and reboot again.** Baby must not start. Then turn it on once
       more and **uninstall** with autostart still enabled: the Run value must be
       gone afterwards, whether or not you ticked "delete application data".

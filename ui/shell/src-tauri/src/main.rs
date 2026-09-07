@@ -57,13 +57,28 @@ struct AppState {
     /// True while attach-or-spawn (incl. the minutes-long first-run venv build) is in
     /// flight, so a relaunch that re-triggers setup can't start a second concurrent run.
     starting: AtomicBool,
+    /// "Nobody has asked for the window yet." Seeded from `--minimized`, and cleared
+    /// the moment someone does ask (tray click, tray "Open Baby", a second launch).
+    ///
+    /// Deliberately NOT a re-read of the process arguments. `--minimized` describes
+    /// the LAUNCH, not the process: reading argv every time meant a shell started at
+    /// logon stayed silent for its whole life, so double-clicking the shortcut after a
+    /// failed logon start opened nothing at all and looked like Baby was broken.
+    minimized: AtomicBool,
 }
 
 #[derive(Clone, Copy)]
 enum Status {
+    /// Before anything has been verified. Amber, not green: at logon the tray is the
+    /// only thing on screen, and starting it at "ready" states as fact something
+    /// nothing has checked yet.
+    Starting,
     Ready,
     Busy,
     Confirm,
+    /// Baby is not running and said why. Only the window carries the reason, so the
+    /// tooltip's job is to send the user to it.
+    Error,
 }
 
 /// Fold of /ws/activity into a tray colour. Mirrors ui/tray.py TrayState using the
@@ -104,17 +119,21 @@ impl Fold {
 fn status_icon(status: Status) -> Image<'static> {
     let bytes: &'static [u8] = match status {
         Status::Ready => include_bytes!("../icons/status/green.png").as_slice(),
-        Status::Busy => include_bytes!("../icons/status/amber.png").as_slice(),
-        Status::Confirm => include_bytes!("../icons/status/red.png").as_slice(),
+        Status::Starting | Status::Busy => {
+            include_bytes!("../icons/status/amber.png").as_slice()
+        }
+        Status::Confirm | Status::Error => include_bytes!("../icons/status/red.png").as_slice(),
     };
     Image::from_bytes(bytes).expect("bundled status png is valid")
 }
 
 fn status_tooltip(status: Status) -> &'static str {
     match status {
+        Status::Starting => "Baby - starting...",
         Status::Ready => "Baby - ready",
         Status::Busy => "Baby - working",
         Status::Confirm => "Baby - waiting for your confirmation",
+        Status::Error => "Baby - not running. Click to see why.",
     }
 }
 
@@ -248,7 +267,7 @@ fn ensure_venv(app: &AppHandle, layout: &Layout) -> bool {
     // A release built without the bundled uv.exe (BABY_UV_EXE unset) can't bootstrap;
     // say so plainly rather than letting first_run.ps1 fail on a missing `uv`.
     if !script.is_file() || !uv.is_file() {
-        show_splash_message(app, "First-run setup files are missing. Please reinstall Baby.");
+        show_failure(app, "First-run setup files are missing. Please reinstall Baby.");
         return false;
     }
     show_splash_message(
@@ -270,11 +289,11 @@ fn ensure_venv(app: &AppHandle, layout: &Layout) -> bool {
         Ok(out) if out.status.success() => true,
         Ok(out) => {
             let msg = last_error_line(&out.stdout, &out.stderr);
-            show_splash_message(app, &format!("Baby couldn't finish setup: {msg}"));
+            show_failure(app, &format!("Baby couldn't finish setup: {msg}"));
             false
         }
         Err(e) => {
-            show_splash_message(app, &format!("Baby couldn't run first-run setup: {e}"));
+            show_failure(app, &format!("Baby couldn't run first-run setup: {e}"));
             false
         }
     }
@@ -295,7 +314,7 @@ fn spawn_backend(app: &AppHandle, layout: &Layout) {
     } else if layout.installed() {
         // Installed but the venv isn't built yet: first-run setup (W3) hasn't
         // finished. Don't fall back to a system python that lacks Baby's deps.
-        show_splash_message(
+        show_failure(
             app,
             "Baby is still finishing first-run setup. Reopen it once setup completes.",
         );
@@ -329,7 +348,7 @@ fn spawn_backend(app: &AppHandle, layout: &Layout) {
             *app.state::<AppState>().spawned.lock().unwrap() = Some(child);
             watch_backend(app.clone());
         }
-        Err(e) => show_splash_message(app, &format!("Failed to start Baby backend: {e}")),
+        Err(e) => show_failure(app, &format!("Failed to start Baby backend: {e}")),
     }
 }
 
@@ -409,6 +428,9 @@ fn show_backend_died(app: &AppHandle, code: Option<i32>) {
          Details are in %LOCALAPPDATA%\\baby\\logs\\baby.log"
     );
     show_overlay(app, "baby-backend-died", "#f87171", &msg);
+    // The activity socket is gone with the backend, so nothing else will ever move
+    // the tray off whatever it was last set to -- including green.
+    set_tray(app, Status::Error);
 }
 
 /// Cover the live page with one line of text.
@@ -432,7 +454,7 @@ fn show_overlay(app: &AppHandle, id: &str, colour: &str, msg: &str) {
              (document.body||document.documentElement).appendChild(d);}})();"
         );
         let _ = w.eval(&js);
-        if !start_minimized() {
+        if !minimized(app) {
             let _ = w.show();
         }
     }
@@ -455,8 +477,24 @@ fn attach_only() -> bool {
 /// there is no such service, so reusing it would leave Baby waiting for something
 /// that is never coming and then showing "Baby service did not come up". This flag
 /// spawns exactly as a normal launch does and only skips the reveal.
+///
+/// Read ONCE, into `AppState::minimized`. Everything afterwards asks `minimized()`,
+/// because the answer stops being true as soon as the user asks for the window.
 fn start_minimized() -> bool {
     std::env::args().any(|a| a == "--minimized")
+}
+
+/// Whether the window should still stay out of the way.
+fn minimized(app: &AppHandle) -> bool {
+    app.state::<AppState>().minimized.load(Ordering::SeqCst)
+}
+
+/// The user asked for the window. Nothing after this point may hide from them --
+/// not a later reveal, not an error overlay, not a failed restart.
+fn user_asked(app: &AppHandle) {
+    app.state::<AppState>()
+        .minimized
+        .store(false, Ordering::SeqCst);
 }
 
 /// Reveal the real UI once the backend is ready. Dev already renders the live SPA via
@@ -467,7 +505,7 @@ fn reveal(app: &AppHandle) {
     // clicked, but never take the screen. Only the AUTOMATIC reveal is suppressed --
     // the tray's "Open Baby" and the single-instance callback still show, because
     // those are the user asking.
-    if start_minimized() {
+    if minimized(app) {
         navigate_to_backend_inner(app, false);
         return;
     }
@@ -504,7 +542,7 @@ fn attach_or_spawn_inner(app: &AppHandle) {
         if wait_ready(READY_TIMEOUT) {
             reveal(app);
         } else {
-            show_splash_message(
+            show_failure(
                 app,
                 "Baby service did not come up. Check %LOCALAPPDATA%\\baby\\logs\\baby.log",
             );
@@ -521,7 +559,7 @@ fn attach_or_spawn_inner(app: &AppHandle) {
             spawn_backend(app, &layout)
         }
         None => {
-            show_splash_message(
+            show_failure(
                 app,
                 "Baby backend not found. Start it in the repo: uv run python run.py --all",
             );
@@ -531,7 +569,7 @@ fn attach_or_spawn_inner(app: &AppHandle) {
     if wait_ready(READY_TIMEOUT) {
         reveal(app);
     } else {
-        show_splash_message(
+        show_failure(
             app,
             "Baby backend did not become ready. Start it: uv run python run.py --all",
         );
@@ -566,7 +604,11 @@ fn navigate_to_backend_inner(app: &AppHandle, show: bool) {
     }
 }
 
+/// Put the window in front. Every caller is the user asking for it -- the tray icon,
+/// the tray menu, a second launch -- so this also ends minimised mode: from here on
+/// an error overlay or a later reveal must be allowed to show itself.
 fn show_main(app: &AppHandle) {
+    user_asked(app);
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
@@ -600,14 +642,31 @@ fn show_splash_message(app: &AppHandle, msg: &str) {
             "(function(){{var e=document.querySelector('.wrap');if(e){{e.innerHTML=\"<div style='color:#f87171;max-width:32rem'>{safe}</div>\";}}}})();"
         );
         let _ = w.eval(&js);
-        // Started at logon, a failure must not throw a window at the user before
-        // they have touched anything -- but it must not vanish either. The message
-        // is written regardless, the tray is already red from the same condition,
-        // and clicking it opens the window showing exactly this text.
-        if !start_minimized() {
+        // Started at logon, a message must not throw a window at the user before
+        // they have touched anything -- but it must not vanish either. The text is
+        // written regardless, and clicking the tray opens the window showing it.
+        // Failures additionally redden the tray; see show_failure, which is what
+        // makes "clicking the tray" something the user has any reason to do.
+        if !minimized(app) {
             let _ = w.show();
         }
     }
+}
+
+/// Say why Baby is not running: the message on the splash, AND the tray in red.
+///
+/// Splitting this from show_splash_message is the whole point. Started at logon
+/// there is no window on screen, so a message written into a hidden splash is a
+/// message nobody will ever read -- and the tray sat at green "Baby - ready" while
+/// the backend was not running at all, which is worse than saying nothing. The tray
+/// is the only surface a minimised failure has.
+///
+/// Not used for progress ("Setting up Baby..."), which is not a failure and must
+/// not colour the tray as one. If the backend does come up later, the activity
+/// socket connects and puts the tray back to ready on its own.
+fn show_failure(app: &AppHandle, msg: &str) {
+    show_splash_message(app, msg);
+    set_tray(app, Status::Error);
 }
 
 fn set_tray(app: &AppHandle, status: Status) {
@@ -650,8 +709,8 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let quit = MenuItemBuilder::with_id("quit", "Quit Baby (app)").build(app)?;
     let menu = MenuBuilder::new(app).items(&[&open, &reload, &quit]).build()?;
     TrayIconBuilder::with_id("main")
-        .icon(status_icon(Status::Ready))
-        .tooltip(status_tooltip(Status::Ready))
+        .icon(status_icon(Status::Starting))
+        .tooltip(status_tooltip(Status::Starting))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -687,6 +746,13 @@ fn main() {
             // failed-setup splash tells the user to reopen Baby, so honor that (the
             // starting-guard keeps it from racing an in-flight run). Backend already
             // up → just focus.
+            //
+            // Someone double-clicked Baby, so minimised mode is over whichever branch
+            // runs. Without this, a shell started at logon whose backend never came up
+            // opened NOTHING when relaunched: the retry went down the else branch, hit
+            // the same failure, and wrote its message into a window still hidden by a
+            // flag from an hour earlier.
+            user_asked(app);
             if backend_up() {
                 show_main(app);
             } else {
@@ -697,15 +763,20 @@ fn main() {
         .manage(AppState {
             spawned: Mutex::new(None),
             starting: AtomicBool::new(false),
+            minimized: AtomicBool::new(start_minimized()),
         })
         .setup(|app| {
             build_tray(app)?;
 
-            // No `visible` key in tauri.conf.json means the window starts shown, so
-            // a logon launch would flash the splash before anything hid it again.
-            if start_minimized() {
+            // The window is created hidden (`"visible": false` in tauri.conf.json) and
+            // shown here, one statement later, so a normal launch still paints the
+            // splash immediately. Hiding it here INSTEAD would have been too late: the
+            // window is created before `setup` runs, so a logon start really did flash
+            // a 1280x800 window on screen before this line could take it away again --
+            // at the one moment (logon) the machine is slowest and the gap is widest.
+            if !minimized(app.handle()) {
                 if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.hide();
+                    let _ = win.show();
                 }
             }
 
