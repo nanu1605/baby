@@ -110,3 +110,91 @@ def test_vcredist_passes_when_all_dlls_present(monkeypatch):
     monkeypatch.setattr(health.os.path, "exists", lambda p: True)
     status, _ = health.check_vcredist()
     assert status == "pass"
+
+
+# --- the local brain is not installed by anything we ship --------------------
+# On a public Full install nothing puts Ollama on the machine, so an unreachable
+# daemon is the ORDINARY first-run outcome, not an exceptional one. A clean VM
+# showed a user two lines of `ConnectError: [WinError 10061] No connection could
+# be made because the target machine actively refused it` and a Retry button that
+# re-ran the same check forever.
+
+
+class _Refused(Exception):
+    """Stands in for httpx.ConnectError without importing httpx into the test."""
+
+
+def _patch_httpx(monkeypatch, get_raises):
+    """Give core.health a fake httpx whose .get raises what the test asks for."""
+    import sys
+    import types
+
+    fake = types.ModuleType("httpx")
+    fake.TransportError = _Refused
+
+    def _get(*_a, **_k):
+        raise get_raises
+
+    fake.get = _get
+    monkeypatch.setitem(sys.modules, "httpx", fake)
+
+
+def test_an_unreachable_ollama_reads_as_a_sentence_not_a_winerror(monkeypatch):
+    _patch_httpx(monkeypatch, _Refused("[WinError 10061] actively refused it"))
+    status, detail = health.check_ollama()
+    assert status == "fail"
+    assert "WinError" not in detail and "ConnectError" not in detail
+    assert "ollama.com/download" in detail
+    # It must not STATE the software is absent -- a refused connection cannot tell
+    # "not installed" from "installed but stopped", and sending someone to
+    # reinstall what they already have is its own dead end. Conditional only.
+    assert "If it isn't installed" in detail
+
+
+def test_the_model_check_blames_the_daemon_not_the_weights(monkeypatch):
+    """One dead daemon used to produce two different diagnoses, the second wrong."""
+    _patch_httpx(monkeypatch, _Refused("refused"))
+    status, detail = health.check_ollama_model()
+    assert status == "fail"
+    assert "not pulled" not in detail
+    assert detail == health.check_ollama()[1]
+
+
+def test_a_local_brain_only_failure_is_recognised():
+    results = [
+        Result("torch", True, True, "pass", "ok"),
+        Result("ollama", True, False, "fail", "no daemon"),
+        Result("ollama-model", True, False, "fail", "no daemon"),
+    ]
+    assert health.local_brain_only_failure(results)
+
+
+def test_any_other_failure_disqualifies_the_cloud_fallback():
+    """Switching modes must only be offered when it would actually fix the run."""
+    results = [
+        Result("whisper", True, False, "fail", "model missing"),
+        Result("ollama", True, False, "fail", "no daemon"),
+    ]
+    assert not health.local_brain_only_failure(results)
+
+
+def test_a_healthy_run_is_not_a_local_brain_failure():
+    assert not health.local_brain_only_failure([Result("torch", True, True, "pass", "ok")])
+
+
+def test_an_optional_local_brain_failure_still_counts_as_clean():
+    """Only REQUIRED failures gate, matching overall_ok."""
+    results = [Result("ollama", False, False, "fail", "no daemon")]
+    assert not health.local_brain_only_failure(results)
+
+
+def test_one_dead_daemon_is_reported_once_not_twice():
+    """Both local-brain checks fail with the same sentence; the banner said it
+    twice and read as two separate problems."""
+    same = "Baby can't reach Ollama at http://x"
+    results = [
+        Result("ollama", True, False, "fail", same),
+        Result("ollama-model", True, False, "fail", same),
+    ]
+    msg = health.readiness_summary(results)
+    assert msg.count(same) == 1

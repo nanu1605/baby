@@ -8,7 +8,9 @@ missing setup.json is a no-op so a dev checkout is unchanged.
 from __future__ import annotations
 
 import asyncio
+import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from core import paths
@@ -158,5 +160,54 @@ def test_stats_exposes_setup_state(tmp_path, monkeypatch):
         assert stats["setup"]["complete"] is False
         # _client sets BABY_HOME (installed layout) -> the wizard-gate signal is true.
         assert stats["setup"]["installed"] is True
+    finally:
+        asyncio.run(db.close())
+
+
+# --- a failed download must reach the user as the message we wrote -----------
+# Reported from a clean VM with the network pulled mid-provision: the wizard
+# showed "EventBus.publish() got multiple values for argument 'kind'" as the
+# provisioning failure. `classify_error` returns a dict with a `kind` key and the
+# route splats it into `bus.publish("setup_progress", "setup", **ev)`, so the
+# payload key bound to publish's own parameter. The code reporting the failure
+# was the code that failed, and a raw TypeError replaced the retryable message
+# W3 wrote specifically so a stranger never sees a Python trace.
+
+
+def test_a_classified_step_failure_surfaces_its_message_not_a_traceback(tmp_path, monkeypatch):
+    from core import paths, provision
+
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        paths.write_setup({"install_mode": "cloud_only"})
+
+        async def failing_provision(mode, *, on_event, browser=False):
+            # Exactly what the real walk emits when a download cannot connect.
+            on_event(provision._event(
+                "kokoro", "error", status="error",
+                **provision.classify_error("getaddrinfo failed")
+            ))
+            return {"ok": False}
+
+        monkeypatch.setattr(provision, "provision", failing_provision)
+        assert client.post("/api/setup/provision").json()["status"] == "started"
+
+        for _ in range(200):
+            if not client.get("/api/setup/status").json()["provisioning"]:
+                break
+        else:
+            pytest.fail("provisioning never finished")
+
+        progress = client.get("/api/setup/status").json()["progress"]
+        kokoro = progress["kokoro"]
+        assert kokoro["status"] == "error"
+        assert kokoro["kind"] == "no_network"
+        assert kokoro["retryable"] is True
+        assert "Couldn't reach the download server" in kokoro["message"]
+
+        # The failure path must not itself fail: no step may carry a Python error.
+        blob = json.dumps(progress)
+        for leak in ("TypeError", "Traceback", "multiple values for argument"):
+            assert leak not in blob, f"{leak} leaked into the wizard: {blob}"
     finally:
         asyncio.run(db.close())

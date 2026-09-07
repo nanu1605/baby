@@ -198,6 +198,9 @@ export interface SetupProgressEvent {
   human?: string;
   bytes_done?: number;
   bytes_total?: number;
+  /** verify only: the run failed, and ONLY the Full-mode local-brain checks did.
+   *  Cloud-only would work on this machine as it stands. */
+  local_brain_only?: boolean;
 }
 export interface SetupStatus {
   provisioning: boolean;

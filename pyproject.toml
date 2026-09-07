@@ -1,6 +1,6 @@
 [project]
 name = "baby"
-version = "6.0.0"
+version = "6.0.1"
 description = "Baby — local-first personal AI assistant for Windows 11"
 license = "MIT"
 license-files = ["LICENSE"]

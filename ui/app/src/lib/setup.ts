@@ -148,6 +148,44 @@ export function stepGlyph(status: string): string {
   return "○"; // pending
 }
 
+/**
+ * May the wizard offer "use cloud only instead" from a failed provisioning run?
+ *
+ * Only when the verify step says the failure was confined to the local brain. A
+ * fresh Full install on a machine without Ollama fails there and the error state
+ * renders one button -- Retry -- which re-runs the identical check and fails the
+ * identical way. The user is parked on a screen with no satisfiable exit while
+ * cloud-only, which works on that machine right now, sits one step behind them.
+ *
+ * Two ways in, because there are two ways to get stuck.
+ *
+ * The verify flag is the server's own judgement and is preferred: it is the side
+ * that knows which health checks are mode-gated. A missing flag means no offer, so
+ * an older backend degrades to the previous behaviour rather than proposing a
+ * switch that fixes nothing.
+ *
+ * But verify does not always run. `pull_ollama_model` RAISES once its retries are
+ * spent, which aborts the walk -- so a failed 6.4 GB model pull, the single
+ * scariest step of a first run, never reaches verify and would otherwise show the
+ * same Retry-only dead end this function exists to remove. So a run whose only
+ * failing steps are local-brain steps qualifies too.
+ *
+ * `provision` is excluded from that count deliberately: it is not a dependency but
+ * the endpoint's restatement of whichever exception ended the walk, so counting it
+ * would make every local-brain failure look like a broader one.
+ */
+const _LOCAL_BRAIN_DEPS = new Set(["ollama-daemon", "ollama-model"]);
+
+export function canFallBackToCloud(
+  progress: Record<string, SetupProgressEvent>,
+): boolean {
+  if (progress.verify?.local_brain_only === true) return true;
+  const failed = Object.keys(progress).filter(
+    (k) => k !== "provision" && _ERROR.has(progress[k].status),
+  );
+  return failed.length > 0 && failed.every((k) => _LOCAL_BRAIN_DEPS.has(k));
+}
+
 /** First failing step's message, for the error banner (never a raw trace). */
 export function firstError(progress: Record<string, SetupProgressEvent>): string {
   for (const k of Object.keys(progress)) {

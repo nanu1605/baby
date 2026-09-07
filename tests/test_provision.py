@@ -253,6 +253,173 @@ def test_provision_not_marked_when_verify_fails(monkeypatch, tmp_path):
     assert paths.read_setup().get("provisioned") is not True
 
 
+# --- installing the daemon nothing shipped ever installed --------------------
+
+
+def _fake_install(monkeypatch, *, winget="C:/winget.exe", code=0, becomes_healthy=True):
+    """Record what provisioning would actually execute, without executing it."""
+    ran: list[tuple[str, tuple[str, ...]]] = []
+    state = {"healthy": False}
+
+    async def fake_run(exe, *args, timeout):
+        ran.append((exe, args))
+        if becomes_healthy and code == 0:
+            state["healthy"] = True
+        return code, "output"
+
+    async def fake_healthy(host=provision._OLLAMA):
+        return state["healthy"]
+
+    monkeypatch.setattr(provision, "_run_silent", fake_run)
+    monkeypatch.setattr(provision, "_ollama_healthy", fake_healthy)
+    monkeypatch.setattr(provision.shutil, "which", lambda _n: winget)
+    monkeypatch.setattr(
+        provision, "_set_ollama_context_length", lambda: state.setdefault("ctx", True)
+    )
+    return ran, state
+
+
+def test_full_mode_installs_ollama_when_it_is_missing(monkeypatch, tmp_path):
+    """The whole point of the fix: the manifest documented this and no shipped code
+    did it, so a public Full install had no local brain and no way to get one."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    ran, state = _fake_install(monkeypatch)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+    assert ran, "nothing was executed -- the daemon install did not run"
+    exe, args = ran[0]
+    assert exe == "C:/winget.exe"
+    assert "Ollama.Ollama" in args and "--silent" in args
+    # Non-interactive matters: a prompt in a wizard's background task hangs forever.
+    assert "--disable-interactivity" in args
+    row = [e for e in events if e["dep"] == "ollama-daemon"][-1]
+    assert row["status"] == "pass"
+
+
+def test_a_running_ollama_is_not_reinstalled(monkeypatch, tmp_path):
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=True)
+    ran, _ = _fake_install(monkeypatch)
+    # _mock_primitives already reports healthy; keep that.
+    async def healthy(host=provision._OLLAMA):
+        return True
+
+    monkeypatch.setattr(provision, "_ollama_healthy", healthy)
+    asyncio.run(provision.provision("full", on_event=lambda e: None))
+    assert not ran, "reinstalled a daemon that was already serving"
+
+
+def test_cloud_only_never_installs_the_local_brain(monkeypatch, tmp_path):
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    ran, _ = _fake_install(monkeypatch)
+    asyncio.run(provision.provision("cloud_only", on_event=lambda e: None))
+    assert not ran
+
+
+def test_the_context_length_is_set_after_a_successful_install(monkeypatch, tmp_path):
+    """The /v1 endpoint ignores options.num_ctx, so OLLAMA_CONTEXT_LENGTH is the
+    only thing that stops the local brain silently truncating. Only the DEV script
+    ever set it, which is why the dev box never showed the shipped build not doing
+    so."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    _, state = _fake_install(monkeypatch)
+    asyncio.run(provision.provision("full", on_event=lambda e: None))
+    assert state.get("ctx") is True
+
+
+def test_a_machine_without_winget_falls_back_to_the_vendor_installer(monkeypatch, tmp_path):
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    calls = _mock_primitives(monkeypatch, ollama_up=False)
+    ran, _ = _fake_install(monkeypatch, winget=None)
+    asyncio.run(provision.provision("full", on_event=lambda e: None))
+    assert "ollama-daemon" in calls["downloads"], "vendor installer was never fetched"
+    assert ran and ran[0][1] == ("/VERYSILENT", "/NORESTART")
+
+
+def test_a_failed_install_still_leaves_a_named_row_and_no_crash(monkeypatch, tmp_path):
+    """It must degrade to the manual instruction, not take the run down with it."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    _fake_install(monkeypatch, code=1, becomes_healthy=False)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+    row = [e for e in events if e["dep"] == "ollama-daemon"][-1]
+    assert row["status"] == "needs_install"
+    assert "ollama.com/download" in row["detail"]
+
+
+def test_the_install_step_emits_progress_while_it_runs(monkeypatch, tmp_path):
+    """Five silent minutes on one row is what got reported as a hung install."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    _fake_install(monkeypatch)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+    working = [
+        e for e in events
+        if e["dep"] == "ollama-daemon" and e["status"] == "working"
+    ]
+    assert working, "the install ran with no working event at all"
+    assert any("installing Ollama" in (e.get("detail") or "") for e in working)
+
+
+def test_a_missing_local_brain_flags_the_cloud_escape(monkeypatch, tmp_path):
+    """Full mode on a machine with no Ollama must be escapable.
+
+    Nothing in the shipped installer puts Ollama on the machine, so this is the
+    ordinary outcome of choosing Full on a clean box -- and the wizard's error
+    state rendered one button, Retry, which re-ran the same check forever. The
+    verify event now says when cloud-only would work as the machine stands, which
+    is what lets the wizard offer a way out.
+    """
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    dead = [
+        provision.health.Result("torch", True, True, "pass", "ok"),
+        provision.health.Result("ollama", True, False, "fail", "no daemon"),
+        provision.health.Result("ollama-model", True, False, "fail", "no daemon"),
+    ]
+    monkeypatch.setattr(provision.health, "run_all", lambda mode, level, browser: dead)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+    verify = [e for e in events if e["dep"] == "verify"][-1]
+    assert verify["status"] == "fail"
+    assert verify["local_brain_only"] is True
+
+
+def test_a_broader_failure_does_not_offer_the_cloud_escape(monkeypatch, tmp_path):
+    """Switching modes must only be offered when it would actually fix the run."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    dead = [
+        provision.health.Result("whisper", True, False, "fail", "model missing"),
+        provision.health.Result("ollama", True, False, "fail", "no daemon"),
+    ]
+    monkeypatch.setattr(provision.health, "run_all", lambda mode, level, browser: dead)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+    verify = [e for e in events if e["dep"] == "verify"][-1]
+    assert verify["local_brain_only"] is False
+
+
+def test_the_ollama_row_does_not_promise_an_installer_that_does_not_exist(
+    monkeypatch, tmp_path
+):
+    """The row read "the installer sets it up". Nothing does -- the only script
+    that installs Ollama is scripts/setup.ps1, which is not in the payload."""
+    monkeypatch.setenv("BABY_HOME", str(tmp_path))
+    _mock_primitives(monkeypatch, ollama_up=False)
+    events: list = []
+    asyncio.run(provision.provision("full", on_event=events.append))
+    row = [e for e in events if e["dep"] == "ollama-daemon"][-1]
+    assert row["status"] == "needs_install"
+    assert "the installer sets it up" not in row["detail"]
+    assert "ollama.com/download" in row["detail"]
+
+
 def test_provision_skips_already_present_assets(monkeypatch, tmp_path):
     monkeypatch.setenv("BABY_HOME", str(tmp_path))
     calls = _mock_primitives(monkeypatch)

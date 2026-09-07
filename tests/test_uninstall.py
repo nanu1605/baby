@@ -246,6 +246,46 @@ def test_changelog_documents_the_shipped_version():
     assert f"## v{version}" in changelog, f"CHANGELOG.md has no entry for v{version}"
 
 
+def test_the_docs_hand_out_the_shipped_installers_filename():
+    """The checksum commands quote a filename, and a stale one is worse than no
+    command at all: `Get-FileHash` on a name that is not on disk fails, and the
+    reader cannot tell a typo from a tampered download. These went stale the moment
+    the version moved, so pin them to the version the .exe will actually carry.
+
+    Deliberately scoped: section 2 of the checklist names the 6.0.0 installer on
+    purpose, because that is the build the clean-VM matrix was measured against.
+    A record of what was tested is not drift.
+    """
+    import re
+
+    version = _conf()["version"]
+    checklist = (_ROOT / "tests/manual/v6_release_checklist.md").read_text(
+        encoding="utf-8"
+    )
+    sources = {
+        "docs/INSTALL.md": (_ROOT / "docs/INSTALL.md").read_text(encoding="utf-8"),
+        "docs/SIGNING.md": (_ROOT / "docs/SIGNING.md").read_text(encoding="utf-8"),
+        # The build section only -- see the docstring.
+        "v6_release_checklist.md §1": checklist.split("## 1. Build the artifact", 1)[
+            1
+        ].split("## 2.", 1)[0],
+    }
+
+    stale = {}
+    for where, text in sources.items():
+        wrong = [
+            v
+            for v in re.findall(r"Baby_(\d+\.\d+\.\d+)_x64-setup\.exe", text)
+            if v != version
+        ]
+        if wrong:
+            stale[where] = wrong
+    assert not stale, f"docs quote an installer that is not v{version}: {stale}"
+    assert any(
+        f"Baby_{version}_x64-setup.exe" in text for text in sources.values()
+    ), "no doc quotes the shipped installer filename at all"
+
+
 def test_removal_is_gated_on_a_directory_an_install_provisioned():
     r"""%LOCALAPPDATA%\baby is not exclusive to an installed build.
 

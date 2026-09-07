@@ -243,10 +243,31 @@ def check_speaker() -> tuple[str, str]:
     return "pass", f"CAM++ speaker embedder ok, dim={len(vec)}"
 
 
+_NO_DAEMON = (
+    f"Baby can't reach Ollama at {_OLLAMA}, which Full mode needs for the local "
+    "brain. If it isn't installed, get it from https://ollama.com/download and "
+    "then retry. Cloud-only mode doesn't need it at all."
+)
+
+
 def check_ollama() -> tuple[str, str]:
+    """Is the daemon reachable?
+
+    An unreachable daemon is the ORDINARY case on a fresh Full install -- nothing
+    in the installer puts Ollama on the machine -- so it must read as a named,
+    actionable state and not as the raw `ConnectError: [WinError 10061] No
+    connection could be made because the target machine actively refused it` that
+    a clean VM showed a user twice on one screen. Deliberately worded for both
+    "not installed" and "installed but not running": a refused connection cannot
+    tell those apart, and guessing wrong sends someone to reinstall software they
+    already have.
+    """
     import httpx
 
-    r = httpx.get(f"{_OLLAMA}/api/tags", timeout=5.0)
+    try:
+        r = httpx.get(f"{_OLLAMA}/api/tags", timeout=5.0)
+    except httpx.TransportError:
+        return "fail", _NO_DAEMON
     r.raise_for_status()
     n = len(r.json().get("models", []))
     return "pass", f"Ollama daemon up at {_OLLAMA} ({n} models present)"
@@ -255,7 +276,12 @@ def check_ollama() -> tuple[str, str]:
 def check_ollama_model() -> tuple[str, str]:
     import httpx
 
-    tags = httpx.get(f"{_OLLAMA}/api/tags", timeout=5.0)
+    try:
+        tags = httpx.get(f"{_OLLAMA}/api/tags", timeout=5.0)
+    except httpx.TransportError:
+        # Same cause as the row above. Saying "the 9B isn't pulled" here would be a
+        # second, different, and wrong diagnosis of one dead daemon.
+        return "fail", _NO_DAEMON
     tags.raise_for_status()
     names = [m.get("name", "") for m in tags.json().get("models", [])]
     if _DAILY_MODEL not in names:
@@ -391,6 +417,27 @@ def overall_ok(results: list[Result]) -> bool:
     return not any(r.required and not r.ok for r in results)
 
 
+# The checks that exist only in a Full install. A failure confined to these means
+# the machine is fine for cloud-only, which is the difference between "your setup
+# is broken" and "this one choice needs something you don't have".
+LOCAL_BRAIN_CHECKS = frozenset({"ollama", "ollama-model"})
+
+
+def local_brain_only_failure(results: list[Result]) -> bool:
+    """Did Full mode fail ONLY because of the local brain?
+
+    A fresh Full install on a machine without Ollama fails here and the wizard
+    offers nothing but Retry, which re-runs the same check forever. The user is
+    stuck on a screen that cannot be satisfied, with cloud-only -- which would
+    work on that machine right now -- one unreachable step behind them. This says
+    when that escape is the honest suggestion, and it is deliberately strict: if
+    anything outside the local brain also failed, switching modes would not fix
+    the install and offering it would just waste the user's time.
+    """
+    failed = [r for r in results if r.required and not r.ok]
+    return bool(failed) and all(r.name in LOCAL_BRAIN_CHECKS for r in failed)
+
+
 def run_all(mode: str = "full", level: str = "full", with_browser: bool = False) -> list[Result]:
     # Bind the venv's ORT before any check imports sherpa-onnx, or the speaker probe
     # segfaults on System32's stale onnxruntime.dll (see _preload_onnxruntime).
@@ -410,7 +457,15 @@ def readiness_summary(results: list[Result]) -> str:
         tail = f" (optional skipped: {', '.join(skipped)})" if skipped else ""
         return "Baby is ready -- all required components work." + tail
     lines = ["Baby isn't ready yet. These need attention:"]
-    lines += [f"  - {r.name}: {r.detail}" for r in failed]
+    # One dead Ollama fails both local-brain checks with the same sentence, and
+    # printing it twice made the banner look like two separate problems. Same
+    # cause, said once.
+    seen: set[str] = set()
+    for r in failed:
+        if r.detail in seen:
+            continue
+        seen.add(r.detail)
+        lines.append(f"  - {r.name}: {r.detail}")
     return "\n".join(lines)
 
 
