@@ -25,6 +25,13 @@ body {
 }
 
 /* ---------- top bar ---------- */
+/* The bar states its own height and never shrinks. `overflow-x: auto` used to
+   live here and was the bug: giving one axis a non-visible overflow computes the
+   OTHER axis from `visible` to `auto` too, so the bar became a scroll container
+   vertically as well -- content taller than the box was clipped instead of
+   growing it, and the horizontal scrollbar then ate height from the inside. The
+   width problem it was papering over is solved by the compaction ladder below
+   rather than by hiding the overflow. */
 .topbar {
   display: flex;
   align-items: center;
@@ -33,7 +40,8 @@ body {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex-wrap: nowrap;
-  overflow-x: auto;
+  min-height: var(--topbar-h);
+  flex: 0 0 auto;
 }
 .brand {
   font-weight: 700;
@@ -228,6 +236,51 @@ body {
 .classic-link:hover {
   color: var(--accent);
   border-color: var(--accent-dim);
+}
+
+/* A model id can be arbitrarily long (`qwen3.5:9b-q4_K_M` today, longer
+   tomorrow) and every other child of the bar is unshrinkable, so this is the one
+   that gives. min-width:0 is required -- a flex item's default min-width:auto
+   refuses to shrink below its content and would defeat the ellipsis. */
+.badge.model {
+  min-width: 0;
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- top bar: compaction ladder ----------
+   Nothing in the bar wraps or shrinks, so its intrinsic width is the sum of its
+   parts -- roughly 1450px, against a 1280x800 default window. The only relief
+   used to be `@media (max-width: 720px)`, which left the entire 721-1450px range
+   overflowing: every size a real desktop window actually is.
+   Least useful goes first, and the controls go last. Stop, the icon buttons and
+   the UI switch survive to the narrowest width -- a bar you cannot act from is
+   worse than a bar missing a number you can read elsewhere. */
+@media (max-width: 1440px) {
+  /* The bars still show the same information, just without the digits. */
+  .gauge em {
+    display: none;
+  }
+}
+@media (max-width: 1240px) {
+  .gauges {
+    display: none; /* totals stay in the tokens badge's title attribute */
+  }
+}
+@media (max-width: 1080px) {
+  .brand-sub,
+  .tokens-badge {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .tier-chip {
+    display: none; /* a render-quality hint, not something to act on */
+  }
+  .badge.model {
+    max-width: 14ch;
+  }
 }
 
 /* ---------- stage: graph + side panel ---------- */
@@ -957,7 +1010,7 @@ dialog::backdrop {
 /* ---------- inspector drawer ---------- */
 .inspector {
   position: fixed;
-  top: 52px;
+  top: var(--topbar-h);
   right: 0;
   bottom: 0;
   width: 360px;
@@ -1149,7 +1202,7 @@ dialog::backdrop {
 /* ---------- omnibox: "Search the brain..." (B5) ---------- */
 .omnibox {
   position: fixed;
-  top: 64px;
+  top: calc(var(--topbar-h) + var(--sp-3));
   left: 50%;
   transform: translateX(-50%);
   width: min(560px, 92vw);
@@ -1287,7 +1340,7 @@ dialog::backdrop {
   }
   .side-panel {
     position: fixed;
-    top: 52px;
+    top: var(--topbar-h);
     right: 0;
     bottom: 0;
     width: min(92vw, 360px);
@@ -1298,7 +1351,7 @@ dialog::backdrop {
   .panel-backdrop {
     display: block;
     position: fixed;
-    inset: 52px 0 0 0;
+    inset: var(--topbar-h) 0 0 0;
     background: rgba(0, 0, 0, 0.45);
     z-index: 43;
   }
@@ -1307,7 +1360,7 @@ dialog::backdrop {
     max-width: 100vw;
   }
   .omnibox {
-    top: 56px;
+    top: calc(var(--topbar-h) + var(--sp-1));
     width: calc(100vw - 1.25rem);
   }
 }
