@@ -2526,3 +2526,56 @@ Running log of non-obvious choices made during the build. Newest last.
      here rather than filed. Ten mutations, ten caught. But every gate is a
      source-shape gate: they prove the four things are still written down, not that
      the shell behaves. Only a real logon proves that, and it is on the checklist.
+
+162. **Any web page could talk to Baby, and autostart is what made that worth
+     fixing now.** Binding `127.0.0.1` sounds like it settles the question and does
+     not. Browsers do not apply the same-origin policy to WebSockets and send no
+     preflight for one, so a page on the open web could open
+     `ws://127.0.0.1:8765/ws/chat` on a visitor's own machine and hold a
+     conversation with their Baby -- reading the replies, driving the tools. The
+     three POSTs that take no JSON body (`/kill`, `/conversation/new`,
+     `/api/setup/provision`) were reachable the same way, by a plain cross-origin
+     form submission: no JSON content type means no preflight to refuse. There was
+     no CORS middleware and no `Origin` check anywhere in `ui/server.py`.
+
+     None of that was new. What #159 changed is how long it is true for: the
+     listener is now up from logon rather than only while someone has Baby open.
+     Shipping an always-on version of an existing gap, in the release immediately
+     before the build gets code-signed, is the version of it that has to be
+     answered rather than filed -- so it was fixed here and not in 6.1.
+
+     **The rule is one line and deliberately narrow.** A MISSING `Origin` passes:
+     only browsers send one, and Baby's own tray is not a browser -- it speaks raw
+     tungstenite to `/ws/activity` and sends none. Refusing that would have taken
+     the tray's colour away to close a hole the tray cannot be on the other side
+     of, and anything able to set arbitrary headers on this port is not a web page,
+     so nothing is bought by refusing it. A PRESENT `Origin` must have a LOOPBACK
+     HOST, parsed with `urlsplit` rather than matched as a substring --
+     `http://127.0.0.1.evil.example` and `http://evil.example/#127.0.0.1` both
+     contain the string and neither is local; a test pins both, and a mutation that
+     swaps the parse for `in` fails on them.
+
+     **The port is not checked, on purpose.** The shell's window is served from
+     `:8765` and the dev SPA from Vite's `:5173`, whose proxy forwards the browser's
+     own `Origin` -- pinning either breaks the other for nothing. Someone who can
+     serve a page FROM this machine can already reach the port without a browser, so
+     the port number was never what was doing the work.
+
+     Writes go through one HTTP middleware, so an endpoint added tomorrow is covered
+     the day it lands rather than the day someone remembers. GET is left alone: a
+     cross-origin GET cannot read its own response, and blocking it would break the
+     pages themselves. Sockets need their own guard because **a WebSocket handshake
+     never reaches HTTP middleware** -- each route closes with 1008 before
+     `accept()`.
+
+     **Measured, not assumed.** The TestClient reports a `WebSocketDisconnect`
+     whether a socket was refused or accepted-and-hung-up, which is exactly the
+     distinction the security claim rests on. Against a real uvicorn with a raw
+     socket: a cross-origin handshake gets `HTTP/1.1 403 Forbidden`, while both no
+     `Origin` and a loopback `Origin` get `101 Switching Protocols`. Six mutations,
+     six caught.
+
+     **Still open, and not touched here.** Nothing authenticates anything. This
+     stops a remote *page*; it does not stop another program on the same machine,
+     which can send any headers it likes. That is a real limit of the model Baby has
+     had since #119 and wants a considered answer, not one bolted onto a patch.

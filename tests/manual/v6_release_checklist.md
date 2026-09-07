@@ -378,6 +378,18 @@ prove.
 - [ ] **A failed step says why.** In Setup & repair, break something (rename
       `models\kokoro-v1.0.onnx`) and run Repair. The row must read a sentence, not
       the bare word `error`.
+- [ ] **Nothing in Baby broke when other sites stopped being able to reach it.**
+      This is the one change nobody asked for, so it gets checked as a regression
+      rather than a feature: send a message, run a tool, switch install mode, save
+      a key, start a repair, and **watch the tray change colour** while a tool runs.
+      The tray is the sharp case — it connects over a WebSocket from the Rust shell,
+      not the browser, and a colour stuck on one value means its handshake is being
+      refused. Then confirm the block actually works: open any page in an ordinary
+      browser (a blank tab on some website, not a `file://` page) and run
+      ```js
+      new WebSocket("ws://127.0.0.1:8765/ws/chat").onerror = () => console.log("refused")
+      ```
+      It must log `refused`. From Baby's own window that same line connects.
 
 ## 6. Regression on the real box
 

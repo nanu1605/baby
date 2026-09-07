@@ -13,6 +13,7 @@ import sys
 import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import uvicorn
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -294,8 +295,75 @@ def _restart_needed_to_apply(
     return not isinstance(provider, CloudRouter)
 
 
+#: Hosts a page can be served from and still be running on this machine. A page on
+#: the open web can never claim one, which is the entire point.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+#: Methods that change something. GET/HEAD are left alone: the pages are not secret,
+#: and a cross-origin GET cannot read the response anyway.
+_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _origin_is_local(origin: str | None) -> bool:
+    r"""Whether a request carrying this ``Origin`` came from a page on this machine.
+
+    Baby binds 127.0.0.1, which sounds like it settles the question and does not.
+    Browsers do NOT apply the same-origin policy to WebSockets and send no preflight
+    for one, so any page on the open web could open ``ws://127.0.0.1:8765/ws/chat``
+    and hold a conversation with Baby -- reading the replies, driving the tools. The
+    same went for the POSTs that take no JSON body (``/kill``, ``/conversation/new``,
+    ``/api/setup/provision``), which a plain cross-origin form submission reaches.
+    That was true before "start Baby with Windows" existed; what autostart changes is
+    that the listener is now up from logon rather than only while Baby is open.
+
+    A MISSING ``Origin`` is allowed. Only browsers send one, and Baby's own native
+    clients are not browsers -- the Rust tray speaks raw tungstenite to
+    ``/ws/activity`` and sends no ``Origin`` at all. Refusing that would take the
+    tray's colour away to close a hole the tray cannot be on the other side of.
+
+    A PRESENT ``Origin`` must be loopback, and the port is deliberately not checked:
+    the WebView2 window is served from ``:8765``, the dev SPA from Vite's ``:5173``
+    (whose proxy forwards the browser's own ``Origin``), and pinning either would
+    break one of them for no gain. Anyone who can serve a page FROM this machine can
+    already reach the port without a browser. ``"null"`` -- a ``file://`` page or a
+    sandboxed frame -- has no host and is refused.
+    """
+    if origin is None or not origin.strip():
+        return True
+    try:
+        host = urlsplit(origin.strip()).hostname
+    except ValueError:
+        return False
+    return (host or "").lower() in _LOOPBACK_HOSTS
+
+
+async def _ws_origin_ok(ws: WebSocket) -> bool:
+    """Refuse a cross-origin handshake, before accepting it.
+
+    The HTTP middleware cannot do this job: a WebSocket handshake never reaches it.
+    Closing before ``accept()`` makes Starlette answer the handshake with a 403, so
+    the page never gets a socket rather than getting one that is then hung up on.
+    """
+    if _origin_is_local(ws.headers.get("origin")):
+        return True
+    await ws.close(code=1008)  # 1008: policy violation
+    return False
+
+
 def create_app(ctx: UIContext) -> FastAPI:
     app = FastAPI(title="Baby", docs_url=None, redoc_url=None)
+
+    @app.middleware("http")
+    async def _refuse_cross_origin_writes(request: Request, call_next):
+        """One gate for every write, so a new endpoint is covered the day it lands."""
+        if request.method in _WRITE_METHODS and not _origin_is_local(
+            request.headers.get("origin")
+        ):
+            return JSONResponse(
+                {"error": "Refused: this request came from another site."},
+                status_code=403,
+            )
+        return await call_next(request)
+
     # Set when the first-run wizard stamps a router mode this process cannot honour;
     # run_ui watches the event and exits with RESTART_EXIT_CODE so the shell can bring
     # the backend straight back on the stamped mode. See _restart_needed_to_apply.
@@ -1187,6 +1255,8 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.websocket("/ws/chat")
     async def ws_chat(ws: WebSocket):
+        if not await _ws_origin_ok(ws):
+            return
         await ws.accept()
         pump = asyncio.create_task(_pump(ws, _CHAT_KINDS, ui_only=True))
         try:
@@ -1228,6 +1298,8 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.websocket("/ws/activity")
     async def ws_activity(ws: WebSocket):
+        if not await _ws_origin_ok(ws):
+            return
         await ws.accept()
         pump = asyncio.create_task(_pump(ws, _ACTIVITY_KINDS, ui_only=False))
         try:
@@ -1342,6 +1414,8 @@ def create_app(ctx: UIContext) -> FastAPI:
 
     @app.websocket("/ws/state")
     async def ws_state(ws: WebSocket):
+        if not await _ws_origin_ok(ws):
+            return
         await ws.accept()
         pump = asyncio.create_task(_state_pump(ws))
         try:

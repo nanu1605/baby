@@ -50,6 +50,15 @@ why the clean-VM matrix never saw them.
   server was unreachable, about downloads that had already finished; it now loads
   what is on disk.
 
+- **Other websites can no longer talk to Baby.** Baby listens on your own machine,
+  which sounds like it settles this and does not: browsers let any page open a
+  WebSocket to a local port without asking, so a site you visited could hold a
+  conversation with your Baby -- reading the replies and using the tools. A handful
+  of buttons were reachable the same way, including the one that shuts Baby down.
+  Requests that come from another site are now refused. Nothing you do in Baby
+  changes, and the tray keeps working. This gap was not new, but Baby now runs from
+  the moment you log in, so it is no longer only open while you are using it.
+
 **Known, unfixed:** links inside Baby's own replies still do nothing in the app
 window, for the same reason the signup links did. Fixing that means opening
 arbitrary URLs, which is a wider change than this release wants. Copy the address
