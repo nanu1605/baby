@@ -2311,3 +2311,163 @@ Running log of non-obvious choices made during the build. Newest last.
      assuming it did would have been the exact move the rule exists to prevent. It
      still lands the way every other change does -- a PR, squash-merged -- rather
      than as a direct push, so nothing about how master is written to changes.
+
+156. **The signup links were dead, and the app has no way to open any external
+     URL.** Reported from a real desktop: "Get a OpenRouter key" and its two
+     siblings did nothing. They are plain `<a target="_blank">` in `KeyField.tsx`,
+     shared by the wizard and the repair panel, and the shell is a WebView2 window
+     with **no** new-window handler, **no** `invoke_handler`, and no opener plugin
+     -- the SPA does not even depend on `@tauri-apps/api`. CSP is `null`, so that
+     was not it. The click was simply dropped, on the one step where a user without
+     a key has to leave the app.
+
+     Fixed narrowly, by decision: the click asks the BACKEND to open the page,
+     reusing the `webbrowser` call `ui/tray.py` already makes. The client sends the
+     key's env NAME and the backend resolves it against the frozen `KEYS` tuple.
+     That is the whole security argument -- anything that can reach
+     `127.0.0.1:8765` can call this endpoint, so the destination must not be the
+     caller's to choose. A `url` in the body is ignored rather than honoured, and a
+     test sends one to prove it. The `href` stays so the address is visible on
+     hover and still works in a browser, and a failed request falls through to the
+     default rather than swallowing the click.
+
+     **Still broken, deliberately:** links inside a model's reply. `markdown.ts`
+     stamps `target="_blank"` on every one of them, so they are dead for the same
+     reason. Fixing that means opening ARBITRARY urls, which needs either a Rust
+     new-window handler in the shell or an endpoint that accepts any http(s) URL --
+     a wider surface than a patch release should take on unreviewed. Logged here
+     rather than left to be rediscovered.
+
+157. **The top bar clipped itself, and four overlays sat underneath it.** Three
+     unrelated causes behind one screenshot, all measured in a live browser rather
+     than reasoned about.
+
+     `.topbar` had `overflow-x: auto` and no height of its own. Setting one axis to
+     a non-visible overflow computes the OTHER axis from `visible` to `auto`, so
+     the bar was a scroll container vertically too: anything taller than the box
+     was clipped instead of growing it, and the horizontal scrollbar then ate
+     height from the inside.
+
+     The inspector, the side panel, its backdrop and the omnibox each wrote the
+     bar's height out by hand as `52px` (the omnibox `64px`). The bar was
+     content-derived and measured **55px**, so they started underneath it. It is
+     now one token, `--topbar-h`, and the bar states it.
+
+     And the bar could not fit the window it ships in. Nothing in it wraps or
+     shrinks, so its intrinsic width measured **1336px** against a 1280x800
+     default, with the only relief at 720px -- leaving every realistic desktop
+     width overflowing. A compaction ladder drops the gauge digits, then the
+     gauges, then the wordmark and token count, then the render-tier chip. Measured
+     after: 1180px at 1280, 683px at 900. The controls survive to the narrowest
+     width, because a bar you cannot act from is worse than one missing a number
+     you can read elsewhere.
+
+     **Worth knowing for anyone measuring this again: `scrollWidth` lies here.**
+     `margin-left: auto` on the last child absorbs the free space, so the flex row
+     reports no overflow at all while overflowing. The intrinsic width only comes
+     out under `width: max-content`. That is why the bug survived this long.
+
+     One thing NOT explained: the scrambled text in the strip above Baby's own
+     header in the reporter's screenshots. It is outside everything `app.css`
+     controls and does not reproduce in a browser tab, so it needs the shell.
+     Logged rather than guessed at.
+
+158. **The classic UI was a one-way trip, and the dev server could not have shown
+     it.** The switch is a plain navigation to `/classic`; nothing persists the
+     choice; the classic shell has no control to come back; and the Rust shell
+     opens `/` on every launch. So the only way back was restarting Baby.
+
+     The fix is a `/brain` route -- the mirror of `/classic` -- plus a link in the
+     classic header. A back-link to `/` would NOT have worked: with
+     `ui.frontend=classic` the root IS the classic UI, so the button would appear
+     dead in exactly the configuration that most needs it. `/brain` degrades the
+     way `/` already does, serving classic when `dist` is unbuilt, because a dead
+     end is the thing being fixed.
+
+     Why nobody caught it in dev: `vite.config.ts` proxies `/api`, `/stats` and the
+     rest to the backend but not `/classic`, `/brain` or `/static`, so the header's
+     UI switch was a 404 on the dev server. The one thing you could not exercise
+     there was the round trip between the two UIs. Those three now proxy.
+
+159. **Baby can start with Windows, via a per-user Run key.** Nothing shipped did
+     this. `scripts/autostart.ps1` registers Task Scheduler entries but is
+     hardcoded to a dev checkout, and `scripts/` is not in the installer payload at
+     all -- `stage_payload.ps1` enumerates what ships and that directory is absent.
+     So an installed Baby started only when someone clicked it.
+
+     `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` over a Startup shortcut
+     or a scheduled task: no admin, so the installer's no-admin promise holds; one
+     `winreg` call in the same module and hive `provision.py` already writes
+     `OLLAMA_CONTEXT_LENGTH` to, so no new dependency; and removable from Windows'
+     own startup list as well as from Baby. The registry is the ONLY source of
+     truth -- a flag mirrored into `setup.json` would drift the moment someone
+     switched Baby off in Task Manager's Startup tab, and the toggle would then lie
+     about their machine.
+
+     **The shell gains `--minimized`, and this is the part worth being careful
+     about.** The obvious move is to reuse `--attach-only`, which the old autostart
+     task passed. That would ship a broken feature: `--attach-only` means "never
+     spawn a backend, wait for the always-on service to bind", and at logon there
+     is no such service -- Baby would wait out its timeout and then report that the
+     service did not come up. `--minimized` spawns exactly as a normal launch does
+     and skips only the AUTOMATIC reveal; the tray's "Open Baby" and the
+     single-instance callback still show, because those are the user asking. A
+     failure while minimised writes its message and reddens the tray rather than
+     throwing a window at someone who has just logged in; clicking the tray shows
+     the message.
+
+     The shell also exports `BABY_SHELL_EXE`. The backend writes the Run value but
+     cannot know that path, and deriving it from a guessed install directory is how
+     you ship a startup entry pointing at nothing -- a thing that fails silently
+     every boot with nothing to trace it back to. Without the variable the endpoint
+     refuses and says why.
+
+     The uninstaller deletes the value on any real uninstall, deliberately OUTSIDE
+     the delete-app-data guard. It is not user data: someone who unticks that box
+     is asking to keep their conversations, not a startup entry for an app they
+     just removed.
+
+     **Caught by the existing gate, not by a new one.** Hoisting the two uninstall
+     guards changed which conditional follows the `GetFullPathName` pair, and
+     `test_the_reinstall_guard_holds_against_real_nsis` compiles exactly those
+     lines with `makensis` -- so it correctly reported that an upgrade would now
+     delete the user's keys and history. The conditions were reordered (the same
+     `A AND B` either way) and the reason is written into the hook, because the
+     next person to tidy it will not otherwise know the order is load-bearing.
+
+160. **The two failures logged in #153, fixed -- and #153's proposed lever was
+     wrong.**
+
+     *The raw library string.* The provision endpoint caught whatever ended the
+     walk and wrote `str(exc)` straight onto the row, so an exception raised where
+     no dep step was running -- the final re-verify is the clear case -- reached
+     the user verbatim. Observed: "Cannot send a request, as the client has been
+     closed.", which is httpx scolding `huggingface_hub` about its module-global
+     client and means nothing to someone installing an assistant. It now goes
+     through `classify_error` like every dep-level failure already did, with a new
+     `stale_client` kind that names the reopen -- a dead in-process transport is
+     not fixed by retrying in the same window, the same lesson as #151. The raw
+     text stays as `detail` for a diagnostics paste.
+
+     `rowNote` also rendered a failed row as the bare word "error", so the repair
+     panel said WHICH step broke and never why, with the reason unread in the same
+     event. An existing test pinned that behaviour; it was the bug, so it was
+     rewritten rather than worked around.
+
+     *The offline re-provision.* `huggingface_hub` resolves the ref over the
+     network BEFORE consulting the cache, so a machine holding every byte was told
+     the download server was unreachable about a download that had already
+     finished. A hub step whose failure is network-class now retries once against
+     the cache alone -- and only when the cache is genuinely complete: no
+     `.incomplete` files, a populated `snapshots/`, and the expected size. A
+     partial download stays resumable (forcing it offline would turn a retry into a
+     permanent failure with a worse message), an empty one keeps its honest network
+     error, and a corrupt one is never retried against its own bad bytes.
+
+     **The lever is `local_files_only`, not `HF_HUB_OFFLINE`.** #153 guessed the
+     env var. It is wrong for this version: `constants.py` reads it once into a
+     module-level constant when `huggingface_hub` is imported, so setting it during
+     provisioning does nothing whatsoever while looking exactly like a fix. Both
+     loaders take an explicit `local_files_only` argument; a test pins the argument
+     and the reason, so the next person does not "simplify" it back to an env var
+     that cannot work.

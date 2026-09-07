@@ -1,5 +1,55 @@
 # Changelog
 
+## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
+
+Five fixes, four of them reported from running 6.0.1 on an actual machine rather
+than a VM. Every one is about *using* Baby rather than installing it, which is
+why the clean-VM matrix never saw them.
+
+- **The "Get a key" links now open.** In the first-run wizard and the repair
+  panel, the links to OpenRouter, Google Gemini and NVIDIA did nothing at all --
+  on the single step where a user without a key has to leave the app. They were
+  plain `<a target="_blank">`, and Baby's window is a WebView2 with no new-window
+  handler, so the click was silently dropped. Clicking one now asks the backend to
+  open the page in the real browser. The link sends the key's *name*, never a URL,
+  so nothing reaching Baby's local port can choose where the browser goes.
+
+- **The top bar no longer clips itself, and overlays no longer sit under it.**
+  Three separate causes. The bar had `overflow-x: auto`, which quietly makes an
+  element a scroll container on *both* axes, so it clipped its own contents
+  vertically. Four fixed panels wrote the bar's height out by hand as 52px while
+  the bar actually measured 55, so they overlapped it. And the bar could not fit
+  the window Baby ships in -- it needed 1336px against a 1280px default, with the
+  only relief at 720px, so every realistic desktop size overflowed. Height is now
+  one value, and the bar sheds the gauge digits, then the gauges, then the
+  wordmark as the window narrows. Stop, the icon buttons and the UI switch stay to
+  the narrowest size.
+
+- **The classic UI is no longer a one-way trip.** Switching to it left no way
+  back: nothing remembers the choice, the classic shell had no control for it, and
+  Baby opens the new UI on launch -- so returning meant restarting the app. There
+  is now a "new UI" link in the classic header.
+
+- **Baby can start with Windows.** Previously it only ever started when you opened
+  it; after a reboot you launched it by hand. There is now a toggle in Setup &
+  repair. It comes up minimised to the tray rather than taking the screen, needs
+  no admin, can be switched off from Windows' own startup list, and is removed
+  when Baby is uninstalled.
+
+- **Two setup failures that explained themselves badly.** A run that broke where
+  no download step was active reported raw library text -- "Cannot send a request,
+  as the client has been closed." -- as the reason your install failed; it now
+  reads as a sentence naming the fix. A failed step in the repair panel showed the
+  bare word "error" with the reason sitting unused beside it. And re-running setup
+  with no network on a machine that already had every file said the download
+  server was unreachable, about downloads that had already finished; it now loads
+  what is on disk.
+
+**Known, unfixed:** links inside Baby's own replies still do nothing in the app
+window, for the same reason the signup links did. Fixing that means opening
+arbitrary URLs, which is a wider change than this release wants. Copy the address
+into a browser for now.
+
 ## v6.0.1 -- setup failure reporting (2026-09-04)
 
 - **Full mode now installs the local brain instead of asking for it.** Picking

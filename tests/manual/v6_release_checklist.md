@@ -1,4 +1,4 @@
-# v6.0.1 release checklist
+# v6.0.2 release checklist
 
 Everything here is **owner-run**. The dev box cannot validate a stranger's first
 launch, and nothing in this file is something Claude does: the merge, the tag, and
@@ -48,11 +48,11 @@ cannot prove.
       uv.exe` and a size in the tens of MB rather than ~3 MB:
       `ui/shell/src-tauri/payload/uv.exe`
 - [ ] Installer lands at
-      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.1_x64-setup.exe`
-      — check the **filename says 6.0.1**, not 6.0.0.
+      `ui/shell/src-tauri/target/release/bundle/nsis/Baby_6.0.2_x64-setup.exe`
+      — check the **filename says 6.0.2**, not 6.0.1.
 - [ ] Generate the checksum file published alongside it:
       ```powershell
-      Get-FileHash .\Baby_6.0.1_x64-setup.exe -Algorithm SHA256 | Format-List
+      Get-FileHash .\Baby_6.0.2_x64-setup.exe -Algorithm SHA256 | Format-List
       ```
 
 ## 2. Clean-VM matrix
@@ -321,6 +321,52 @@ The W5 fix. Verify both branches.
       user still has. See DECISIONS #154. Both are removed by uninstalling Ollama
       from Add/Remove Programs and clearing the variable by hand.
 
+### What 6.0.2 changed, and what only a person can confirm
+
+Four of these were reported from a real desktop, which is the point: a VM matrix
+cannot see any of them, because they are about *using* Baby rather than installing
+it. The automated side is green; these are the parts a machine in this repo cannot
+prove.
+
+- [ ] **The "Get a key" links open a browser.** In the wizard and again in Setup &
+      repair, click each of the three. A real browser window must open on the
+      provider's page. Verified in a dev browser that the click no longer navigates
+      the app and that the request fires; what is NOT verified is the browser
+      actually opening from a windowless backend process — `webbrowser.open` shells
+      out through Windows, and the installed backend runs with no console.
+- [ ] **Links in Baby's own replies still do nothing.** Ask Baby something that
+      makes it cite a URL and click it: expect nothing to happen. This is the
+      known, deliberate gap (DECISIONS #156) — confirm it is still only *that*,
+      and that clicking does not navigate the app away from the UI.
+- [ ] **Resize the window from wide to narrow.** Drag it from full width down to
+      roughly 900px. The top bar must lose its gauges and wordmark rather than
+      clipping or growing a scrollbar, and **Stop**, the icon buttons and the UI
+      switch must survive to the narrowest size. Open the omnibox and the side
+      panel at a few widths: neither may tuck under the bar.
+- [ ] **The strip above the header.** The reporter's screenshots show scrambled
+      text in the title-bar row, in both UIs. It does not reproduce in a browser
+      tab, so it is a shell-level thing and is unfixed. Confirm whether it is still
+      there on this build, and whether it survives a window resize or a tray
+      "Reload UI" — that is the difference between a paint artifact and a bug.
+- [ ] **The UI round trip.** Click `classic UI`, then `new UI` in the classic
+      header, then back again. No restart at any point. Verified against a live
+      backend by navigation; clicking a link could not be exercised in the embedded
+      test browser, where even the untouched `classic UI` link does not navigate.
+- [ ] **Start with Windows — the whole cycle.** In Setup & repair, turn it on.
+      Confirm the value exists, then reboot:
+      ```powershell
+      Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name Baby
+      ```
+      Expect `"…\Baby.exe" --minimized`. After the reboot Baby must be **in the
+      tray with no window**, and the backend must be up (the tray goes green).
+      Click the tray icon: the window opens on a working UI, not a splash.
+- [ ] **Turn it off and reboot again.** Baby must not start. Then turn it on once
+      more and **uninstall** with autostart still enabled: the Run value must be
+      gone afterwards, whether or not you ticked "delete application data".
+- [ ] **A failed step says why.** In Setup & repair, break something (rename
+      `models\kokoro-v1.0.onnx`) and run Repair. The row must read a sentence, not
+      the bare word `error`.
+
 ## 6. Regression on the real box
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.
@@ -335,42 +381,32 @@ Baby is still the same assistant — confirm v6 packaging did not disturb it.
 
 ## 7. Publish
 
-This one is a **patch on a release that is already public**. v6.0.0 is
-downloadable now, so anyone who installs before this ships gets the two bugs
-below; the fix is worth its own tag rather than waiting to be batched.
+Another **patch on a release that is already public**. v6.0.1 is downloadable now,
+so anyone installing before this ships meets all five bugs below; that is the
+argument for its own tag rather than waiting to be batched.
 
-- [x] **Re-run matrix row 9 against the 6.0.1 build.** Done on a clean VM against
-      the built installer: cut at 68 MB of 1.6 GB, the row said "no new data for
-      10m" at +10.1m and **gave up at +19.8m** with `kind=stalled`,
-      `retryable=true`; the `provision` row read a real sentence and a log scan for
-      `multiple values for argument` / `TypeError` / `Traceback` returned **0
-      hits**. Retry alone did not recover (it gave up again at +20.3m with the
-      network healthy) -- reopening Baby did, resuming from the cached 68 MB and
-      finishing. The retry wording has since been fixed to name the reopen; see
-      DECISIONS #151.
-- [x] **First run of the release candidate itself.** A rebuild is a different file
-      even when the source is identical, so each candidate got its own run rather
-      than inheriting one. The Ollama fix was proven on `445F130D`; `260168DB`
-      rebuilt it from a clean tree and was run again; `1F08096B` is the binary that
-      ships, built at `f13778d` after the stall-wording fix, and the owner
-      installed and ran that exact file on a fresh VM to the same result. Payload
-      verified byte-identical to HEAD before each run: 71 Python files, 0
-      differing, 0 missing, SPA dist rebuilt and matching.
+> **What v6.0.1 already proved, for reference.** Row 9 was re-run against that
+> build and passed: cut at 68 MB of 1.6 GB, the row said "no new data for 10m" at
+> +10.1m and gave up at +19.8m with `kind=stalled`, `retryable=true`, and a log
+> scan for `TypeError` / `Traceback` returned 0 hits. Its Ollama fix was proven on
+> three separate clean-VM runs, one per candidate binary, and the shipped
+> `1F08096B` was installed and run by the owner. None of that transfers to 6.0.2:
+> Phase 5 changed the provisioning failure path again.
 
-      ```
-      Baby_6.0.1_x64-setup.exe   19,046,592 bytes
-      1F08096BB97ED8D69FA80A3C483F0F09093C2E025C625737DCA7C5AEDAA5EE9B
-      ```
-- [x] Merge the PR. Squashed to `528f63f`, matching how every previous release
-      landed on master.
-- [x] Tag `v6.0.1`. Annotated, on `528f63f`.
-- [x] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`. Both
-      attached, marked latest. Verified the way a user would: downloaded both
-      assets back from the Release page and confirmed the `.exe` hashes to the
-      line in `SHA256SUMS.txt` and to the built binary.
-- [x] Leave the v6.0.0 release up. Its `.exe` and checksum stay valid for anyone
-      who already has them, and deleting a published asset breaks the hash a user
-      may have written down. Confirmed still published.
+- [ ] **Re-run matrix row 9 against the 6.0.2 build.** The hub steps now retry
+      once against the cache when the network fails, and the `provision` row is
+      classified rather than raw — both live exactly where row 9 pulls the plug.
+      Cutting the network mid-download must still give up with a retryable error,
+      and the row must still name the reopen.
+- [ ] **A first run of the candidate binary itself.** A rebuild is a different file
+      even when the source is identical, so each candidate gets its own run rather
+      than inheriting the last one's. Record the size and SHA256 here.
+- [ ] Merge the PR.
+- [ ] Tag `v6.0.2`.
+- [ ] Create the GitHub Release with the `.exe` **and** `SHA256SUMS.txt`.
+- [ ] Leave v6.0.0 and v6.0.1 up. Their `.exe`s and checksums stay valid for
+      anyone who already has them, and deleting a published asset breaks a hash
+      someone may have written down.
 - [ ] Release body links the SmartScreen walkthrough
       (`docs/INSTALL.md`) — a first-time user meeting an unexplained blue warning
       is the most likely reason a download gets abandoned.
