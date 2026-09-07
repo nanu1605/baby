@@ -105,6 +105,60 @@ def test_v3_flag_falls_back_to_classic_when_unbuilt(tmp_path, monkeypatch):
         asyncio.run(db.close())
 
 
+# --- the classic UI was a one-way trip (v6.0.2) -------------------------------
+# Switching to it is a plain navigation, nothing persists the choice, and the
+# classic shell had no control to come back -- so the only way out was restarting
+# Baby, because the shell navigates to / on launch. /brain is the mirror of
+# /classic: it names the SPA directly, so it works even when ui.frontend=classic
+# makes / serve the classic UI.
+
+
+def test_brain_route_serves_the_spa(tmp_path, monkeypatch):
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id=root>V3-SPA</div>", encoding="utf-8")
+    client, db = _v3_client(tmp_path, monkeypatch, dist, "v3")
+    try:
+        assert "V3-SPA" in client.get("/brain").text
+    finally:
+        asyncio.run(db.close())
+
+
+def test_brain_route_works_even_when_the_flag_says_classic(tmp_path, monkeypatch):
+    """The point of the route. With ui.frontend=classic, / IS the classic UI, so a
+    back-link pointing at / would appear to do nothing -- which is the dead end
+    this fixes, not a fix for it."""
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><div id=root>V3-SPA</div>", encoding="utf-8")
+    client, db = _v3_client(tmp_path, monkeypatch, dist, "classic")
+    try:
+        assert _CLASSIC_MARKER in client.get("/").text  # the flag still rules /
+        assert "V3-SPA" in client.get("/brain").text  # ...and /brain still escapes
+    finally:
+        asyncio.run(db.close())
+
+
+def test_brain_route_degrades_instead_of_404ing(tmp_path, monkeypatch):
+    """An unbuilt dist must not answer the escape hatch with a 404 -- a dead end
+    is exactly what this route exists to remove. / already degrades this way."""
+    client, db = _v3_client(tmp_path, monkeypatch, tmp_path / "no-dist", "v3")
+    try:
+        resp = client.get("/brain")
+        assert resp.status_code == 200
+        assert _CLASSIC_MARKER in resp.text
+    finally:
+        asyncio.run(db.close())
+
+
+def test_the_classic_shell_offers_a_way_back(ui):
+    """The markup half. Without a control in ui/web the route is unreachable from
+    the UI that needs it, and the round trip is still a restart."""
+    client, _, _ = ui
+    body = client.get("/classic").text
+    assert 'href="/brain"' in body, "the classic UI has no way back to the new one"
+
+
 def test_ws_state_sends_initial_snapshot(ui):
     # A fresh /ws/state client paints immediately: idle, with router + game_mode.
     client, _, _ = ui

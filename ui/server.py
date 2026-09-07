@@ -329,6 +329,24 @@ def create_app(ctx: UIContext) -> FastAPI:
     async def classic():
         return FileResponse(WEB_DIR / "index.html")
 
+    @app.get("/brain")
+    async def brain():
+        """The mirror of /classic: always reachable, whatever ui.frontend says.
+
+        Switching to the classic UI used to be a one-way trip. The link is a plain
+        navigation to /classic, nothing persists a choice, and the classic shell
+        had no control to come back -- so the only way out was restarting Baby,
+        because the shell navigates to / on launch.
+
+        A back-link to / would not do: with ui.frontend=classic, / IS the classic
+        UI, so the button would appear to do nothing. Hence a route that names the
+        SPA directly. It degrades the same way / does -- an unbuilt dist serves
+        classic rather than a 404, since a dead end is what this is fixing.
+        """
+        if (APP_DIST / "index.html").is_file():
+            return FileResponse(APP_DIST / "index.html")
+        return FileResponse(WEB_DIR / "index.html")
+
     @app.get("/api/graph")
     async def api_graph():
         # Topology of Baby's mind: subsystems + auto-derived tool/brain nodes.
