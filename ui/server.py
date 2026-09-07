@@ -752,8 +752,16 @@ def create_app(ctx: UIContext) -> FastAPI:
             try:
                 await provision.provision(mode, on_event=on_event)
             except Exception as exc:  # noqa: BLE001 -- surface, never crash the server
+                # Classify it, exactly as every dep-level failure already does. This
+                # path used to write str(exc) straight onto the row, which is how
+                # "Cannot send a request, as the client has been closed." -- an
+                # internal httpx message from huggingface_hub's shared client --
+                # reached a user as the explanation for a failed install. The raw
+                # text is kept as `detail` for diagnostics; `message` is what any
+                # reader should show.
+                cls = provision.classify_error(str(exc))
                 on_event({"dep": "provision", "phase": "error", "status": "error",
-                          "detail": str(exc)[:200]})
+                          "detail": str(exc)[:200], **cls})
             finally:
                 app.state.provisioning = False
                 app.state.provision_task = None

@@ -25,6 +25,7 @@ keep a per-dependency snapshot for reconnecting wizards.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import re
 import shutil
@@ -89,6 +90,13 @@ _NONET = re.compile(
 _DISK = re.compile(r"no space left|disk full|enospc|not enough space", re.I)
 _CORRUPT = re.compile(r"hash mismatch|checksum|corrupt|incomplete", re.I)
 _STALLED = re.compile(r"made no progress", re.I)
+# huggingface_hub keeps ONE module-global httpx client and closes it at exit or
+# on a fork. A hub loader thread that outlived the step that started it (see
+# _run_watched_step: cancelling an asyncio.to_thread future does not stop the
+# thread) can still be holding that reference when it goes, and the next request
+# raises this. Same family as a stall: the process, not the machine, is what is
+# broken, so the recovery is a reopen and not a retry.
+_CLOSED_CLIENT = re.compile(r"client has been closed", re.I)
 
 
 def classify_error(text: str) -> dict:
@@ -114,6 +122,15 @@ def classify_error(text: str) -> dict:
             "to stall in the same place, because an interrupted transfer doesn't revive "
             "inside the same session. If a reopen stalls too, suspect a proxy, a VPN, or "
             "antivirus scanning the transfer.",
+            "retryable": True,
+        }
+    if _CLOSED_CLIENT.search(t):
+        return {
+            "kind": "stale_client",
+            "message": "Setup lost the connection it was downloading through. Close "
+            "Baby and reopen it, then run setup again -- it resumes from what is "
+            "already downloaded. Retrying in this window will hit the same dead "
+            "connection.",
             "retryable": True,
         }
     if _PROXY.search(t):
@@ -445,16 +462,16 @@ async def _install_ollama(*, on_event: OnEvent) -> bool:
 
 # Blocking loaders run in a worker thread -- their only job is to TRIGGER the HF-hub
 # auto-download (whisper, e5); the final health re-verify proves they function.
-def _download_whisper() -> None:
+def _download_whisper(local_files_only: bool = False) -> None:
     from voice.stt import SpeechToText
 
-    SpeechToText().load()
+    SpeechToText(local_files_only=local_files_only).load()
 
 
-def _download_embedder() -> None:
+def _download_embedder(local_files_only: bool = False) -> None:
     from memory.embedder import Embedder
 
-    asyncio.run(Embedder().warmup())
+    asyncio.run(Embedder(local_files_only=local_files_only).warmup())
 
 
 def _download_openwakeword(target: Path) -> None:
@@ -613,18 +630,67 @@ async def _run_watched_step(
     on_event(_event(dep, "download", status="done", detail=done_detail))
 
 
+# A failure worth retrying against the cache alone. NOT `corrupt` (the cached
+# bytes are the problem), not `disk_full`, and not `stalled` -- a stall with a
+# complete cache is the model-load phase, where going offline changes nothing.
+_OFFLINE_RETRY_KINDS = frozenset({"no_network", "proxy", "stale_client", "unknown"})
+
+
+def _cache_is_complete(cache: Path | None, total_bytes: int) -> bool:
+    """Whether every byte of a hub repo is already on disk.
+
+    Deliberately strict about partials: huggingface_hub writes `*.incomplete` while
+    a file is in flight, and a half-downloaded repo that merely LOOKS big enough
+    must not be forced offline -- that would turn a resumable download into a
+    permanent failure with a worse message.
+    """
+    if cache is None or not total_bytes or not cache.is_dir():
+        return False
+    try:
+        if any(cache.rglob("*.incomplete")):
+            return False
+        if not any((cache / "snapshots").iterdir()):
+            return False
+    except OSError:
+        return False
+    # approx_mb is approximate, so this is a floor rather than an equality.
+    return _dir_bytes(cache) >= total_bytes * 0.95
+
+
 async def _run_hub_step(dep: str, loader: Callable[[], None], *, on_event: OnEvent) -> None:
-    """A hub loader, narrated from the huggingface cache directory it fills."""
+    """A hub loader, narrated from the huggingface cache directory it fills.
+
+    Retried once against the cache alone when the network fails on a machine that
+    already has every byte. Measured: an offline re-provision failed at the memory
+    embedder with a full cache, because huggingface_hub resolves the ref over the
+    network BEFORE consulting what it has -- so the user was told "couldn't reach
+    the download server" about a download that had already finished.
+
+    The lever is `local_files_only`, passed to the loader, NOT `HF_HUB_OFFLINE`:
+    that env var is read once into a module constant when huggingface_hub is
+    imported, so setting it at this point would do exactly nothing while looking
+    like a fix.
+    """
     repo, size_mb = _hub_asset(dep)
     cache = _hub_cache_dir(repo)
-    await _run_watched_step(
-        dep,
-        loader,
+    total = size_mb * 1024 * 1024
+    kwargs = dict(
         probe=lambda: _dir_bytes(cache),
         detail=lambda seen, elapsed, stalled: _hub_detail(seen, size_mb, elapsed, stalled),
-        total_bytes=size_mb * 1024 * 1024,
+        total_bytes=total,
         on_event=on_event,
     )
+    try:
+        await _run_watched_step(dep, loader, **kwargs)
+        return
+    except Exception as exc:  # noqa: BLE001 -- decide whether the cache can save it
+        kind = classify_error(str(exc)).get("kind")
+        if kind not in _OFFLINE_RETRY_KINDS or not _cache_is_complete(cache, total):
+            raise
+
+    on_event(_event(dep, "download", status="working",
+                    detail="already downloaded -- loading it from the cache"))
+    await _run_watched_step(dep, functools.partial(loader, True), **kwargs)
 
 
 async def _run_wakeword_step(target: Path, *, on_event: OnEvent) -> None:

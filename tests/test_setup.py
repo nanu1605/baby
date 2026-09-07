@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -310,3 +311,47 @@ def test_autostart_reports_the_registry_not_the_request(tmp_path, monkeypatch):
         assert r.json()["enabled"] is False, "it claimed success the registry denies"
     finally:
         asyncio.run(db.close())
+
+
+# --- the provision row carried a raw library string (v6.0.2) ------------------
+
+
+def test_a_walk_ending_outside_a_dep_step_still_gets_a_classified_row(tmp_path, monkeypatch):
+    """The endpoint used to write str(exc) straight onto the `provision` row, so an
+    exception raised where no dep step was running -- the final re-verify is the
+    clear case -- reached the user as raw library text. Observed:
+    "Cannot send a request, as the client has been closed.", which is httpx telling
+    huggingface_hub off and means nothing to anyone installing an assistant."""
+    import ui.server as server
+    from core import provision as provmod
+
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        paths.write_setup({"install_mode": "cloud_only"})
+
+        async def boom(mode, *, on_event):
+            raise RuntimeError("Cannot send a request, as the client has been closed.")
+
+        monkeypatch.setattr(provmod, "provision", boom)
+        assert client.post("/api/setup/provision").status_code == 200
+
+        for _ in range(200):
+            row = server_progress(server, client).get("provision")
+            if row:
+                break
+            time.sleep(0.02)
+        row = server_progress(server, client)["provision"]
+
+        assert row["status"] == "error"
+        assert row.get("kind") == "stale_client", "the row was never classified"
+        assert "reopen" in row["message"].lower()
+        # The raw text stays available for a diagnostics paste, but it is not what
+        # a reader should show.
+        assert row["message"] != row["detail"]
+        assert "client has been closed" not in row["message"]
+    finally:
+        asyncio.run(db.close())
+
+
+def server_progress(server, client) -> dict:
+    return client.get("/api/setup/status").json().get("progress", {})

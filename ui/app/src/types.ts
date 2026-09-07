@@ -202,7 +202,14 @@ export interface SetupProgressEvent {
   phase: string;
   status: string; // working|done|present|skip|pass|fail|error|needs_install
   detail?: string;
+  /** The classified, human-facing reason. `detail` may be raw library text — it
+   *  is for a diagnostics paste, not for a reader. Prefer this. */
   message?: string;
+  /** classify_error's category: no_network | proxy | disk_full | corrupt |
+   *  stalled | stale_client | unknown. */
+  kind?: string;
+  /** Whether retrying is worth the user's time at all. */
+  retryable?: boolean;
   pct?: number;
   human?: string;
   bytes_done?: number;
