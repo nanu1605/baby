@@ -2304,3 +2304,10 @@ Running log of non-obvious choices made during the build. Newest last.
      and verified from the far side: both assets downloaded back from the Release
      page, the `.exe` hashing to its stated checksum and to the local build.
      v6.0.0 left up.
+
+     The "zero commits to master" half of the rule was waived separately and
+     afterwards, which is why this entry arrived on a branch first: the waiver
+     covering merge/tag/publish did not obviously extend to writing to master, and
+     assuming it did would have been the exact move the rule exists to prevent. It
+     still lands the way every other change does -- a PR, squash-merged -- rather
+     than as a direct push, so nothing about how master is written to changes.
