@@ -1173,6 +1173,216 @@ def test_stt_empty_hotwords_sends_none():
     assert seen["hotwords"] is None
 
 
+# -- 12b. voice CPU: one encoder pass, capped thread pools (DECISIONS #167) ----------
+
+
+class _Seg:
+    def __init__(self, text):
+        self.text = text
+
+
+class _RecordingWhisper:
+    """Records the kwargs transcribe() was called with and echoes the language hint
+    back as info.language -- which is exactly what faster-whisper does."""
+
+    def __init__(self, segments=("hello",)):
+        self.kwargs = {}
+        self.segments = segments
+
+    def transcribe(self, audio, **kwargs):
+        self.kwargs = kwargs
+
+        class Info:
+            language = kwargs.get("language")
+
+        return [_Seg(t) for t in self.segments], Info()
+
+
+def test_stt_runs_the_encoder_once():
+    """With language=None, faster-whisper 1.2.1 encodes the audio for language
+    detection, drops that output, and encodes it again to transcribe. The encoder
+    is the whole cost, so voice turns held 8 cores for ~6 s instead of ~3. Both
+    halves of the fix are load-bearing: multilingual=True alone still takes the
+    detect_language() pass, and a language hint alone pins decoding to English."""
+    import numpy as np
+
+    from voice.stt import SpeechToText
+
+    stt = SpeechToText()
+    stt._model = _RecordingWhisper()
+    stt.transcribe(np.zeros(16000, dtype=np.int16))
+
+    assert stt._model.kwargs.get("multilingual") is True, (
+        "without multilingual the hint pins decoding: Hindi would come back as English"
+    )
+    assert stt._model.kwargs.get("language") is not None, (
+        "language=None sends faster-whisper through detect_language(): two encoder passes"
+    )
+
+
+def test_stt_never_reports_the_hint_as_the_language():
+    """The hint comes straight back as info.language, so reporting it would label a
+    Hindi question "en". Nothing downstream may be handed a language that was never
+    detected."""
+    import numpy as np
+
+    from voice.stt import SpeechToText
+
+    stt = SpeechToText()
+    stt._model = _RecordingWhisper(segments=("कल मौसम कैसा रहेगा?",))
+    text, lang = stt.transcribe(np.zeros(16000, dtype=np.int16))
+    assert text == "कल मौसम कैसा रहेगा?"
+    assert lang == ""
+
+    stt._model = _RecordingWhisper(segments=("Thank you.",))  # hallucination path
+    assert stt.transcribe(np.zeros(16000, dtype=np.int16)) == ("", "")
+
+
+def test_voice_models_default_to_four_threads():
+    """Eight Whisper threads bought ~13% speed for ~75% more CPU; onnxruntime's
+    default gave Kokoro every core. Four is the default everywhere a stranger's
+    install could pick one up."""
+    from voice.stt import SpeechToText
+    from voice.tts import TextToSpeech
+
+    assert SpeechToText().cpu_threads == 4
+    assert TextToSpeech().cpu_threads == 4
+
+
+async def test_the_pipeline_falls_back_to_four_threads_and_honours_config(db, monkeypatch):
+    """A config with no cpu_threads must get 4, and a config that names one must get
+    that -- for both stages. The pipeline is what actually builds them."""
+    from core import paths
+    from voice.stt import SpeechToText
+    from voice.tts import TextToSpeech
+
+    monkeypatch.setattr(SpeechToText, "load", lambda self: None)
+    monkeypatch.setattr(TextToSpeech, "load", lambda self: None)
+    monkeypatch.setattr(paths, "resolve_model", lambda p: p)
+
+    for over, want_stt, want_tts in (
+        ({}, 4, 4),
+        ({"stt": {"cpu_threads": 6}, "tts": {"cpu_threads": 2}}, 6, 2),
+    ):
+        pipeline, _, _ = await _make_pipeline(db, [], cfg_over=over)
+        pipeline.stt = None
+        pipeline.tts = None
+        pipeline._load_stt()
+        pipeline._load_tts()
+        assert pipeline.stt.cpu_threads == want_stt, over
+        assert pipeline.tts.cpu_threads == want_tts, over
+
+
+def _fake_onnx_stack(monkeypatch):
+    """Stand-ins for onnxruntime and kokoro_onnx, so this file keeps its promise of
+    never importing onnxruntime. Records what load() asked for."""
+    import sys
+    import types
+
+    seen = {}
+
+    class SessionOptions:
+        def __init__(self):
+            self.intra_op_num_threads = 0
+            self.entries = {}
+
+        def add_session_config_entry(self, key, value):
+            self.entries[key] = value
+
+    def InferenceSession(path, sess_options=None, providers=None):  # noqa: N802
+        seen["session"] = {"path": path, "options": sess_options, "providers": providers}
+        return "the-session"
+
+    class Kokoro:
+        def __init__(self, *args, **kwargs):
+            seen["default_constructor"] = True
+
+        @classmethod
+        def from_session(cls, session, voices_path):
+            seen["from_session"] = (session, voices_path)
+            return cls.__new__(cls)
+
+    class KoKoroConfig:
+        def __init__(self, model_path, voices_path, espeak_config=None):
+            self.paths = (model_path, voices_path)
+
+        def validate(self):
+            from pathlib import Path
+
+            for p in self.paths:
+                if not Path(p).exists():
+                    raise FileNotFoundError(p)
+
+    ort = types.ModuleType("onnxruntime")
+    ort.SessionOptions = SessionOptions
+    ort.InferenceSession = InferenceSession
+    kokoro = types.ModuleType("kokoro_onnx")
+    kokoro.Kokoro = Kokoro
+    kokoro_config = types.ModuleType("kokoro_onnx.config")
+    kokoro_config.KoKoroConfig = KoKoroConfig
+    kokoro.config = kokoro_config
+    monkeypatch.setitem(sys.modules, "onnxruntime", ort)
+    monkeypatch.setitem(sys.modules, "kokoro_onnx", kokoro)
+    monkeypatch.setitem(sys.modules, "kokoro_onnx.config", kokoro_config)
+    return seen
+
+
+def test_tts_session_is_capped_and_does_not_spin(monkeypatch, tmp_path):
+    """Kokoro(...) builds its own session with onnxruntime defaults: a worker per
+    physical core, spin-waiting between ops -- 7.1 cores for every spoken sentence.
+    load() must build the session itself, capped and not spinning, and hand it to
+    Kokoro rather than letting Kokoro build a second one."""
+    from voice.tts import TextToSpeech
+
+    model = tmp_path / "kokoro.onnx"
+    voices = tmp_path / "voices.bin"
+    model.write_bytes(b"")
+    voices.write_bytes(b"")
+    seen = _fake_onnx_stack(monkeypatch)
+
+    tts = TextToSpeech(model_path=model, voices_path=voices, cpu_threads=3)
+    tts.load()
+
+    options = seen["session"]["options"]
+    assert options is not None, "session built with onnxruntime's default options"
+    assert options.intra_op_num_threads == 3
+    assert options.entries.get("session.intra_op.allow_spinning") == "0"
+    assert seen["session"]["providers"] == ["CPUExecutionProvider"]
+    assert seen["session"]["path"] == str(model)
+    assert seen["from_session"] == ("the-session", str(voices))
+    assert "default_constructor" not in seen, "Kokoro() would build an uncapped session"
+
+
+def test_tts_missing_download_still_raises_file_not_found(monkeypatch, tmp_path):
+    """health.check_kokoro and first-run setup report a missing model as
+    FileNotFoundError. Building the session ourselves must not turn that into
+    onnxruntime's NoSuchFile -- the check has to run before the session does."""
+    from voice.tts import TextToSpeech
+
+    seen = _fake_onnx_stack(monkeypatch)
+    tts = TextToSpeech(model_path=tmp_path / "absent.onnx", voices_path=tmp_path / "absent.bin")
+
+    with pytest.raises(FileNotFoundError):
+        tts.load()
+    assert "session" not in seen, "the session was built before the files were checked"
+
+
+def test_the_shipped_config_caps_both_voice_models():
+    """installer/config.default.yaml is what a fresh install runs with; a stranger
+    gets 4 threads for Whisper and Kokoro, not 8 and every core."""
+    from pathlib import Path
+
+    import yaml
+
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "installer" / "config.default.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert cfg["voice"]["stt"]["cpu_threads"] == 4
+    assert cfg["voice"]["tts"]["cpu_threads"] == 4
+
+
 # -- 13. speaker verification gate (Phase 5) -----------------------------------------
 
 

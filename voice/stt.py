@@ -1,8 +1,11 @@
 """Speech-to-text: faster-whisper large-v3-turbo, int8 on CPU.
 
-CPU is deliberate (DECISIONS.md): the 9B LLM owns all 8 GB of VRAM, and
-CTranslate2 disables int8 CUDA kernels on RTX 50-series anyway. int8 turbo
-on the 9700X transcribes a 5-15 s utterance in ~1-2.5 s at zero VRAM.
+CPU is deliberate (DECISIONS.md #42, #167): GPU Whisper needs CUDA runtime
+libraries Baby does not ship, and the 9B LLM wants the VRAM when it loads.
+The cost of a transcription is the encoder over a padded 30 s window, so it
+barely depends on how long the user spoke. Measured on the 9700X for a 4 s
+question: ~3.3 s and ~13 CPU-seconds on 4 threads with the single encoder
+pass below, against ~5.6 s and ~44 CPU-seconds before (two passes, 8 threads).
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ class SpeechToText:
         model: str = "large-v3-turbo",
         device: str = "cpu",
         compute_type: str = "int8",
-        cpu_threads: int = 8,
+        cpu_threads: int = 4,
         beam_size: int = 1,
         hotwords: str = "",
         local_files_only: bool = False,
@@ -61,10 +64,14 @@ class SpeechToText:
         )
 
     def transcribe(self, pcm16) -> tuple[str, str]:
-        """int16 mono 16 kHz samples -> (text, detected language code).
+        """int16 mono 16 kHz samples -> (text, language).
 
-        Returns ("", lang) for silence, too-short audio, and known
-        hallucinations, so the pipeline can drop the turn quietly.
+        The language is always "" -- see the comment on the call below for why
+        it is no longer known here. Nothing acts on it: the router and the voice
+        picker both read the script of the text itself.
+
+        Returns ("", "") for silence, too-short audio, and known hallucinations,
+        so the pipeline can drop the turn quietly.
         """
         import numpy as np
 
@@ -73,14 +80,27 @@ class SpeechToText:
         if len(pcm16) < SAMPLE_RATE * _MIN_SPEECH_S:
             return "", ""
         audio = pcm16.astype(np.float32) / 32768.0
-        segments, info = self._model.transcribe(
+        # One encoder pass, not two. With language=None, faster-whisper 1.2.1
+        # runs detect_language() -- a full encoder pass -- and then throws that
+        # output away, so generate_segments() encodes the same audio again
+        # (transcribe.py, the `if language is None` branch and the
+        # `encoder_output is None` check). The encoder is the whole cost, so every
+        # utterance paid for it twice. multilingual=True detects the language from
+        # the encoder output generate_segments already has, per segment, and a
+        # language hint is what skips the up-front pass. The hint is not used for
+        # decoding: a Hindi question still comes back in Devanagari (measured,
+        # identical transcripts). It IS echoed back as info.language, which is why
+        # this method no longer reports one.
+        segments, _info = self._model.transcribe(
             audio,
             beam_size=self.beam_size,
             vad_filter=True,
             condition_on_previous_text=False,
             hotwords=self.hotwords or None,
+            language="en",
+            multilingual=True,
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
         if not text or text.lower() in _JUNK:
-            return "", info.language or ""
-        return text, info.language or ""
+            return "", ""
+        return text, ""
