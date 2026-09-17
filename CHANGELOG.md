@@ -98,6 +98,17 @@ matrix never saw them.
   tells you why, because switching conversations underneath a running reply would
   answer with the wrong context.
 
+- **Speaking to Baby uses about a third of the CPU it did, and it answers
+  sooner.** Every spoken question held half the processor for around six seconds --
+  game mode or not, because it was never the model: speech recognition was
+  processing each question twice, once to work out the language and again to write
+  it down, and both voice models were spreading across every core. A question now
+  takes about three seconds on half as many cores, and Baby's voice about 40% of the
+  CPU it used, with the same words recognised in English and Hindi. Upgrading keeps
+  the eight recognition threads your settings already name; change
+  `voice: stt: cpu_threads` from 8 to 4 in `%LOCALAPPDATA%\baby\config.yaml` for the
+  rest of the saving.
+
 **Known, unfixed:** links inside Baby's own replies still do nothing in the app
 window, for the same reason the signup links did. Fixing that means opening
 arbitrary URLs, which is a wider change than this release wants. Copy the address

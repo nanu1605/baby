@@ -469,6 +469,25 @@ built bundle on a stub backend; these rows are the same checks against a real on
       not lose track of which chat is active -- that path writes its own `turn_start`
       frame and is the only turn in the app that never reaches the bus.
 
+### Voice CPU (6.0.2)
+
+Reported: any question sent CPU to ~80% until Baby answered. Benchmarked against the
+repo's own classes; these rows are what only the installed app on a real desk shows.
+On an upgraded install, first set `voice.stt.cpu_threads: 4` in
+`%LOCALAPPDATA%\baby\config.yaml` and restart Baby from the tray -- the seeded 8 is
+never overwritten.
+
+- [ ] **A spoken question stays under a third of the CPU.** Task Manager open,
+      Processes sorted by CPU. Ask an English question by voice. `Python` must peak
+      at roughly 25-30% (was ~49%) and fall back within ~4 s of you stopping talking
+      (was ~6 s).
+- [ ] **Hindi still comes out in Devanagari.** Ask the same question in Hindi. The
+      chat shows it in Devanagari script and Baby answers in Hindi.
+- [ ] **Baby's voice has no gaps.** Ask for something with a three- or four-sentence
+      answer. Speech runs continuously, no stalls between sentences, and `Python`
+      stays well under the recognition peak while it talks.
+- [ ] **A typed question barely registers.** Type one. A brief blip at most, no sustained climb.
+
 ## 6. Regression on the real box
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.

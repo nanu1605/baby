@@ -2771,3 +2771,66 @@ Running log of non-obvious choices made during the build. Newest last.
      two to be kept in step by hand, and the guards are compiled with real NSIS and run
      against a scratch registry key: Yes writes the exact string, No writes nothing, and
      an existing value survives untouched.
+
+167. **Speaking to Baby held half the CPU, and it was voice, not the brain.**
+     Reported as *"when I ask anything, game mode on or off, CPU hits 79-85% until Baby
+     responds"*, with Task Manager showing `Python` at 49.1% -- and first asked as
+     whether the local model could move to a cloud VM to save the machine. It could
+     not have helped: the local model was not loaded (Ollama holding 0 models, VRAM
+     1.4 of 8 GB, `/stats` `local_model_loaded: false`), and the backend idled at 0.2%.
+     Game mode made no difference because the load was never in the model.
+
+     **Measured, not guessed.** A per-thread sampler on the live backend during a
+     typed question and then a spoken one: the typed turn showed a ~3-core blip; the
+     spoken turn held an **8-thread pool at 7.8 cores for 6 s -- 49.7% of 16 logical
+     CPUs**, the screenshot's number. `voice.stt.cpu_threads: 8` is faster-whisper.
+     The reply then came out in 6-7-core bursts from a 7-worker pool plus the voice
+     thread: Kokoro. The first guess -- Silero VAD on torch, polled every 32 ms -- was
+     benchmarked and refuted (one thread, 2% of a core) before anything was changed.
+
+     **Whisper encoded every utterance twice.** In faster-whisper 1.2.1,
+     `transcribe(language=None)` calls `detect_language()`, which runs the encoder over
+     the padded 30 s window, and then does not pass that output on --
+     `generate_segments()` sees `encoder_output is None` and runs the encoder again.
+     The encoder *is* the cost, so every question paid for it twice. #42 attributed its
+     ~5.5 s to "the 30 s window padding dominates"; that was half the story, and this
+     supersedes it. `multilingual=True` detects the language from the encoder output
+     `generate_segments` already holds, and passing a language hint is what skips the
+     up-front pass. The hint does not steer decoding -- a Hindi question still comes
+     back in Devanagari -- but it is echoed as `info.language`, so `transcribe` now
+     returns `""` for the language rather than report one nobody detected. Nothing
+     acted on it: the router's language pin and the voice picker both read the script
+     of the text. Public API only, so an upstream fix to the reuse leaves this correct.
+
+     **Eight threads bought 13% of speed for 75% more CPU**, and **Kokoro used
+     onnxruntime's defaults** -- a worker per physical core, spin-waiting between ops.
+     Both now default to 4, Kokoro with spinning off, by building the session
+     ourselves and handing it to `Kokoro.from_session` (the file check still runs
+     first, so a missing download is still a `FileNotFoundError` and not
+     onnxruntime's `NoSuchFile`).
+
+     Real models, run through the repo's own `SpeechToText` / `TextToSpeech` against
+     the old call shape, on the 9700X, with the shipped hotwords:
+
+     | | before | after |
+     |---|---|---|
+     | 4 s English question | 5.53 s, 43.3 CPU-s, 7.8 cores | 3.21 s, 12.6 CPU-s, 3.9 cores |
+     | 3 s Hindi question | 5.65 s, 44.2 CPU-s, 7.8 cores | 3.30 s, 13.1 CPU-s, 4.0 cores |
+     | one spoken sentence (4 s audio) | 0.57 s, 4.00 CPU-s, 7.0 cores | 0.60 s, 1.66 CPU-s, 2.8 cores |
+
+     Transcripts are **identical** before and after, in both languages, with and
+     without hotwords. The single-encode half alone was 2.90 s on 8 threads; four
+     threads cost 0.4 s of that back for 10 CPU-seconds saved per question.
+
+     **Not GPU.** The obvious move now that Baby boots with the 9B unloaded, and #42's
+     "the 9B owns the VRAM" no longer holds by default. It fails before VRAM matters:
+     `Library cublas64_12.dll is not found or cannot be loaded`. The CUDA runtime is
+     not installed, and shipping cuBLAS and cuDNN is on the order of a gigabyte, NVIDIA
+     only, plus a policy for the moment a pinned turn reloads the 9B underneath it.
+     That is its own decision.
+
+     **An existing install keeps 8 Whisper threads until its config says 4.** The
+     seeded `config.yaml` names `cpu_threads: 8` explicitly and is never overwritten on
+     upgrade, so only the single-encode fix and the Kokoro cap reach it automatically
+     (Kokoro's key was never in the file, so the code default applies). That still
+     halves Whisper; the last step is a one-line edit.
