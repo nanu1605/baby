@@ -523,16 +523,18 @@ argument for its own tag rather than waiting to be batched.
       even when the source is identical, so each candidate gets its own run rather
       than inheriting the last one's. Record the size and SHA256 here.
 
-      Candidate, built from a clean tree at `51169e7`:
+      Candidate, built from a clean tree at `4b6b9be`:
       ```
-      Baby_6.0.2_x64-setup.exe   19,068,522 bytes
-      68447A3E162413A0EFDB6ED64124787E84935E582FB540B765B8CDC1E2D84B4E
+      Baby_6.0.2_x64-setup.exe   19,068,817 bytes
+      C9DB95D91B39561E76E7AACF651B01F8A9EF8E6B3D907F9C9910795D46F781F3
       ```
-      First candidate whose installer **asks** about starting with Windows, which is
-      what was reported twice; the earlier ones only had the toggle in Setup & repair.
+      First candidate that recognises speech in one encoder pass and caps both voice
+      models at 4 threads (DECISIONS #167). Everything `68447A3E…` carried is still
+      here, including the installer **asking** about starting with Windows.
 
-      Supersedes `045D204B…` (clean at `ba55c75`), `7FE4B724…` (at `88c588d`) and
-      `3461DB69…` (at `a43a226`, the RepairPanel crash). **Every candidate before this
+      Supersedes `68447A3E…` (clean at `51169e7`, voice at 8 cores), `045D204B…`
+      (clean at `ba55c75`), `7FE4B724…` (at `88c588d`) and `3461DB69…` (at `a43a226`,
+      the RepairPanel crash). **Every candidate before this
       one installs correctly** — the claim that `7FE4B724…` was run over a 6.0.0
       install and replaced nothing was my own misreading of an MSIX-redirected
       filesystem, corrected in DECISIONS #164. Do not go looking for that bug.
@@ -556,7 +558,7 @@ argument for its own tag rather than waiting to be batched.
       Verified before it left this machine: 72 payload `.py` files, 0 content
       differences against HEAD (43 differ in line endings only, which is
       `core.autocrlf` and not a change); the SPA `dist` identical to the one just
-      built; all seven fixes present in the payload; 0 secret-shaped files; no
+      built; every 6.0.2 fix present in the payload, the voice changes included; 0 secret-shaped files; no
       `tests/`; `uv.exe` bundled. That last one is not decoration — the first
       attempt at this build ran the plain `npm run build`, which stages **no**
       `uv.exe`, and a fresh install of it would have stopped at "First-run setup
