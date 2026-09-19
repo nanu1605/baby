@@ -90,7 +90,7 @@ export default function Header() {
         <button
           className="mem-btn"
           onClick={() => useBrain.getState().openRepair()}
-          title="setup & repair — re-check, re-download, switch mode, report a problem"
+          title="settings, setup & repair — start with Windows, re-check, re-download, switch mode, report a problem"
         >
           🛠
         </button>

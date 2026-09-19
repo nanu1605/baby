@@ -8,6 +8,7 @@ import {
 import {
   deleteConversationFlow,
   openConversationView,
+  resumeConversationLive,
   startNewChat,
 } from "../lib/historyActions";
 import type { ConversationMeta } from "../types";
@@ -25,6 +26,7 @@ import type { ConversationMeta } from "../types";
 export default function HistorySidebar() {
   const activeId = useBrain((s) => s.activeConversationId);
   const viewingId = useBrain((s) => s.viewingConversationId);
+  const turnsCompleted = useBrain((s) => s.turnsCompleted);
   const pushToast = useBrain((s) => s.pushToast);
 
   const [list, setList] = useState<ConversationMeta[]>([]);
@@ -41,11 +43,18 @@ export default function HistorySidebar() {
     }
   }, [showArchived]);
 
-  // Refresh on mount, when the archived filter flips, and whenever the live
-  // conversation changes (new chat / resume / delete) so the list stays honest.
+  // Refresh on mount, when the archived filter flips, whenever the live conversation
+  // changes (new chat / resume / delete), and after every completed TURN.
+  //
+  // That last one was missing, and it is the whole of the "chats only show up when I
+  // tick Show archived" report: chatting in the conversation you are already in
+  // changes neither the filter nor the active id, so the row's title, message count
+  // and timestamp went stale and a brand-new chat never appeared at all. Ticking the
+  // checkbox changed `refresh`'s identity, which re-ran this effect -- so the filter
+  // looked like the thing revealing the chat, when it was only the thing reloading it.
   useEffect(() => {
     refresh();
-  }, [refresh, activeId]);
+  }, [refresh, activeId, turnsCompleted]);
 
   const onNew = async () => {
     try {
@@ -133,10 +142,24 @@ function HistoryRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conv.title);
 
-  const open = () =>
-    openConversationView(conv.id).catch(() =>
-      pushToast("Couldn't open that conversation.", "error"),
-    );
+  // Clicking a chat OPENS it -- transcript loaded and the composer live, the way
+  // every chat sidebar behaves. It used to drop into a read-only viewer with a
+  // "Resume here" button, so getting back into a conversation took two clicks and
+  // the first one looked like it had failed.
+  //
+  // Resume is refused with a 409 while a turn is running (reassigning the agent's
+  // conversation mid-turn would rehydrate the wrong context). That is the one case
+  // the read-only viewer is still right for: show the chat, say why it is frozen,
+  // rather than making the click do nothing.
+  const open = async () => {
+    try {
+      if (await resumeConversationLive(conv.id)) return;
+      await openConversationView(conv.id);
+      pushToast("Opened read-only — Baby is mid-answer. Resume when it finishes.");
+    } catch {
+      pushToast("Couldn't open that conversation.", "error");
+    }
+  };
 
   const commitRename = async () => {
     setEditing(false);

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import pathlib
 
+import pytest
 from fastapi.testclient import TestClient
 
 from core import paths, provision
@@ -544,3 +545,138 @@ def test_provision_endpoint_surfaces_a_failure(tmp_path, monkeypatch):
         assert status["progress"]["provision"]["status"] == "error"
     finally:
         asyncio.run(db.close())
+
+
+# --- offline re-provision with a full cache (v6.0.2) --------------------------
+# Logged in DECISIONS #153 and left unfixed: an offline re-provision fails at the
+# memory embedder even when every byte is already cached, because huggingface_hub
+# resolves the ref over the network BEFORE consulting the cache. The user is told
+# "couldn't reach the download server" about a download that already finished.
+
+
+def _hub_cache(tmp_path, repo: str, size_bytes: int, *, incomplete=False) -> pathlib.Path:
+    """A cache directory shaped like huggingface_hub's, filled to `size_bytes`."""
+    root = tmp_path / ("models--" + repo.replace("/", "--"))
+    snap = root / "snapshots" / "abc123"
+    snap.mkdir(parents=True)
+    (snap / "model.safetensors").write_bytes(b"x" * size_bytes)
+    if incomplete:
+        (root / "blobs").mkdir(parents=True, exist_ok=True)
+        (root / "blobs" / "deadbeef.incomplete").write_bytes(b"y")
+    return root
+
+
+class _OfflineOnly:
+    """A loader that fails on the network and succeeds only when told to stay local."""
+
+    def __init__(self, error: str = "getaddrinfo failed"):
+        self.error = error
+        self.calls: list[bool] = []
+
+    def __call__(self, local_files_only: bool = False) -> None:
+        self.calls.append(local_files_only)
+        if not local_files_only:
+            raise RuntimeError(self.error)
+
+
+def _patch_cache(monkeypatch, cache):
+    monkeypatch.setattr(provision, "_hub_cache_dir", lambda repo: cache)
+
+
+def test_a_full_cache_is_retried_offline_instead_of_reported_unreachable(
+    tmp_path, monkeypatch
+):
+    repo, size_mb = provision._hub_asset("embedder")
+    cache = _hub_cache(tmp_path, repo, size_mb * 1024 * 1024)
+    _patch_cache(monkeypatch, cache)
+    loader = _OfflineOnly()
+    events: list = []
+
+    asyncio.run(provision._run_hub_step("embedder", loader, on_event=events.append))
+
+    assert loader.calls == [False, True], (
+        "the second attempt did not ask for a local-only load"
+    )
+    assert events[-1]["status"] == "done", "the step still failed with a full cache"
+
+
+def test_a_partial_cache_is_not_forced_offline(tmp_path, monkeypatch):
+    """The dangerous case. A half-downloaded repo that merely looks big enough must
+    stay resumable -- forcing it offline turns a retry into a permanent failure."""
+    repo, size_mb = provision._hub_asset("embedder")
+    cache = _hub_cache(tmp_path, repo, size_mb * 1024 * 1024, incomplete=True)
+    _patch_cache(monkeypatch, cache)
+    loader = _OfflineOnly()
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(provision._run_hub_step("embedder", loader, on_event=lambda e: None))
+    assert loader.calls == [False], "a partial download was retried against the cache"
+
+
+def test_an_empty_cache_is_not_retried_offline(tmp_path, monkeypatch):
+    """Nothing to load from. Retrying offline would replace an honest network error
+    with a confusing local one."""
+    repo, _ = provision._hub_asset("embedder")
+    cache = _hub_cache(tmp_path, repo, 16)
+    _patch_cache(monkeypatch, cache)
+    loader = _OfflineOnly()
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(provision._run_hub_step("embedder", loader, on_event=lambda e: None))
+    assert loader.calls == [False]
+
+
+def test_a_corrupt_download_is_never_retried_offline(tmp_path, monkeypatch):
+    """The cached bytes ARE the problem, so loading them again is the one thing that
+    cannot help."""
+    repo, size_mb = provision._hub_asset("embedder")
+    cache = _hub_cache(tmp_path, repo, size_mb * 1024 * 1024)
+    _patch_cache(monkeypatch, cache)
+    loader = _OfflineOnly("hash mismatch in downloaded file")
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(provision._run_hub_step("embedder", loader, on_event=lambda e: None))
+    assert loader.calls == [False]
+
+
+def test_the_loaders_accept_the_local_only_flag():
+    """The retry passes a positional True. A loader that does not take it would fail
+    with a TypeError that classify_error would then dress up as a download problem."""
+    import inspect
+
+    for fn in (provision._download_whisper, provision._download_embedder):
+        params = list(inspect.signature(fn).parameters)
+        assert params == ["local_files_only"], f"{fn.__name__} cannot be told to stay local"
+
+
+def test_the_offline_lever_is_the_argument_not_the_env_var():
+    """HF_HUB_OFFLINE is read once into a module constant when huggingface_hub is
+    imported, so setting it during provisioning does nothing at all while looking
+    exactly like a fix. This pins the lever that actually works."""
+    import huggingface_hub.constants as hc
+
+    src = pathlib.Path(hc.__file__).read_text(encoding="utf-8")
+    assert "HF_HUB_OFFLINE = _is_true(os.environ.get" in src, (
+        "huggingface_hub changed how it reads HF_HUB_OFFLINE -- re-check whether the "
+        "env var is now usable at runtime"
+    )
+    ours = pathlib.Path(provision.__file__).read_text(encoding="utf-8")
+    assert "local_files_only=" in ours, "the retry no longer passes the flag through"
+    assert "os.environ[\"HF_HUB_OFFLINE\"]" not in ours, (
+        "provisioning is setting HF_HUB_OFFLINE at runtime, which this version of "
+        "huggingface_hub reads only at import -- it would do nothing"
+    )
+
+
+# --- the provision row carried a raw library string (v6.0.2) ------------------
+
+
+def test_a_closed_client_reads_as_a_reopen_not_a_network_failure():
+    """huggingface_hub keeps one module-global httpx client and closes it at exit or
+    on a fork; a loader thread that outlived its step can still be holding it. The
+    message it raises is internal and was shown to users verbatim."""
+    cls = provision.classify_error("Cannot send a request, as the client has been closed.")
+    assert cls["kind"] == "stale_client"
+    assert cls["retryable"] is True
+    assert "reopen" in cls["message"].lower()
+    assert "client has been closed" not in cls["message"]

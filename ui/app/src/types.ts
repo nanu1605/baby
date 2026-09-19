@@ -147,6 +147,9 @@ export interface Stats {
   ui?: { brain: string; history?: string };
   /** v6 first-run wizard state (core/paths.py setup.json + is_installed). */
   setup?: SetupState;
+  autostart?: AutostartState;
+  /** Which build is running (v6.0.2). See VersionState. */
+  version?: VersionState;
   /** V3 watchdog: local model resident in VRAM (omitted while unknown). */
   local_model_loaded?: boolean;
   tokens?: {
@@ -175,6 +178,32 @@ export interface SetupState {
   provisioned: boolean;
 }
 
+/** /stats.autostart — "start Baby with Windows", read live from HKCU\...\Run.
+ *  `supported` is false off Windows and in a source checkout, where there is no
+ *  installed exe for a Run value to point at. */
+export interface VersionState {
+  /** The payload that actually got imported, read from its own pyproject.toml. */
+  app: string;
+  /**
+   * What the native shell reports (BABY_SHELL_VERSION). null whenever the shell
+   * attached to a backend it did not spawn, which is unknown -- not a mismatch.
+   */
+  shell: string | null;
+}
+
+export interface AutostartState {
+  /** Windows. Whether the setting exists at all, and so whether to show it. */
+  supported: boolean;
+  /** Read live from the registry every time — never a mirrored flag. */
+  enabled: boolean;
+  /**
+   * Whether it can be turned ON: that needs the shell's own path (BABY_SHELL_EXE),
+   * which a backend the shell only attached to does not have. Turning it OFF never
+   * needs it, which is why this is separate from `supported`.
+   */
+  can_enable: boolean;
+}
+
 /** GET /api/setup/plan — the ordered provisioning checklist for the chosen mode. */
 export interface SetupStep {
   key: string;
@@ -193,7 +222,14 @@ export interface SetupProgressEvent {
   phase: string;
   status: string; // working|done|present|skip|pass|fail|error|needs_install
   detail?: string;
+  /** The classified, human-facing reason. `detail` may be raw library text — it
+   *  is for a diagnostics paste, not for a reader. Prefer this. */
   message?: string;
+  /** classify_error's category: no_network | proxy | disk_full | corrupt |
+   *  stalled | stale_client | unknown. */
+  kind?: string;
+  /** Whether retrying is worth the user's time at all. */
+  retryable?: boolean;
   pct?: number;
   human?: string;
   bytes_done?: number;

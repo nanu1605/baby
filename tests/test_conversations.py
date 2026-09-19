@@ -203,6 +203,51 @@ def test_conversations_endpoints(tmp_path):
         asyncio.run(db.close())
 
 
+# -- the live conversation id on the wire (v6.0.2) -----------------------------
+#
+# core/bus.py documents turn_start as carrying {conversation_id}, and the bus pump
+# forwards the whole payload -- so the SPA can learn the live conversation from the
+# socket. The game-mode escape hatch answers on the socket directly, skipping the
+# bus, and it skipped the contract with it: a bare {"type": "turn_start"}. One event
+# with two shapes is how a client ends up handling neither.
+
+
+class _GameProvider(FakeProvider):
+    """FakeProvider plus the one method the escape hatch probes for."""
+
+    async def set_game_mode(self, on: bool) -> str:
+        return f"game mode {'on' if on else 'off'}"
+
+
+def _game_client(tmp_path):
+    db = Database(tmp_path / "game.db")
+    conv = asyncio.run(_boot(db))
+    bus = EventBus()
+    gate = SafetyGate(SafetyConfig(mode="dry_run"), bus)
+    agent = AgentCore(_GameProvider([]), db, conv, channel="ui", bus=bus, gate=gate)
+    ctx = UIContext(db=db, bus=bus, gate=gate, agent=agent, config=_CONFIG)
+    return TestClient(create_app(ctx)), db, conv
+
+
+def test_the_game_mode_turn_start_carries_the_conversation_id(tmp_path):
+    """The frame this path writes by hand has to match the one the bus publishes.
+
+    Without it the sidebar cannot tell which conversation it is looking at after a
+    game-mode toggle -- the only turn in the app that never reaches the bus.
+    """
+    client, db, conv = _game_client(tmp_path)
+    try:
+        with client.websocket_connect("/ws/chat") as ws:
+            ws.send_json({"type": "user_message", "text": "game mode on"})
+            start = ws.receive_json()
+            assert start["type"] == "turn_start"
+            assert start.get("conversation_id") == conv, (
+                "the hand-rolled frame still omits the id the bus frame carries"
+            )
+    finally:
+        asyncio.run(db.close())
+
+
 # -- resume endpoint (H1) ------------------------------------------------------
 
 

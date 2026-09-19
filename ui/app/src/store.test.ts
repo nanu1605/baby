@@ -183,3 +183,52 @@ describe("plain-stream → sanitized-markdown swap (turn_end)", () => {
     expect(html).toContain('rel="noopener noreferrer"');
   });
 });
+
+describe("turnsCompleted — the history sidebar's staleness cue", () => {
+  beforeEach(() =>
+    useBrain.setState({
+      messages: [],
+      turnsCompleted: 0,
+      viewingConversationId: null,
+    }),
+  );
+
+  it("counts every finished turn", () => {
+    const b = useBrain.getState();
+    b.startTurn();
+    b.appendToken("hi");
+    b.finishTurn({ reply: "hi" });
+    expect(useBrain.getState().turnsCompleted).toBe(1);
+    b.startTurn();
+    b.finishTurn({ reply: "again" });
+    expect(useBrain.getState().turnsCompleted).toBe(2);
+  });
+
+  it("counts a turn that ends with no open bubble", () => {
+    // finishTurn returns early when nothing is streaming. The conversation still
+    // changed on the server, so the list is still stale.
+    useBrain.getState().finishTurn({ reply: "orphan" });
+    expect(useBrain.getState().turnsCompleted).toBe(1);
+  });
+
+  it("counts a turn that lands while a past chat is being viewed", () => {
+    // The viewing guard exists to protect the frozen TRANSCRIPT, and it must not
+    // also freeze the conversation list: clicking into an old chat mid-answer does
+    // not stop the live conversation from gaining a reply.
+    useBrain.setState({ viewingConversationId: 7 });
+    const b = useBrain.getState();
+    b.startTurn();
+    b.finishTurn({ reply: "landed anyway" });
+    expect(useBrain.getState().turnsCompleted).toBe(1);
+    expect(useBrain.getState().messages).toHaveLength(0); // transcript untouched
+  });
+
+  it("is not moved by anything other than a finished turn", () => {
+    const b = useBrain.getState();
+    b.startTurn();
+    b.appendToken("mid");
+    b.addSystemNote("note");
+    b.interruptTurn();
+    expect(useBrain.getState().turnsCompleted).toBe(0);
+  });
+});

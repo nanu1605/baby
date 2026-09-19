@@ -44,6 +44,13 @@ export default defineConfig({
       "/game_mode": backend,
       "/conversation": backend,
       "/api": backend,
+      // The classic shell and its assets, plus /brain -- the route back from it.
+      // Without these the header's UI switch is a 404 in dev, so the one thing
+      // you cannot exercise on the dev server is the round trip between the two
+      // UIs. Vite owns "/" here; these three belong to the backend.
+      "/classic": backend,
+      "/brain": backend,
+      "/static": backend,
       "/ws": { target: wsBackend, ws: true },
     },
   },

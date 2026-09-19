@@ -58,6 +58,28 @@ export const getSetupGpu = () => getJSON<SetupGpu>("/api/setup/gpu");
 export const postSetupMode = (mode: "full" | "cloud_only") =>
   postJSON("/api/setup/mode", { mode });
 
+/** Open a provider's signup page in the real browser.
+ *
+ *  The shell is a WebView2 window with no new-window handler, so a plain
+ *  `target="_blank"` goes nowhere. Sends the ENV NAME, never a URL — the backend
+ *  resolves it against its own frozen list, so this cannot be pointed anywhere. */
+export async function postKeySignup(env: string): Promise<boolean> {
+  const r = await postJSON("/api/setup/keys/signup", { env });
+  if (!r.ok) return false;
+  const data = (await r.json()) as { opened?: boolean };
+  return data.opened === true;
+}
+
+/** Turn "start Baby with Windows" on or off. Writes a per-user Run key; Baby
+ *  comes up minimised to the tray. Returns what the registry says afterwards,
+ *  not what was asked for. */
+export async function postAutostart(enabled: boolean): Promise<boolean> {
+  const r = await postJSON("/api/setup/autostart", { enabled });
+  if (!r.ok) return false;
+  const data = (await r.json()) as { enabled?: boolean };
+  return data.enabled === true;
+}
+
 /** Re-runnable functional health check (wheels + real model loads). Heavy. */
 export const getSetupHealth = () => getJSON<SetupHealth>("/api/setup/health");
 

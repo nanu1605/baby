@@ -12,7 +12,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 
-import { postSetupKey, postSetupKeyValidate } from "../api/client";
+import { postKeySignup, postSetupKey, postSetupKeyValidate } from "../api/client";
 import {
   keyHint,
   keyOutcomeOk,
@@ -127,11 +127,22 @@ export function KeyField({
         <p className="wizard-key-msg tone-warn">Not saved yet — press Save to store it.</p>
       )}
       {saved && <p className="wizard-key-hint">{saved}</p>}
+      {/* The href stays so the URL is visible on hover, copyable from the context
+          menu, and still works in a plain browser. Inside the shell it goes
+          nowhere -- WebView2 with no new-window handler drops target="_blank" --
+          so the click asks the backend to open it instead. If that request fails
+          we fall through to the default rather than swallowing the click. */}
       <a
         className="wizard-key-link"
         href={row.signup_url}
         target="_blank"
         rel="noreferrer noopener"
+        onClick={(e) => {
+          e.preventDefault();
+          void postKeySignup(row.env).then((opened) => {
+            if (!opened) window.open(row.signup_url, "_blank", "noopener");
+          });
+        }}
       >
         Get a {row.label} key
       </a>

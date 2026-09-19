@@ -81,15 +81,24 @@ export default function App() {
       <main className="stage">
         {historyOn && <HistorySidebar />}
 
-        {renderTier === "2d" || contextLost ? (
-          <BrainGraph />
-        ) : (
-          <SphereBoundary>
-            <Suspense fallback={<BrainGraph />}>
-              <BrainSphere />
-            </Suspense>
-          </SphereBoundary>
-        )}
+        {/* The omnibox lives INSIDE the canvas column, not floating over the whole
+            window. Centred on the viewport it sat partly under the chat panel,
+            because the canvas is inset by the history sidebar on one side and the
+            panel on the other -- and both of those collapse, so no fixed offset
+            could have been right either. Here it is centred on whatever the canvas
+            currently is, with nothing to keep in sync. */}
+        <div className="graph-area">
+          {renderTier === "2d" || contextLost ? (
+            <BrainGraph />
+          ) : (
+            <SphereBoundary>
+              <Suspense fallback={<BrainGraph />}>
+                <BrainSphere />
+              </Suspense>
+            </SphereBoundary>
+          )}
+          <Omnibox />
+        </div>
 
         {collapsed ? (
           <button
@@ -134,7 +143,6 @@ export default function App() {
         )}
       </main>
 
-      <Omnibox />
       <InspectorDrawer />
       <ConfirmModal />
       <MemoryDialog />
