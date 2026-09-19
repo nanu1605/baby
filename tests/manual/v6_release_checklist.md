@@ -474,8 +474,10 @@ built bundle on a stub backend; these rows are the same checks against a real on
 Reported: any question sent CPU to ~80% until Baby answered. Benchmarked against the
 repo's own classes; these rows are what only the installed app on a real desk shows.
 On an upgraded install, first set `voice.stt.cpu_threads: 4` in
-`%LOCALAPPDATA%\baby\config.yaml` and restart Baby from the tray -- the seeded 8 is
-never overwritten.
+`%LOCALAPPDATA%\baby\config.yaml` -- the seeded 8 is never overwritten -- then
+choose **Quit Baby (app)** from the tray and start Baby again. The tray has no
+restart, and **Reload UI** only reloads the page: the backend keeps the threads it
+started with, and this whole section would measure the old ~49%.
 
 - [ ] **A spoken question stays under a third of the CPU.** Task Manager open,
       Processes sorted by CPU. Ask an English question by voice. `Python` must peak
@@ -532,12 +534,25 @@ argument for its own tag rather than waiting to be batched.
       models at 4 threads (DECISIONS #167). Everything `68447A3E…` carried is still
       here, including the installer **asking** about starting with Windows.
 
-      Supersedes `68447A3E…` (clean at `51169e7`, voice at 8 cores), `045D204B…`
+      Supersedes `68447A3E…` (built at `bd83abc`, voice at 8 cores), `045D204B…`
       (clean at `ba55c75`), `7FE4B724…` (at `88c588d`) and `3461DB69…` (at `a43a226`,
       the RepairPanel crash). **Every candidate before this
       one installs correctly** — the claim that `7FE4B724…` was run over a 6.0.0
       install and replaced nothing was my own misreading of an MSIX-redirected
       filesystem, corrected in DECISIONS #164. Do not go looking for that bug.
+
+      **The voice change was verified as the artifact:** the payload's own
+      `voice/stt.py` and `voice/tts.py`, imported from the staged payload (proved by
+      `__file__`), on the installed app's own runtime. English question 3.13 s and
+      12.4 CPU-seconds with exactly 4 busy threads; Hindi 3.36 s, 13.4 CPU-seconds,
+      Devanagari, identical to the old call; one spoken sentence 0.63 s on 2.5 cores;
+      faster-whisper received `language='en', multilingual=True`; the Kokoro session
+      had 4 threads, spinning off. `check_whisper` and `check_kokoro` from the
+      payload both pass.
+
+      The SPA and installer-hook verification below is inherited from `68447A3E…`:
+      `ui/app/src` and `installer_hooks.nsh` are unchanged since, so it was not re-run
+      for this build.
 
       Verified as an artifact rather than as source, as every candidate since
       `3461DB69…` has been: a production React bundle is a different artifact whose

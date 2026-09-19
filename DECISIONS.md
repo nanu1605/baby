@@ -2782,8 +2782,8 @@ Running log of non-obvious choices made during the build. Newest last.
 
      **Measured, not guessed.** A per-thread sampler on the live backend during a
      typed question and then a spoken one: the typed turn showed a ~3-core blip; the
-     spoken turn held an **8-thread pool at 7.8 cores for 6 s -- 49.7% of 16 logical
-     CPUs**, the screenshot's number. `voice.stt.cpu_threads: 8` is faster-whisper.
+     spoken turn held an **8-thread pool at 7.8 cores for 6 s -- about half of 16
+     logical CPUs**, matching the screenshot's 49.1%. `voice.stt.cpu_threads: 8` is faster-whisper.
      The reply then came out in 6-7-core bursts from a 7-worker pool plus the voice
      thread: Kokoro. The first guess -- Silero VAD on torch, polled every 32 ms -- was
      benchmarked and refuted (one thread, 2% of a core) before anything was changed.
@@ -2800,7 +2800,8 @@ Running log of non-obvious choices made during the build. Newest last.
      back in Devanagari -- but it is echoed as `info.language`, so `transcribe` now
      returns `""` for the language rather than report one nobody detected. Nothing
      acted on it: the router's language pin and the voice picker both read the script
-     of the text. Public API only, so an upstream fix to the reuse leaves this correct.
+     of the text, and `core/health.py` only prints it (that detail line now reads
+     `lang=-`). Public API only, so an upstream fix to the reuse leaves this correct.
 
      **Eight threads bought 13% of speed for 75% more CPU**, and **Kokoro used
      onnxruntime's defaults** -- a worker per physical core, spin-waiting between ops.
@@ -2823,7 +2824,7 @@ Running log of non-obvious choices made during the build. Newest last.
      threads cost 0.4 s of that back for 10 CPU-seconds saved per question.
 
      **Not GPU.** The obvious move now that Baby boots with the 9B unloaded, and #42's
-     "the 9B owns the VRAM" no longer holds by default. It fails before VRAM matters:
+     premise -- the 9B measuring 7.99 of 8 GB warm -- no longer holds by default. It fails before VRAM matters:
      `Library cublas64_12.dll is not found or cannot be loaded`. The CUDA runtime is
      not installed, and shipping cuBLAS and cuDNN is on the order of a gigabyte, NVIDIA
      only, plus a policy for the moment a pinned turn reloads the 9B underneath it.
@@ -2833,4 +2834,6 @@ Running log of non-obvious choices made during the build. Newest last.
      seeded `config.yaml` names `cpu_threads: 8` explicitly and is never overwritten on
      upgrade, so only the single-encode fix and the Kokoro cap reach it automatically
      (Kokoro's key was never in the file, so the code default applies). That still
-     halves Whisper; the last step is a one-line edit.
+     halves Whisper; the last step is a one-line edit, then **Quit Baby (app)** from
+     the tray and start it again -- the tray has no restart, and **Reload UI** only
+     reloads the page, so the backend keeps the threads it started with.
