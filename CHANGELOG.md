@@ -16,6 +16,14 @@ when you talk over it -- so this release fixes what was missing around it.
   activity feed shows one line: how long it took to transcribe what you said, when
   the first word of the answer arrived, and when Baby started speaking, all counted
   from the moment you stopped talking.
+- **Decimals, version numbers and site names are read the way you would say them.**
+  Baby used to stop at every full stop, so "12.5 dollars" came out as "twelve" --
+  pause -- "five dollars", and "example.com" was cut in two. It now says "twelve
+  point five" and "example dot com", and a full stop only ends a sentence when it
+  really is the end of one.
+- **Lists are spoken item by item.** A list without full stops used to be held back
+  and read in one go at the very end of the reply. Each line is now spoken as soon as
+  it is written.
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 

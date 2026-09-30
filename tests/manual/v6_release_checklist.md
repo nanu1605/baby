@@ -507,6 +507,18 @@ microphone, and none of it has had one yet. A config change only takes effect af
 - [ ] **Follow-up settings apply.** Set `conversation: window_s: 10`, restart, ask
       something and then stay silent. The follow-up window closes after about ten
       seconds, not sixty. Put it back afterwards.
+- [ ] **Decimals are spoken with "point".** Ask "what is 12.5 plus 3.25". You hear
+      "twelve point five" and "fifteen point seven five" (or "seventy five"), with no
+      pause inside a number.
+- [ ] **A site name is spoken with "dot".** Ask "what is the address of Wikipedia".
+      You hear "wikipedia dot org", not two separate words.
+- [ ] **A long list starts before it is finished.** Ask for "ten things to pack for a
+      trip, one per line". Baby is already speaking the first items while the list is
+      still growing in the chat, and in the timing line `sentence` is within a
+      fraction of a second of `token`.
+- [ ] **"Let me check" comes before the answer.** Ask something that needs a tool
+      ("how much free disk space do I have"). If Baby says a line before using the
+      tool, you hear it on its own, then the answer -- never run together.
 
 ## 6. Regression on the real box
 

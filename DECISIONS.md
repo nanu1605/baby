@@ -2909,3 +2909,67 @@ Running log of non-obvious choices made during the build. Newest last.
      None in YAML and is dropped before the pipeline sees it, so the default applies:
      the pipeline is built outside voice's fail-soft load, and a None there would
      stop Baby starting.
+169. **A full stop ends a sentence only when something follows it, and is spoken when it is inside a word.**
+     Spec item 2, streaming, was already built: a token per chunk, split into
+     sentences, spoken while the model is still writing. What was wrong was the
+     splitter. It cut at terminators regardless of what followed, so "The price is
+     12.5 dollars." was spoken as "The price is twelve." and then "Five dollars.",
+     and "v6.0.2" and "example.com" went the same way.
+
+     Only the full stop is ambiguous, so only the full stop changed: it ends a
+     sentence when whitespace follows it, after any closing quote, bracket or
+     markdown marker (a model writes "**Yes.** Then..."). `!`, `?`, `…` and the danda
+     end one wherever they stand, which keeps Hindi written without a space after the
+     danda working. Requiring whitespace after every terminator was the first idea and
+     would have broken five of the eight existing splitter tests; this changes one.
+
+     **Splitting was only half of it.** The review synthesised the result and measured
+     it: Kokoro's phonemizer cuts at every full stop too, so "12.5" kept in one
+     sentence was still "twelve" -- a 290 ms pause -- "five", byte for byte the old
+     audio. The speech funnel (`strip_markdown`, inside `synth`) now says what a person
+     would: a full stop between digits is " point ", and one followed by two or more
+     lowercase letters is " dot " ("example dot com", "report dot pdf"). Lowercase
+     only, so "check.It" -- two generations glued together -- gets a pause, never a
+     "dot". Left as they are: an IP address is "192 point 168", and "5.30 pm" is "5
+     point 30".
+
+     **The cost of the new rule, and what pays for it.** A full stop at the very end
+     of the buffer is no longer a boundary, because mid-stream "12." may be the start
+     of "12.5". Three things release text that stops on one:
+
+     - A `tool_start` event flushes the buffer. It is published once the generation
+       that asked for the tool has finished, so what is buffered is complete. Without
+       this, "Let me check." was glued to the answer whenever the tool was quick
+       ("Let me check.It is noon."), and the "check the screen" line was spoken
+       before the sentence introducing it.
+     - A `confirm_request` flushes before queueing its own line, for the same order.
+     - Otherwise the bridge flushes a buffer that ends a sentence once no token has
+       arrived for 250 ms. That covers the last sentence of a reply waiting on the
+       next-step call. The quiet is counted from the last token, not the last bus
+       event (`tts_rms` arrives every 100 ms while Baby speaks), and the wait is only
+       timed on an empty queue: once the deadline has passed `wait_for` raises without
+       looking, and the token that completes the number may already be waiting.
+       250 ms is a guess.
+
+     **Same function, found by the review.** The first pattern matched whole sentences
+     lazily and was cubic on a run of dots -- 1600 of them took seven seconds, on the
+     asyncio loop, per token. It now searches for boundaries and is linear (20,000
+     dots in under a millisecond). A newline is a boundary, so a list is spoken line
+     by line as it completes. A chunk that is only punctuation is dropped (a streamed
+     "Really?" then "!" handed Kokoro a bare "!"), but a symbol such as "%" is speech.
+     "10." alone is a list marker and stays with its item. "(e.g." is still "e.g.".
+     "a.m.", "p.m." and "Rs." joined the abbreviations; the undotted "am" did not, or
+     "I am." would never end.
+
+     **Known and left.** A sentence ending on a single letter ("Checking drive C.")
+     is not flushed by the timer, because one letter before a full stop reads as an
+     initial; it goes out at the tool call or the end of the turn. A web address with
+     a query string is still cut at the "?". Two generations with no tool call between
+     them (the agent's "you promised an action" retry) rely on the timer alone.
+
+     **Not built.** Cutting a long sentence at a comma so first audio comes sooner.
+     Commas and dashes sit inside "1,000,000" and "state-of-the-art", and kokoro-onnx
+     already batches long input. The timing line (#168) will say whether long first
+     sentences are a real delay. Nor a streaming on/off switch: there is no
+     non-streaming path in Baby to fall back to, and building one is the rewrite the
+     spec forbids.
