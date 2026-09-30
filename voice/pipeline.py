@@ -28,7 +28,7 @@ from pathlib import Path
 
 from core.intents import is_end_phrase
 from voice.amplitude import Throttle, quantize_level, rms_int16
-from voice.tts import split_sentences
+from voice.tts import CloudOk, split_sentences
 
 _PUNCT_RE = re.compile(r"[^\w\s]|[_।]", re.UNICODE)
 
@@ -75,6 +75,7 @@ class VoicePipeline:
         stt=None,
         tts=None,
         verifier=None,
+        privacy_pins=None,
     ) -> None:
         self.loop = loop
         self.agent = agent
@@ -128,6 +129,17 @@ class VoicePipeline:
 
         self._text_buf = ""
         self._turn_future = None
+        # Privacy (DECISIONS #168): once a voice turn calls a pinned tool, the rest
+        # of that turn's sentences stay on this PC. The pins are router.privacy_pins
+        # from config, with the router's own default -- passed in, because only the
+        # cloud router carries them and local_primary is where Sarvam is the only
+        # thing sending a reply off the PC. Only the bridge touches these.
+        self._pins = set(
+            privacy_pins if privacy_pins is not None else ("read_file", "run_shell")
+        )
+        self._local_only = False
+        self._last_seq = None
+        self._open_turns = 0  # a late turn_end from an earlier turn must not unpin this one
         self._stopping = threading.Event()
         # Kill switch: force-stop live playback + the running turn (the UI /kill
         # cancelled the turn future but Baby kept speaking the already-queued
@@ -252,10 +264,12 @@ class VoicePipeline:
             self.tts = TextToSpeech(
                 model_path=str(model_path),
                 voices_path=str(voices_path),
-                voice_en=tts_cfg.get("voice_en", "af_heart"),
+                voice_en=tts_cfg.get("voice_en", "af_bella"),
                 voice_hi=tts_cfg.get("voice_hi", "hf_beta"),
                 speed=float(tts_cfg.get("speed", 1.05)),
                 cpu_threads=int(tts_cfg.get("cpu_threads", 4)),
+                sarvam_speaker=tts_cfg.get("sarvam_speaker", "priya"),
+                on_status=lambda text: self._publish("status", text=text),
             )
         self.tts.load()
         return ""
@@ -388,26 +402,46 @@ class VoicePipeline:
         try:
             while True:
                 event = await q.get()
+                # seq is global across channels, so a gap means the bus dropped
+                # events for us when this queue was full -- and a dropped event may
+                # have been the pinned tool_start. Checked before the channel filter.
+                if self._last_seq is not None and event.seq != self._last_seq + 1:
+                    self._local_only = True
+                self._last_seq = event.seq
                 if event.channel != "voice":
                     continue
-                if event.kind == "token":
+                if event.kind == "turn_start":
+                    self._open_turns += 1
+                elif event.kind == "tool_start" and event.payload.get("tool") in self._pins:
+                    # Published before the tool runs, so it reaches us before any
+                    # token that could carry its result. Sentences still buffered
+                    # are marked when queued, so they stay local too.
+                    self._local_only = True
+                elif event.kind == "token":
                     self._text_buf += event.payload.get("text", "")
                     sentences, self._text_buf = split_sentences(self._text_buf)
                     for sentence in sentences:
-                        self.sentence_q.put(sentence)
+                        self.sentence_q.put(self._mark(sentence))
                 elif event.kind == "confirm_request":
                     self.sentence_q.put(CONFIRM_SENTENCE)
                 elif event.kind == "turn_end":
                     if event.payload.get("status") == "ok":
                         sentences, self._text_buf = split_sentences(self._text_buf, final=True)
                         for sentence in sentences:
-                            self.sentence_q.put(sentence)
+                            self.sentence_q.put(self._mark(sentence))
                     else:  # cancelled/error: never speak a stale buffer
                         self._text_buf = ""
                     self.sentence_q.put(None)
+                    self._open_turns = max(0, self._open_turns - 1)
+                    if not self._open_turns:
+                        self._local_only = False
         except asyncio.CancelledError:
             self.bus.unsubscribe(q)
             raise
+
+    def _mark(self, sentence: str) -> str:
+        """Reply text may be voiced in the cloud unless this turn went local."""
+        return sentence if self._local_only else CloudOk(sentence)
 
     # -- state machine (runs on the voice thread) ---------------------------------
 
