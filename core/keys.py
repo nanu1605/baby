@@ -10,6 +10,9 @@ from someone who has never seen this codebase:
   GEMINI_API_KEY      the optional backstop (models.cloud).
   NVIDIA_API_KEY      the optional heavy planning brain (models.nim_heavy).
 
+A fourth is not a brain at all: SARVAM_API_KEY voices Hindi replies
+(voice/tts.py, DECISIONS #168). Optional, and it never touches the router.
+
 SECURITY POSTURE -- the reason this module exists rather than a few inline lines:
 
   * A key is NEVER logged, echoed back in a response, put in a URL, or written to
@@ -24,7 +27,8 @@ SECURITY POSTURE -- the reason this module exists rather than a few inline lines
     wizard collected was reported "works" without being checked. Never take a
     vendor's /models as an auth check without confirming it 401s unauthenticated.
     NVIDIA has no authenticated GET, so its probe spends exactly one token.
-  * The key travels in an Authorization header, never a query string.
+  * The key travels in a header (Authorization, or the vendor's own name when
+    KeySpec.auth_header says so), never a query string.
   * `.env` is written with inheritance stripped and a single owner-only grant, so
     a loosened parent ACL cannot widen it after the fact.
 
@@ -56,8 +60,8 @@ class KeySpec:
 
     env: str
     label: str
-    role: str  # primary | backstop | heavy
-    base_url: str  # OpenAI-compatible root the provider itself will call
+    role: str  # primary | backstop | heavy | voice
+    base_url: str  # root the provider itself will call
     signup_url: str  # "get a key" deep link shown in the wizard
     prefix: str  # expected leading marker, "" when the vendor has none
     required_for: tuple[str, ...]  # install modes that cannot finish without it
@@ -69,6 +73,9 @@ class KeySpec:
     # None -> GET the probe_url. Otherwise POST this JSON, for a vendor with no
     # authenticated GET at all.
     probe_body: dict | None = None
+    # None -> "Authorization: Bearer <key>". Otherwise the vendor's own header,
+    # sent as "<auth_header>: <key>".
+    auth_header: str | None = None
 
 
 # The NVIDIA probe has to spend one token, so keep the model small and the reply
@@ -132,6 +139,28 @@ KEYS: tuple[KeySpec, ...] = (
             "messages": [{"role": "user", "content": "hi"}],
             "max_tokens": 1,
         },
+    ),
+    KeySpec(
+        env="SARVAM_API_KEY",
+        label="Sarvam AI",
+        role="voice",
+        base_url="https://api.sarvam.ai",
+        signup_url="https://dashboard.sarvam.ai/",
+        prefix="",
+        required_for=(),
+        note="Optional. Speaks Hindi replies in a natural voice. Every sentence Baby "
+        "says aloud that contains Hindi is sent whole to Sarvam AI (India) to be "
+        "voiced, English words in it included, even when the reply was written on "
+        "this PC. Once a reply reads a file or runs a command, the rest of it is "
+        "voiced here; what it said before that, and a later reply that repeats it, "
+        "are not covered. Sentences with no Hindi are always voiced here.",
+        # No key-check endpoint exists, so the probe voices two characters (about
+        # Rs 0.006). Sent with no key, this exact request answered 403
+        # invalid_api_key_error (2026-09-30) -- it does check the key. voice/tts.py
+        # speaks through this same URL and header.
+        probe_url="https://api.sarvam.ai/text-to-speech",
+        probe_body={"text": "hi", "language_code": "hi-IN", "model": "bulbul:v3"},
+        auth_header="api-subscription-key",
     ),
 )
 
@@ -280,7 +309,7 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
 
     The probe is per-provider (KeySpec.probe_url / probe_body), because the hosts
     do NOT behave alike: a shared GET {base_url}/models accepted any string at all
-    on two of the three. The key always travels in a Bearer header.
+    on two of the three. The key always travels in a header, never the URL.
     """
     s = spec(env)
     if s is None:
@@ -290,7 +319,7 @@ async def validate_key(env: str, key: str, *, timeout: float = VALIDATE_TIMEOUT_
         return {"ok": False, "kind": "empty", "message": "Paste a key first."}
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            headers = {"Authorization": f"Bearer {k}"}
+            headers = {s.auth_header: k} if s.auth_header else {"Authorization": f"Bearer {k}"}
             if s.probe_body is None:
                 resp = await client.get(s.probe_url, headers=headers)
             else:

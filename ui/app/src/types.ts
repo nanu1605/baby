@@ -249,7 +249,7 @@ export interface SetupStatus {
 export interface SetupKeyRow {
   env: string;
   label: string;
-  role: "primary" | "backstop" | "heavy";
+  role: "primary" | "backstop" | "heavy" | "voice";
   signup_url: string;
   prefix: string;
   note: string;

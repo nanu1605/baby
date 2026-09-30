@@ -26,12 +26,12 @@ _FAKE_KEY = "sk-or-v1-notarealkey-tail"
 
 def test_registry_shape():
     envs = [k.env for k in keys.KEYS]
-    assert envs == ["OPENROUTER_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY"]
+    assert envs == ["OPENROUTER_API_KEY", "GEMINI_API_KEY", "NVIDIA_API_KEY", "SARVAM_API_KEY"]
     for k in keys.KEYS:
         assert k.base_url.startswith("https://")
         assert k.signup_url.startswith("https://")
         assert k.label and k.note
-        assert k.role in ("primary", "backstop", "heavy")
+        assert k.role in ("primary", "backstop", "heavy", "voice")
 
 
 def test_only_cloud_only_has_a_required_key():
@@ -501,7 +501,7 @@ def test_keys_endpoint_lists_masked_state(tmp_path, monkeypatch):
         assert r.status_code == 200
         body = r.json()
         assert body["mode"] == "cloud_only"
-        assert len(body["keys"]) == 3
+        assert len(body["keys"]) == 4
         assert body["can_finish"]["ok"] is True
         # The response must never carry key material.
         assert _FAKE_KEY not in r.text
@@ -538,6 +538,24 @@ def test_save_rejects_a_bad_key_without_writing(tmp_path, monkeypatch):
         assert r.json()["saved"] is False and r.json()["kind"] == "invalid_key"
         assert _FAKE_KEY not in r.text
         assert not (tmp_path / ".env").exists()
+    finally:
+        _close(db)
+
+
+def test_a_saved_voice_key_does_not_ask_for_a_reopen(tmp_path, monkeypatch):
+    """The Sarvam key is read on every sentence, so it is live the moment it is
+    saved. Telling the user to reopen Baby would be a lie."""
+    client, db = _client(tmp_path, monkeypatch)
+    try:
+        from core import paths
+
+        paths.write_setup({"install_mode": "full"})
+        _probe(monkeypatch, status=200)
+        r = client.post("/api/setup/keys", json={"env": "SARVAM_API_KEY", "key": _FAKE_KEY})
+        assert r.status_code == 200
+        assert r.json()["saved"] is True
+        assert r.json()["restart_required"] is False
+        assert _FAKE_KEY not in r.text
     finally:
         _close(db)
 
@@ -763,6 +781,29 @@ def test_nvidia_probe_posts_because_it_has_no_authenticated_get(monkeypatch):
     assert seen["json"]["model"] == s.probe_body["model"]
     assert _FAKE_KEY not in seen["url"]
     assert seen["headers"]["Authorization"] == f"Bearer {_FAKE_KEY}"
+
+
+
+def test_sarvam_probe_sends_its_own_header_not_bearer(monkeypatch):
+    """Sarvam documents `api-subscription-key` as its header. Bearer is said to work
+    too, but nobody has proved it with a real key -- and if it did not, a real key
+    would come back 403, be classified invalid, and never be saved. The speaking
+    path (voice/tts.py) reads this same spec, so the two cannot drift apart."""
+    s = keys.spec("SARVAM_API_KEY")
+    assert s.auth_header == "api-subscription-key"
+    assert s.required_for == ()
+
+    seen = _probe(monkeypatch, status=200)
+    out = asyncio.run(keys.validate_key("SARVAM_API_KEY", _FAKE_KEY))
+    assert out["ok"] is True and out["kind"] == "valid"
+    assert seen["method"] == "POST" and seen["json"] == s.probe_body
+    assert seen["headers"] == {"api-subscription-key": _FAKE_KEY}
+    assert seen["url"] == s.probe_url and _FAKE_KEY not in seen["url"]
+
+    # Sent with no key, this request answered 403 invalid_api_key_error live.
+    _probe(monkeypatch, status=403, body='{"error":{"code":"invalid_api_key_error"}}')
+    out = asyncio.run(keys.validate_key("SARVAM_API_KEY", _FAKE_KEY))
+    assert out["ok"] is False and out["kind"] == "invalid_key"
 
 
 def test_gemini_rejection_arrives_as_400_not_401(monkeypatch):

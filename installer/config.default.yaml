@@ -89,10 +89,11 @@ voice:
     engine: kokoro-onnx
     model: models/kokoro-v1.0.onnx
     voices: models/voices-v1.0.bin
-    voice_en: af_heart
+    voice_en: af_bella
     voice_hi: hf_beta
     speed: 1.05
     cpu_threads: 4                      # onnxruntime otherwise takes every core per sentence (DECISIONS #167)
+    sarvam_speaker: priya               # Hindi voice when a Sarvam AI key is saved; Kokoro's voice_hi otherwise (DECISIONS #168)
   vad_silence_ms: 400
   vad_speech_wait_ms: 5000
   speaker_verify:

@@ -1044,7 +1044,8 @@ def create_app(ctx: UIContext) -> FastAPI:
             "router_mode": router_mode,
             # Honest now: "you must reopen Baby" ONLY when nothing is going to do it
             # for you. It used to be hardcoded True and read by nothing at all.
-            "restart_required": not restarting,
+            # The voice key is read on every sentence, so it is live already.
+            "restart_required": not restarting and keymod.spec(env).role != "voice",
             "restarting": restarting,
             "keys": keymod.key_status(mode),
             "can_finish": keymod.can_finish(mode),
@@ -1630,7 +1631,11 @@ async def run_ui(config: dict, with_voice: bool = False) -> int:
             suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
         )
         voice_pipeline = VoicePipeline(
-            asyncio.get_running_loop(), voice_agent, bus, config.get("voice", {})
+            asyncio.get_running_loop(),
+            voice_agent,
+            bus,
+            config.get("voice", {}),
+            privacy_pins=config.get("router", {}).get("privacy_pins"),
         )
         voice_ok, voice_notes = await asyncio.to_thread(voice_pipeline.load)
         for note in voice_notes:

@@ -239,7 +239,9 @@ def _cfg(**over):
     return cfg
 
 
-async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None, cfg_over=None):
+async def _make_pipeline(
+    db, script, *, stt_text="what time is it", frames=None, cfg_over=None, privacy_pins=None
+):
     provider = FakeProvider(script)
     conv_id = await db.create_conversation("voice")
     bus = EventBus()
@@ -254,6 +256,7 @@ async def _make_pipeline(db, script, *, stt_text="what time is it", frames=None,
         vad=FakeVAD(),
         stt=FakeSTT(stt_text),
         tts=FakeTTS(),
+        privacy_pins=privacy_pins,
     )
     return pipeline, provider, bus
 
@@ -1572,3 +1575,368 @@ async def test_scored_utterance_is_audit_logged(db):
     assert payload["score"] == pytest.approx(0.77, abs=1e-3)
     assert payload["tier"] == "trusted"
     assert "model" in payload
+
+
+# -- 14. Hindi through Sarvam AI (DECISIONS #168) ------------------------------------
+
+_SARVAM_FAKE_KEY = "sarvam-notarealkey-tail"
+
+
+@pytest.fixture(autouse=True)
+def _no_sarvam_key(monkeypatch):
+    """A dev box that exports a real key must never make this file spend it."""
+    monkeypatch.delenv("SARVAM_API_KEY", raising=False)
+
+
+def _wav_b64(frames=2400, channels=1, width=2, rate=24000):
+    import base64
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(width)
+        w.setframerate(rate)
+        w.writeframes(bytes(frames * channels * width))
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+class _SarvamResp:
+    def __init__(self, status, body):
+        self.status_code = status
+        self._body = body
+
+    def json(self):
+        if isinstance(self._body, Exception):
+            raise self._body
+        return self._body
+
+
+class _FakeSarvam:
+    """Stands in for the httpx.Client; records every request it was asked to make."""
+
+    def __init__(self, status=200, body=None, exc=None, delay=0.0):
+        self.status, self.body, self.exc, self.delay = status, body, exc, delay
+        self.calls: list[dict] = []
+
+    def post(self, url, headers=None, json=None):
+        self.calls.append({"url": url, "headers": headers, "json": json})
+        if self.delay:
+            time.sleep(self.delay)
+        if self.exc is not None:
+            raise self.exc
+        body = self.body if self.body is not None else {"audios": [_wav_b64()]}
+        return _SarvamResp(self.status, body)
+
+
+class _RecordingKokoro:
+    def __init__(self):
+        self.voices: list[str] = []
+
+    def create(self, sentence, voice, speed, lang):
+        self.voices.append(voice)
+        return np.zeros(10, dtype=np.float32), 24000
+
+
+def _sarvam_tts(monkeypatch, client, *, key=_SARVAM_FAKE_KEY, statuses=None):
+    from voice.tts import TextToSpeech
+
+    if key:
+        monkeypatch.setenv("SARVAM_API_KEY", key)
+    tts = TextToSpeech(on_status=None if statuses is None else statuses.append)
+    tts._kokoro = _RecordingKokoro()
+    tts._client = client
+    return tts
+
+
+HINDI = "नमस्ते, आज मौसम बहुत अच्छा है।"
+
+
+def test_a_cleared_hindi_sentence_is_voiced_by_sarvam(monkeypatch):
+    from core import keys
+    from voice.tts import CloudOk
+
+    client = _FakeSarvam()
+    # A pasted key with a trailing newline is an illegal header value, and httpx
+    # puts the whole header -- key included -- into the exception. Strip it.
+    tts = _sarvam_tts(monkeypatch, client, key=_SARVAM_FAKE_KEY + "\n")
+    pcm, rate = tts.synth(CloudOk(HINDI))
+
+    assert rate == 24000 and pcm.dtype == np.int16 and len(pcm) == 2400
+    assert tts._kokoro.voices == [], "Sarvam answered; Kokoro must not also run"
+    spec = keys.spec("SARVAM_API_KEY")
+    (call,) = client.calls
+    assert call["url"] == spec.probe_url and "?" not in call["url"]
+    assert call["headers"] == {"api-subscription-key": _SARVAM_FAKE_KEY}
+    body = call["json"]
+    assert body["text"] == HINDI
+    assert body["language_code"] == "hi-IN"
+    assert body["model"] == "bulbul:v3"
+    assert body["speaker"] == "priya"
+    assert body["speech_sample_rate"] == 24000
+
+
+@pytest.mark.parametrize(
+    ("case", "key", "expected_voice"),
+    [
+        ("unmarked Hindi", _SARVAM_FAKE_KEY, "hf_beta"),
+        ("marked English", _SARVAM_FAKE_KEY, "af_bella"),
+        ("marked Hindi, no key", "", "hf_beta"),
+        ("marked Hindi, over the limit", _SARVAM_FAKE_KEY, "hf_beta"),
+    ],
+)
+def test_only_marked_hindi_with_a_key_ever_leaves_the_pc(monkeypatch, case, key, expected_voice):
+    """Unmarked text is everything the bridge did not clear: announcements, the
+    confirm prompt, health checks, a turn that read a file. It stays here."""
+    from voice.tts import CloudOk
+
+    client = _FakeSarvam()
+    tts = _sarvam_tts(monkeypatch, client, key=key)
+    text = {
+        "unmarked Hindi": HINDI,
+        "marked English": CloudOk("It will be sunny in Mumbai."),
+        "marked Hindi, no key": CloudOk(HINDI),
+        "marked Hindi, over the limit": CloudOk("नमस्ते " * 80 + "।"),  # ~560 chars
+    }[case]
+    tts.synth(text)
+    assert client.calls == [], f"{case} was sent to Sarvam"
+    assert tts._kokoro.voices == [expected_voice]
+
+
+@pytest.mark.parametrize(
+    ("case", "fake"),
+    [
+        ("connect timeout", {"exc": "timeout"}),
+        ("rejected key", {"status": 403}),
+        ("no credit", {"status": 402}),
+        ("rate limited", {"status": 429}),
+        ("server error", {"status": 500}),
+        ("request rejected", {"status": 422}),
+        ("no audios field", {"body": {"request_id": "x"}}),
+        ("not json", {"body": ValueError("not json")}),
+        ("bad base64", {"body": {"audios": ["!!!!not-base64"]}}),
+        ("stereo audio", {"body": {"audios": [_wav_b64(channels=2)]}}),
+        ("empty audio", {"body": {"audios": [_wav_b64(frames=0)]}}),
+    ],
+)
+def test_a_sarvam_failure_speaks_with_kokoro_instead(monkeypatch, case, fake):
+    """Without the fallback an exception escapes synth, and the voice loop drops
+    the rest of the reply. Every failure also switches Sarvam off for two minutes
+    and says so once: a 422 from a speaker name Sarvam rejects would otherwise
+    repeat, unseen, on every Hindi sentence."""
+    import httpx
+
+    from voice.tts import CloudOk
+
+    if fake.get("exc") == "timeout":
+        fake = {"exc": httpx.ConnectTimeout("no route")}
+    client = _FakeSarvam(**fake)
+    statuses: list[str] = []
+    tts = _sarvam_tts(monkeypatch, client, statuses=statuses)
+
+    started = time.monotonic()
+    pcm, rate = tts.synth(CloudOk(HINDI))
+    assert tts._kokoro.voices == ["hf_beta"] and rate == 24000
+    # A failure that answered must not also sit out the whole 4 s wait.
+    assert time.monotonic() - started < 1.0
+
+    tts.synth(CloudOk(HINDI))
+    assert len(client.calls) == 1, "the breaker should keep the next sentence local"
+    assert tts._sarvam_down_until - time.monotonic() > 100  # ~2 min, not a blip
+    assert statuses and "Sarvam unavailable" in statuses[0]
+    tts._sarvam_down_until = 0.0  # the two minutes are up
+    tts.synth(CloudOk(HINDI))
+    assert len(client.calls) == 2, "Sarvam must come back after the cooldown"
+
+
+def test_a_stalled_request_is_abandoned_on_time(monkeypatch):
+    """httpx times each socket operation, not the request, and leaves DNS uncapped.
+    Nothing polls the kill switch while synth blocks, so the wait must be a real
+    wall clock -- and the abandoned request must not be retried next sentence."""
+    import voice.tts as tts_mod
+    from voice.tts import CloudOk
+
+    monkeypatch.setattr(tts_mod, "_SARVAM_WAIT_S", 0.2)
+    client = _FakeSarvam(delay=1.5)
+    tts = _sarvam_tts(monkeypatch, client)
+    started = time.monotonic()
+    tts.synth(CloudOk(HINDI))
+    assert time.monotonic() - started < 1.0, "synth waited for the stalled request"
+    assert tts._kokoro.voices == ["hf_beta"]
+    tts.synth(CloudOk(HINDI))
+    assert len(client.calls) == 1
+
+
+def test_the_sarvam_key_never_reaches_the_log_or_the_feed(monkeypatch, caplog):
+    """httpx puts an illegal header value, key and all, in its exception text."""
+    import logging
+
+    import httpx
+
+    from voice.tts import CloudOk
+
+    leak = httpx.LocalProtocolError(f"Illegal header value b'{_SARVAM_FAKE_KEY}'")
+    client = _FakeSarvam(exc=leak)
+    statuses: list[str] = []
+    tts = _sarvam_tts(monkeypatch, client, statuses=statuses)
+    with caplog.at_level(logging.WARNING):
+        tts.synth(CloudOk(HINDI))
+    assert "LocalProtocolError" in caplog.text
+    assert _SARVAM_FAKE_KEY not in caplog.text
+    assert statuses and all(_SARVAM_FAKE_KEY not in s for s in statuses)
+
+
+async def _bridged(db, events, *, pins=None):
+    """Run the voice bridge over a scripted event sequence; return what it queued.
+    An event is (kind, channel, payload) or the string "GAP" (the bus dropped one)."""
+    pipeline, _, bus = await _make_pipeline(db, [], privacy_pins=pins)
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    for ev in events:
+        if ev == "GAP":
+            next(bus._seq)
+        else:
+            kind, channel, payload = ev
+            bus.publish(kind, channel, **payload)
+    await asyncio.sleep(0.05)
+    task.cancel()
+    got = []
+    while True:
+        try:
+            got.append(pipeline.sentence_q.get_nowait())
+        except queue_mod.Empty:
+            return got
+
+
+def _cleared(sentences):
+    from voice.tts import CloudOk
+
+    return [isinstance(s, CloudOk) for s in sentences if s is not None]
+
+
+def _tok(text, channel="voice"):
+    return ("token", channel, {"text": text})
+
+
+def _tool(name, channel="voice"):
+    return ("tool_start", channel, {"tool": name, "call_id": "c1"})
+
+
+_END = ("turn_end", "voice", {"reply": "", "status": "ok"})
+
+
+async def test_a_pinned_tool_keeps_the_rest_of_the_turn_local(db):
+    """Text spoken before the tool call may go out, as it does to a cloud brain.
+    Everything after -- including the half sentence already buffered when the tool
+    started, which the tool's result then completes -- stays on this PC."""
+    got = await _bridged(
+        db,
+        [_tok("पहला वाक्य पूरा हुआ। दूसरा "), _tool("read_file"), _tok("वाक्य यहाँ है।"), _END],
+    )
+    assert got == ["पहला वाक्य पूरा हुआ।", "दूसरा वाक्य यहाँ है।", None]
+    assert _cleared(got) == [True, False]
+
+
+async def test_other_channels_and_other_tools_do_not_pin(db):
+    """A read_file in the typed chat is not this turn's; web_search is not pinned.
+    The ui events in between also must not read as a dropped event."""
+    got = await _bridged(
+        db,
+        [
+            _tok("पहला वाक्य। "),
+            _tool("read_file", channel="ui"),
+            _tok("ignored. ", channel="ui"),
+            _tool("web_search"),
+            _tok("दूसरा वाक्य।"),
+            _END,
+        ],
+    )
+    assert _cleared(got) == [True, True]
+
+
+async def test_the_next_turn_is_cleared_again(db):
+    got = await _bridged(
+        db, [_tool("run_shell"), _tok("पहला जवाब।"), _END, _tok("दूसरा जवाब।"), _END]
+    )
+    assert _cleared(got) == [False, True]
+
+
+async def test_a_dropped_event_keeps_the_turn_local(db):
+    """The bus drops the oldest event when a subscriber falls behind. The dropped
+    one could have been the pinned tool_start, so the rest of the turn fails closed."""
+    got = await _bridged(db, [_tok("पहला वाक्य। "), "GAP", _tok("दूसरा वाक्य।"), _END])
+    assert _cleared(got) == [True, False]
+
+
+async def test_the_bridge_pins_whatever_the_router_pins(db):
+    """router.privacy_pins comes from config; the voice path must follow it rather
+    than a list of its own -- including an owner who pinned nothing at all."""
+    got = await _bridged(
+        db, [_tool("describe_screen"), _tok("स्क्रीन पर यह है।"), _END], pins=["describe_screen"]
+    )
+    assert _cleared(got) == [False]
+    got = await _bridged(db, [_tool("read_file"), _tok("फ़ाइल में यह है।"), _END], pins=[])
+    assert _cleared(got) == [True]
+
+
+def test_the_server_hands_the_routers_pins_to_voice():
+    """Only the cloud router carries privacy_pins, so reading them off the provider
+    silently fell back to a hardcoded list on local_primary -- the one mode where
+    Sarvam is the only thing that sends a reply off the PC."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parent.parent / "ui" / "server.py").read_text(encoding="utf-8")
+    call = src[src.index("voice_pipeline = VoicePipeline(") :][:400]
+    assert 'privacy_pins=config.get("router", {}).get("privacy_pins")' in call
+
+
+async def test_an_earlier_turns_end_does_not_unpin_this_one(db):
+    """A cancelled turn can publish its turn_end after the next turn has started
+    (its closing DB write is awaited). That late end must not clear the pin the
+    running turn set, or the file's contents go out."""
+    start = ("turn_start", "voice", {"conversation_id": 1})
+    cancelled = ("turn_end", "voice", {"reply": "", "status": "cancelled"})
+    got = await _bridged(
+        db,
+        [start, start, _tool("read_file"), cancelled, _tok("फ़ाइल में पासवर्ड लिखा है।"), _END],
+    )
+    assert _cleared(got) == [False]
+
+
+async def test_the_pipeline_builds_tts_with_the_new_voice_settings(db, monkeypatch):
+    from core import paths
+    from voice.tts import TextToSpeech
+
+    monkeypatch.setattr(TextToSpeech, "load", lambda self: None)
+    monkeypatch.setattr(paths, "resolve_model", lambda p: p)
+    for over, want_en, want_speaker in (
+        ({}, "af_bella", "priya"),
+        ({"tts": {"voice_en": "af_heart", "sarvam_speaker": "suhani"}}, "af_heart", "suhani"),
+    ):
+        pipeline, _, bus = await _make_pipeline(db, [], cfg_over=over)
+        pipeline.tts = None
+        pipeline._load_tts()
+        assert pipeline.tts.voice_en == want_en, over
+        assert pipeline.tts.sarvam_speaker == want_speaker, over
+
+    # When Sarvam switches itself off, the activity feed says so.
+    q = bus.subscribe()
+    pipeline.tts.on_status("voice: Sarvam unavailable (HTTP 403); local Hindi voice for 2 min")
+    await asyncio.sleep(0.05)
+    event = q.get_nowait()
+    assert event.kind == "status" and "Sarvam unavailable" in event.payload["text"]
+
+
+def test_the_shipped_config_speaks_english_as_bella_and_names_a_hindi_voice():
+    from pathlib import Path
+
+    import yaml
+
+    cfg = yaml.safe_load(
+        (Path(__file__).resolve().parent.parent / "installer" / "config.default.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert cfg["voice"]["tts"]["voice_en"] == "af_bella"
+    assert cfg["voice"]["tts"]["sarvam_speaker"] == "priya"
