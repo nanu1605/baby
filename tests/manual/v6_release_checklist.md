@@ -479,10 +479,12 @@ choose **Quit Baby (app)** from the tray and start Baby again. The tray has no
 restart, and **Reload UI** only reloads the page: the backend keeps the threads it
 started with, and this whole section would measure the old ~49%.
 
-- [ ] **A spoken question stays under a third of the CPU.** Task Manager open,
+- [x] **A spoken question stays under a third of the CPU.** Task Manager open,
       Processes sorted by CPU. Ask an English question by voice. `Python` must peak
       at roughly 25-30% (was ~49%) and fall back within ~4 s of you stopping talking
       (was ~6 s).
+      *Owner, 2026-09-30, on `C9DB95D9…` with `cpu_threads: 4`: `Python` peaks at
+      25% (was 49.1%) -- four of sixteen logical CPUs, the capped Whisper pool.*
 - [ ] **Hindi still comes out in Devanagari.** Ask the same question in Hindi. The
       chat shows it in Devanagari script and Baby answers in Hindi.
 - [ ] **Baby's voice has no gaps.** Ask for something with a three- or four-sentence
