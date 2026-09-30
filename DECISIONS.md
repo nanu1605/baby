@@ -2837,3 +2837,10 @@ Running log of non-obvious choices made during the build. Newest last.
      halves Whisper; the last step is a one-line edit, then **Quit Baby (app)** from
      the tray and start it again -- the tray has no restart, and **Reload UI** only
      reloads the page, so the backend keeps the threads it started with.
+
+     **Left open: a ~3-core blip for ~2 s after a typed reply**, from a 7-worker pool.
+     It is not the e5 embedder -- `silero_vad/model.py` calls `torch.set_num_threads(1)`
+     at import, which pins torch for the whole process once voice loads (an encode is
+     16 ms anyway) -- and not openWakeWord or faster-whisper's VAD, whose onnxruntime
+     sessions are built with one thread. Unidentified; about a fifth of the CPU for two
+     seconds is not worth guessing at. Trace it on the installed build if it matters.
