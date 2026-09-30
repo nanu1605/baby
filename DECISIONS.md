@@ -2844,3 +2844,68 @@ Running log of non-obvious choices made during the build. Newest last.
      16 ms anyway) -- and not openWakeWord or faster-whisper's VAD, whose onnxruntime
      sessions are built with one thread. Unidentified; about a fifth of the CPU for two
      seconds is not worth guessing at. Trace it on the installed build if it matters.
+168. **The conversational-voice spec mostly described what Baby already does.**
+     The owner handed over a specification for six upgrades -- a fast model through
+     OpenRouter, streamed replies, a sentence-level TTS queue, true barge-in, a voice
+     prompt, an intent layer -- with one instruction above the rest: inspect before
+     modifying. The inspection is the first result, and it changes the size of the job.
+
+     | Spec item | Already there | The actual gap |
+     |---|---|---|
+     | Fast model via OpenRouter | The primary cloud brain is OpenRouter (#83); the model is one config line | Which model |
+     | Streaming | A token per chunk on the bus, split into sentences, spoken while the model is still writing | The splitter cuts "12.5" in half; a failed turn is silent |
+     | Sentence TTS queue | One queue, in order | No prefetch, nothing polls the mic during synthesis, one Kokoro error drops the rest |
+     | Barge-in | VAD stops playback and cancels the turn, which closes the HTTP stream | The interrupting words are discarded and a beep plays |
+     | Voice prompt | One persona for every channel, with one line asking for short spoken replies | The prompt is never told the turn is spoken, so that line cannot act |
+     | Intent layer | Strict yes/no, end and kill phrases, memory commands, 30 messages of history | Filler reaches the model; a 400 ms pause ends the utterance |
+
+     So this is a set of focused changes to the voice path on its own branch and
+     release, stacked on 6.0.2, not the rewrite the spec itself forbids. #169 onward
+     record each one.
+
+     **Every spoken turn now reports where its wait went.** One feed line and one
+     `voice_timing` audit row per turn, each figure in seconds since the user stopped
+     speaking. `request`, `token`, `sentence`, `tts`, `audio` and, on an interrupted
+     turn, `cut` are the six figures the spec asks for; `stt` and `end` are additions.
+     What each one is, exactly:
+
+     - `request` is the turn being handed to the agent. Memory recall and routing
+       happen after it, so it is slightly before the HTTP request itself.
+     - `audio` is the first ~100 ms block written to the speaker, stamped from the
+       player. Stamping when the sentence was queued would leave out opening the
+       output device, and would count a sentence that was interrupted before it
+       sounded.
+     - `tts` and `audio` belong to the model's reply. The canned "check the screen"
+       line is spoken before the first token and does not take them.
+     - `cut` is from noticing the user's speech to the player thread returning. It
+       leaves out the ~200 ms of sustained speech that noticing takes.
+     - The start is the VAD's endpoint minus its silence window, because the VAD only
+       reports the end once that window has passed; measured from the endpoint,
+       lengthening the window would look free.
+
+     A turn stopped by the kill switch reports nothing: it is not a wait. The labels
+     avoid every word the UI matches on status text, or a timing line would move the
+     orb or raise a toast: `listening`, `stopped`, `interrupted`, `heard`,
+     `conversation ended`, and the toast list `wiped`, `kill`, `error`, `cancelled`,
+     `offline`, `degraded`. A test holds the labels to that. The line goes out as
+     `status` because a voice `error` event reaches no socket.
+
+     **Whisper is the largest part of that wait, and the spec does not mention it.**
+     About 3.3 s per utterance on the CPU (#167), before any of the six upgrades gets
+     to act. The owner's call: measure first. The line exists so that decision is
+     made on numbers from the installed build. Nothing here has been run on a real
+     microphone yet.
+
+     **`conversation:` never reached the pipeline.** It is a top-level block in both
+     config files, but the pipeline reads it out of the one dict it is handed, and the
+     server handed it `voice:` alone. Follow-up mode has therefore always run on the
+     pipeline's code defaults: a configured window or end phrase did nothing. The
+     server now passes both. One visible consequence: "bas", "bas baby" and "so jao"
+     were code defaults, not in the shipped config, so they stop ending a
+     conversation on an install whose config lists only the two English phrases --
+     which is every public install, fresh or upgraded, because the shipped template
+     lists only those two and a seeded config is never rewritten. Anyone who uses
+     them adds them to `conversation.end_phrases`. A key left empty in that block is
+     None in YAML and is dropped before the pipeline sees it, so the default applies:
+     the pipeline is built outside voice's fail-soft load, and a None there would
+     stop Baby starting.

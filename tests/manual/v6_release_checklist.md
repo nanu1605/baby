@@ -492,6 +492,22 @@ started with, and this whole section would measure the old ~49%.
       stays well under the recognition peak while it talks.
 - [ ] **A typed question barely registers.** Type one. A brief blip at most, no sustained climb.
 
+### Conversational voice (unreleased)
+
+The spec's six upgrades, as built (DECISIONS #168 onward). Everything here needs a real
+microphone, and none of it has had one yet. A config change only takes effect after
+**Quit Baby (app)** from the tray and starting Baby again.
+
+- [ ] **A timing line follows every spoken reply.** Ask anything by voice. After Baby
+      finishes, the activity feed shows one `voice: timing stt … · request … · token …
+      · sentence … · tts … · audio … · end …` line, and the orb does not change state
+      because of it. Note the `stt` and `audio` figures: they are the baseline.
+      `audio` is when the first sound left the speaker, counted from when you stopped
+      talking.
+- [ ] **Follow-up settings apply.** Set `conversation: window_s: 10`, restart, ask
+      something and then stay silent. The follow-up window closes after about ten
+      seconds, not sixty. Put it back afterwards.
+
 ## 6. Regression on the real box
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.

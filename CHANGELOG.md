@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased -- conversational voice
+
+Baby's voice, reworked so talking to it feels like a conversation. Most of what that
+takes was already there -- streamed replies, sentence-by-sentence speech, stopping
+when you talk over it -- so this release fixes what was missing around it.
+
+- **Your follow-up settings now apply.** The `conversation:` block in `config.yaml`
+  -- how long Baby keeps listening after it answers, and which phrases end the
+  conversation -- was never read; Baby used built-in values instead. It is read now.
+  If you end conversations by saying "bas" or "so jao", add them to `end_phrases`:
+  those were built-in values, and the shipped config lists only "stop listening" and
+  "baby stop listening".
+- **Each spoken turn shows where its wait went.** After Baby answers aloud, the
+  activity feed shows one line: how long it took to transcribe what you said, when
+  the first word of the answer arrived, and when Baby started speaking, all counted
+  from the moment you stopped talking.
+
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
 Fixes reported from running Baby on an actual machine rather than a VM -- five
