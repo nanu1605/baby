@@ -55,6 +55,14 @@
   --state-speaking: #c084fc;
   --state-executing: #f0a35e;
 
+  /* -- layout -- */
+  /* The top bar's height, and the one number every fixed overlay hangs off.
+     It used to be written out as a bare 52px in four separate rules while the
+     bar itself had no height at all -- it was content-derived and sat around
+     42px, so the inspector, the side panel, its backdrop and the omnibox all
+     started in the wrong place. Change it here or nowhere. */
+  --topbar-h: 52px;
+
   /* -- spacing scale -- */
   --sp-1: 4px;
   --sp-2: 8px;

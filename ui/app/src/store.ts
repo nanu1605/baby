@@ -109,6 +109,16 @@ interface BrainState {
    *  non-null, the streaming chat reducers no-op so a live turn on the active chat
    *  can't corrupt the frozen viewed transcript. */
   viewingConversationId: number | null;
+  /**
+   * v6.0.2: how many turns have finished this session. Not a statistic -- it is the
+   * history sidebar's cue that the conversation list is stale. The sidebar used to
+   * refresh only on mount, on the archived-filter flip, and when the active id
+   * changed; chatting in the conversation you are already in changes none of those,
+   * so a chat's row went stale and a new chat never appeared. Ticking "Show archived"
+   * happened to re-run the effect, which is why the filter looked like the thing
+   * revealing the chat.
+   */
+  turnsCompleted: number;
 
   /** v6 first-run wizard dismissed for THIS session. The wizard re-prompts on the
    *  next launch until the full flow (W5) stamps setup_complete; this only frees
@@ -215,6 +225,7 @@ export const useBrain = create<BrainState>((set) => ({
   focusFact: null,
   activeConversationId: null,
   viewingConversationId: null,
+  turnsCompleted: 0,
   wizardDismissed: false,
 
   messages: [],
@@ -347,17 +358,22 @@ export const useBrain = create<BrainState>((set) => ({
   // attach the brain + token badges and stop streaming.
   finishTurn: ({ reply, brain, tokens }) =>
     set((st) => {
-      if (st.viewingConversationId !== null) return {};
+      // Counted before the viewing guard, and on every branch. The guard protects the
+      // frozen TRANSCRIPT of a past chat being read; it has nothing to say about the
+      // conversation list, and a turn that lands while you are reading an old chat
+      // still changed the live one.
+      const turnsCompleted = st.turnsCompleted + 1;
+      if (st.viewingConversationId !== null) return { turnsCompleted };
       const msgs = st.messages.slice();
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
         if (m.role === "assistant" && m.streaming) {
           const text = reply || m.text || "…";
           msgs[i] = { ...m, text, brain, tokens, streaming: false };
-          return { messages: msgs };
+          return { messages: msgs, turnsCompleted };
         }
       }
-      return {};
+      return { turnsCompleted };
     }),
 
   addSystemNote: (text) =>

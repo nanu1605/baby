@@ -119,6 +119,19 @@ header {
 }
 #kill-btn:hover { background: var(--red); color: var(--bg); }
 
+/* Back to the new UI. Styled like the header's other controls rather than as a
+   link, because it is the way out of this shell and needs to look pressable. */
+.new-ui-link {
+  color: var(--muted);
+  font-size: .82rem;
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 3px 12px;
+  white-space: nowrap;
+}
+.new-ui-link:hover { color: var(--accent); border-color: var(--accent); }
+
 /* ---------- layout ---------- */
 main {
   flex: 1;

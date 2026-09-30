@@ -145,18 +145,31 @@ def _disk() -> dict:
         return {}
 
 
-def _versions() -> dict:
-    app = "unknown"
+def app_version() -> str:
+    """The version of the code that is actually running, read from its own pyproject.
+
+    Public because /stats reports it too. A 6.0.2 installer that reported success over
+    an untouched 6.0.0 install was indistinguishable from a working one, because nothing
+    in the app ever said which version was running -- so this number is the difference
+    between "the feature is missing" and "you are not running the build that has it".
+
+    Resolved relative to THIS file rather than the working directory, so it describes
+    the payload that was imported and not whatever the process happened to start in.
+    """
     try:
         import tomllib
 
         pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
         if pyproject.exists():
-            app = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
+            return tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
     except Exception:  # noqa: BLE001 -- a missing version must not break the report
         pass
+    return "unknown"
+
+
+def _versions() -> dict:
     return {
-        "baby": app,
+        "baby": app_version(),
         "python": sys.version.split()[0],
         "os": f"{platform.system()} {platform.release()}",
     }

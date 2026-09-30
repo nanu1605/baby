@@ -234,7 +234,7 @@ class VoicePipeline:
                 model=stt_cfg.get("model", "large-v3-turbo"),
                 device=stt_cfg.get("device", "cpu"),
                 compute_type=stt_cfg.get("compute_type", "int8"),
-                cpu_threads=int(stt_cfg.get("cpu_threads", 8)),
+                cpu_threads=int(stt_cfg.get("cpu_threads", 4)),
                 beam_size=int(stt_cfg.get("beam_size", 1)),
                 hotwords=str(stt_cfg.get("hotwords", "")),
             )
@@ -255,6 +255,7 @@ class VoicePipeline:
                 voice_en=tts_cfg.get("voice_en", "af_heart"),
                 voice_hi=tts_cfg.get("voice_hi", "hf_beta"),
                 speed=float(tts_cfg.get("speed", 1.05)),
+                cpu_threads=int(tts_cfg.get("cpu_threads", 4)),
             )
         self.tts.load()
         return ""

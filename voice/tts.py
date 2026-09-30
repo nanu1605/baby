@@ -109,18 +109,38 @@ class TextToSpeech:
         voice_en: str = "af_heart",
         voice_hi: str = "hf_beta",
         speed: float = 1.05,
+        cpu_threads: int = 4,
     ) -> None:
         self.model_path = Path(model_path)
         self.voices_path = Path(voices_path)
         self.voice_en = voice_en
         self.voice_hi = voice_hi
         self.speed = speed
+        self.cpu_threads = cpu_threads
         self._kokoro = None
 
     def load(self) -> None:
-        from kokoro_onnx import Kokoro  # heavy; lazy
+        import onnxruntime as ort  # heavy; lazy
+        from kokoro_onnx import Kokoro
+        from kokoro_onnx.config import KoKoroConfig
 
-        self._kokoro = Kokoro(str(self.model_path), str(self.voices_path))
+        # Kokoro() checked the files before building a session; building the
+        # session ourselves would raise onnxruntime's NoSuchFile instead of the
+        # FileNotFoundError health and setup report on a missing download.
+        KoKoroConfig(str(self.model_path), str(self.voices_path)).validate()
+
+        # Kokoro's own constructor takes onnxruntime's defaults: one worker per
+        # physical core, spin-waiting between ops. That held all 8 cores of the
+        # 9700X (7.1 cores measured) for every sentence Baby spoke. Four threads
+        # without spinning synthesise the same sentence in the same time (0.62 s
+        # against 0.58 s for 4 s of speech) on 2.8 cores -- DECISIONS #167.
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = self.cpu_threads
+        options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        session = ort.InferenceSession(
+            str(self.model_path), sess_options=options, providers=["CPUExecutionProvider"]
+        )
+        self._kokoro = Kokoro.from_session(session, str(self.voices_path))
 
     def synth(self, sentence: str):
         """One sentence → (int16 numpy samples, sample_rate)."""

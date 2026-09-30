@@ -18,8 +18,18 @@ DIMENSIONS = 384  # intfloat/multilingual-e5-small
 class Embedder:
     """Lazy-loaded sentence-transformers model, CPU-only, one encode at a time."""
 
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-small") -> None:
+    def __init__(
+        self,
+        model_name: str = "intfloat/multilingual-e5-small",
+        *,
+        local_files_only: bool = False,
+    ) -> None:
         self.model_name = model_name
+        # Off by default, so normal loads still check the hub. Provisioning turns it
+        # on ONLY to retry a load that already failed on the network while every
+        # byte was sitting in the cache -- huggingface_hub resolves the ref before
+        # consulting the cache, so a complete download was still unusable offline.
+        self.local_files_only = local_files_only
         self._model = None
         self._lock = asyncio.Lock()
 
@@ -32,7 +42,9 @@ class Embedder:
     def _load(self):
         from sentence_transformers import SentenceTransformer  # heavy; lazy
 
-        return SentenceTransformer(self.model_name, device="cpu")
+        return SentenceTransformer(
+            self.model_name, device="cpu", local_files_only=self.local_files_only
+        )
 
     async def embed_query(self, text: str) -> list[float]:
         return await self._embed(QUERY_PREFIX + text)
