@@ -36,9 +36,136 @@ def test_split_streaming_partial():
 
 
 def test_split_abbreviations_not_split():
-    sentences, rest = split_sentences("Dr. Sharma is here. Ask e.g. about fees.")
+    sentences, rest = split_sentences("Dr. Sharma is here. Ask e.g. about fees.", final=True)
     assert sentences == ["Dr. Sharma is here.", "Ask e.g. about fees."]
     assert rest == ""
+
+
+def test_split_keeps_decimals_versions_domains_whole():
+    """A full stop inside a token is not a sentence end. The old splitter said
+    "The price is 12." and then "5 dollars." as two sentences."""
+    text = "The price is 12.5 dollars. Baby v6.0.2 is out. See example.com for it. Wait...what? "
+    sentences, rest = split_sentences(text)
+    assert sentences == [
+        "The price is 12.5 dollars.",
+        "Baby v6.0.2 is out.",
+        "See example.com for it.",
+        "Wait...what?",
+    ]
+    assert rest == ""
+
+
+def test_split_trailing_period_waits_for_next_char():
+    """Mid-stream, "12." could be the start of "12.5": only the next character
+    can tell, so a full stop at the end of the buffer is not a boundary yet."""
+    sentences, rest = split_sentences("It costs 12.")
+    assert (sentences, rest) == ([], "It costs 12.")
+    sentences, rest = split_sentences(rest + "5 dollars. ")
+    assert (sentences, rest) == (["It costs 12.5 dollars."], "")
+    # '?', '!' and the danda are never part of a token: no waiting for those.
+    assert split_sentences("Really?")[0] == ["Really?"]
+    assert split_sentences("यह ठीक है।अब चलो।")[0] == ["यह ठीक है।", "अब चलो।"]
+
+
+def test_split_closing_quote_stays_with_its_sentence():
+    assert split_sentences('He said "stop." Then left. ')[0] == ['He said "stop."', "Then left."]
+    assert split_sentences("He said “stop.” Then left. ")[0] == ["He said “stop.”", "Then left."]
+
+
+def test_split_newline_is_a_boundary():
+    """A list has no full stops. Each finished line is spoken as it completes,
+    instead of the whole list arriving as one chunk at the end of the turn."""
+    sentences, rest = split_sentences("Here you go:\n- milk\n- eggs\n- bre")
+    assert sentences == ["Here you go:", "- milk", "- eggs"]
+    assert rest == "- bre"
+    assert split_sentences("1. First thing\n2. Second thing\n")[0] == [
+        "1. First thing",
+        "2. Second thing",
+    ]
+    assert split_sentences("Done.\n\nNext: Want more?")[0] == ["Done.", "Next: Want more?"]
+
+
+def test_split_drops_lone_punctuation():
+    """A streamed "Really?" then "!" used to hand Kokoro a bare "!"."""
+    assert split_sentences("!") == ([], "")
+    assert split_sentences("... ", final=True) == ([], "")
+    assert split_sentences("-\n•\n**\n") == ([], "")
+    assert split_sentences("ठीक। ", final=True)[0] == ["ठीक।"]  # Devanagari is speech
+    # A symbol is speech ("at", "percent"): only bare punctuation is dropped.
+    assert split_sentences("The symbol is:\n@\nor:\n%\n")[0] == ["The symbol is:", "@", "or:", "%"]
+
+
+def test_split_sees_the_end_of_a_sentence_wrapped_in_markdown():
+    """A model writes "**Yes.** Then..." The full stop is followed by the closing
+    markers, not by a space, and the sentence must still end there."""
+    text = "**Yes.** The longer one. *No.* `ls.` End. "
+    assert split_sentences(text)[0] == ["**Yes.**", "The longer one.", "*No.*", "`ls.`", "End."]
+
+
+def test_split_time_of_day_is_not_a_sentence_end():
+    assert split_sentences("Meet at 5 p.m. today. Fine. ")[0] == ["Meet at 5 p.m. today.", "Fine."]
+    assert split_sentences("I am. You are. ")[0] == ["I am.", "You are."]  # "am" is a word
+
+
+def test_split_abbreviation_after_a_bracket_and_rupees():
+    assert split_sentences("Add fruit (e.g. apples) to it. ")[0] == [
+        "Add fruit (e.g. apples) to it."
+    ]
+    assert split_sentences("Pay Rs. 500 today. ")[0] == ["Pay Rs. 500 today."]
+
+
+def test_split_keeps_a_list_number_with_its_item():
+    """"1." survived by luck (one character reads as an initial); "10." did not."""
+    assert split_sentences("10. Tenth thing\n11. Eleventh thing\n")[0] == [
+        "10. Tenth thing",
+        "11. Eleventh thing",
+    ]
+    assert split_sentences("The answer is 10. Done. ")[0] == ["The answer is 10.", "Done."]
+
+
+def test_split_is_linear_on_dots_and_long_lines():
+    """It runs on the asyncio loop once per token. The first version of the new
+    pattern was cubic on a run of dots: 1600 of them took seven seconds."""
+    started = time.perf_counter()
+    split_sentences("." * 20_000)
+    split_sentences("ab.cd," * 3_000)
+    split_sentences("word " * 4_000)
+    rest = ""
+    for piece in ["Loa", "din", "g.."] + ["..."] * 400:
+        _, rest = split_sentences(rest + piece)
+    assert time.perf_counter() - started < 1.0
+
+
+def test_ends_sentence():
+    from voice.tts import ends_sentence
+
+    assert ends_sentence("Let me check.")
+    assert ends_sentence('He said "stop." ')
+    assert ends_sentence("**Let me check.**")
+    assert ends_sentence("ठीक है।")
+    assert ends_sentence("The answer is 5.")  # a digit is an answer, not an initial
+    assert not ends_sentence("half a sent")
+    assert not ends_sentence("Ask Dr.")
+    assert not ends_sentence("")
+
+
+def test_speech_says_point_and_dot_inside_a_token():
+    """Kokoro's phonemizer cuts at every full stop, so keeping "12.5" in one
+    sentence was not enough: it still said "twelve", paused, "five"."""
+    from voice.tts import strip_markdown
+
+    assert strip_markdown("The price is 12.5 dollars.") == "The price is 12 point 5 dollars."
+    assert strip_markdown("Baby v6.0.2 is out.") == "Baby v6 point 0 point 2 is out."
+    assert strip_markdown("See example.com or a.pdf.") == "See example dot com or a dot pdf."
+    for untouched in (
+        "Ask e.g. about fees.",
+        "Meet at 5 p.m. today.",
+        "Dr. Sharma lives in the U.S.A. now.",
+        "1. First thing",
+        "Done. Next one.",
+        "Let me check.It is noon.",  # two generations glued: a pause, never "dot"
+    ):
+        assert strip_markdown(untouched) == untouched
 
 
 def test_split_ellipsis():
@@ -1798,6 +1925,143 @@ def test_the_server_hands_conversation_settings_to_voice():
     assert pipeline.conversation_window_s == 7
     assert pipeline.end_phrases == ("enough",)
     assert "_voice_config(config)" in inspect.getsource(server.run_ui)
+
+
+# -- 15. the stream going quiet (DECISIONS #169) ---------------------------------
+
+
+def _queued(pipeline):
+    got = []
+    while True:
+        try:
+            got.append(pipeline.sentence_q.get_nowait())
+        except queue_mod.Empty:
+            return got
+
+
+async def test_bridge_flushes_when_the_stream_goes_quiet(db):
+    """"Let me check." before a tool call: no next character ever proves the
+    full stop ended the sentence, so the bridge says it once the model has been
+    quiet for a moment instead of holding it until the tool returns."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="Let me check.")
+    await asyncio.sleep(0.05)
+    assert _queued(pipeline) == [], "flushed before the model had time to continue"
+    await asyncio.sleep(0.4)
+    assert _queued(pipeline) == ["Let me check."]
+    bus.publish("token", "voice", text=" The weather is fine.")
+    bus.publish("turn_end", "voice", reply="", status="ok")
+    await asyncio.sleep(0.05)
+    task.cancel()
+    assert _queued(pipeline) == ["The weather is fine.", None]
+
+
+async def test_bridge_does_not_flush_an_unfinished_sentence(db):
+    pipeline, _, bus = await _make_pipeline(db, [])
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="half a sentence and then Dr.")
+    await asyncio.sleep(0.4)
+    assert not task.done(), "a crashed bridge would pass this by queueing nothing"
+    task.cancel()
+    assert _queued(pipeline) == []
+
+
+async def test_other_events_do_not_postpone_the_flush(db):
+    """tts_rms arrives every 100 ms while Baby speaks. Counting the quiet from
+    the last event would keep the held sentence waiting for as long as the
+    previous one is playing."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="Let me check.")
+    await asyncio.sleep(0.06)
+    armed = pipeline._token_at
+    for _ in range(7):
+        bus.publish("tts_rms", "voice", rms=0.1)
+        await asyncio.sleep(0.06)
+    task.cancel()
+    # The deadline itself must not move: on a loaded machine one long gap
+    # between the sleeps above would let a last-event timer expire too.
+    assert pipeline._token_at == armed
+    assert _queued(pipeline) == ["Let me check."]
+
+
+async def test_a_tool_call_releases_what_was_said_before_it(db):
+    """tool_start is published once the generation that asked for the tool has
+    finished, so the buffered line is complete. Waiting for the quiet timer glued
+    it to the answer whenever the tool was quick: "Let me check.It is noon."."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="Let me")
+    bus.publish("token", "voice", text=" check.")
+    bus.publish("tool_start", "voice", tool="get_time", call_id="c1")
+    await asyncio.sleep(0.05)  # well inside the quiet timer
+    assert _queued(pipeline) == ["Let me check."]
+    bus.publish("token", "voice", text="It")
+    bus.publish("token", "voice", text=" is noon.")
+    bus.publish("turn_end", "voice", reply="", status="ok")
+    await asyncio.sleep(0.05)
+    task.cancel()
+    assert _queued(pipeline) == ["It is noon.", None]
+
+
+async def test_the_confirm_line_follows_the_sentence_that_introduces_it(db):
+    pipeline, _, bus = await _make_pipeline(db, [])
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="Okay, closing Notepad.")
+    bus.publish("confirm_request", "voice", confirm_id="c1", command="x")
+    await asyncio.sleep(0.05)
+    task.cancel()
+    assert _queued(pipeline) == ["Okay, closing Notepad.", CONFIRM_SENTENCE]
+
+
+async def test_a_waiting_token_is_read_before_the_flush(db):
+    """The token that turns "12." into "12.5" can already be in the queue when
+    the quiet deadline passes (the loop was busy). Flushing without looking
+    would split the very number the timer exists to protect."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="It costs 12.")
+    await asyncio.sleep(0.01)  # the bridge arms its timer
+    time.sleep(0.3)  # the loop is busy past the deadline
+    bus.publish("tts_rms", "voice", rms=0.1)
+    bus.publish("token", "voice", text="5 dollars. ")
+    await asyncio.sleep(0.05)
+    task.cancel()
+    assert _queued(pipeline) == ["It costs 12.5 dollars."]
+
+
+async def test_an_event_arriving_as_the_deadline_fires_is_read_first(db, monkeypatch):
+    """The narrow half of the same race: the timer fires, and the completing
+    token is published before the bridge gets to run. It must not flush."""
+    import voice.pipeline as pipeline_module
+
+    pipeline, _, bus = await _make_pipeline(db, [])
+    real_wait_for = asyncio.wait_for
+    raced = []
+
+    async def racing_wait_for(awaitable, timeout):
+        if timeout is None or raced:
+            return await real_wait_for(awaitable, timeout)
+        raced.append(True)
+        awaitable.close()
+        bus.publish("token", "voice", text="5 dollars. ")
+        raise TimeoutError
+
+    monkeypatch.setattr(pipeline_module.asyncio, "wait_for", racing_wait_for)
+    task = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="It costs 12.")
+    await asyncio.sleep(0.05)
+    task.cancel()
+    assert raced
+    assert _queued(pipeline) == ["It costs 12.5 dollars."]
 
 
 def test_the_shipped_end_phrases_are_the_ones_the_pipeline_uses():

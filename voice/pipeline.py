@@ -28,7 +28,7 @@ from pathlib import Path
 
 from core.intents import is_end_phrase
 from voice.amplitude import Throttle, quantize_level, rms_int16
-from voice.tts import split_sentences
+from voice.tts import ends_sentence, split_sentences
 
 _PUNCT_RE = re.compile(r"[^\w\s]|[_।]", re.UNICODE)
 
@@ -43,6 +43,9 @@ IDLE, LISTENING, RESPONDING = "idle", "listening", "responding"
 _VAD_FRAME = 512
 _WAKE_CHUNK = 1280
 _BARGE_IN_FRAMES = 6  # ~200 ms of sustained speech
+# ponytail: a guess. Long enough that a model mid-"12.5" has sent the "5"
+# (tokens arrive tens of ms apart), short enough not to be heard as a pause.
+_QUIET_FLUSH_S = 0.25
 
 # Per-turn timing, reported as seconds since the user stopped speaking. The
 # labels are what the feed line shows, and none of them may contain a word the
@@ -142,6 +145,7 @@ class VoicePipeline:
         )
 
         self._text_buf = ""
+        self._token_at = 0.0  # monotonic time of the last voice token (bridge)
         self._turn_future = None
         # Monotonic stamps for the turn in flight (see _TIMING_LABELS). The voice
         # thread and the bridge write different keys; one line per turn reports them.
@@ -460,30 +464,63 @@ class VoicePipeline:
         q = self.bus.subscribe()
         try:
             while True:
-                event = await q.get()
+                try:
+                    # Timed only on an empty queue: once the deadline has passed
+                    # wait_for(…, 0) raises without looking, and the token that
+                    # completes "12." into "12.5" may already be waiting.
+                    wait = self._quiet_wait() if q.empty() else None
+                    event = await asyncio.wait_for(q.get(), wait)
+                except TimeoutError:
+                    # The model stopped on a full stop and nothing followed (the
+                    # next-step call has not started): say what is there.
+                    if q.empty():
+                        self._queue_sentences(final=True)
+                    continue
                 if event.channel != "voice":
                     continue
                 if event.kind == "token":
                     self._mark("first_token")
                     self._text_buf += event.payload.get("text", "")
-                    sentences, self._text_buf = split_sentences(self._text_buf)
-                    for sentence in sentences:
-                        self._mark("first_sentence")
-                        self.sentence_q.put(sentence)
+                    self._token_at = time.monotonic()
+                    self._queue_sentences()
+                elif event.kind == "tool_start":
+                    # Published once the generation that asked for the tool has
+                    # finished, so whatever is buffered is complete: say it now.
+                    # Waiting for the quiet timer instead glued "Let me check."
+                    # to the answer ("check.It is noon.") whenever the tool was
+                    # quick, and let the confirm line below overtake it.
+                    self._queue_sentences(final=True)
                 elif event.kind == "confirm_request":
+                    self._queue_sentences(final=True)
                     self.sentence_q.put(CONFIRM_SENTENCE)
                 elif event.kind == "turn_end":
                     if event.payload.get("status") == "ok":
-                        sentences, self._text_buf = split_sentences(self._text_buf, final=True)
-                        for sentence in sentences:
-                            self._mark("first_sentence")
-                            self.sentence_q.put(sentence)
+                        self._queue_sentences(final=True)
                     else:  # cancelled/error: never speak a stale buffer
                         self._text_buf = ""
                     self.sentence_q.put(None)
         except asyncio.CancelledError:
             self.bus.unsubscribe(q)
             raise
+
+    def _queue_sentences(self, final: bool = False) -> None:
+        sentences, self._text_buf = split_sentences(self._text_buf, final=final)
+        for sentence in sentences:
+            self._mark("first_sentence")
+            self.sentence_q.put(sentence)
+
+    def _quiet_wait(self) -> float | None:
+        """How long the bridge waits before flushing the buffer; None = forever.
+
+        A full stop only ends a sentence once the next character arrives
+        (split_sentences), so text that stops on one -- "Let me check." before a
+        tool call -- would be held until the tool finished. Counted from the last
+        token, not the last event: tts_rms arrives every 100 ms while Baby
+        speaks and would otherwise keep pushing the flush away.
+        """
+        if not ends_sentence(self._text_buf):
+            return None
+        return max(0.0, self._token_at + _QUIET_FLUSH_S - time.monotonic())
 
     # -- state machine (runs on the voice thread) ---------------------------------
 
