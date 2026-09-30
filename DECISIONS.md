@@ -2844,3 +2844,83 @@ Running log of non-obvious choices made during the build. Newest last.
      16 ms anyway) -- and not openWakeWord or faster-whisper's VAD, whose onnxruntime
      sessions are built with one thread. Unidentified; about a fifth of the CPU for two
      seconds is not worth guessing at. Trace it on the installed build if it matters.
+
+168. **Hindi is spoken by Sarvam AI when you give Baby a key; English is Bella.**
+     The owner, listening to Baby after #167: *"it is sounding like a bot"*. First
+     ruled out that #167 caused it: the 4-thread Kokoro session and the stock one are
+     each deterministic, differ only in float summation order (correlation 0.998 to
+     1.0 across the sentences measured), and 8 threads reproduces stock bit for bit.
+     The voice was always like this. The owner then picked `af_bella` for English by
+     ear from rendered samples -- now the default for every new install; an existing
+     one keeps the `voice_en` its config names -- and asked for Sarvam AI for Hindi.
+     Kokoro rates all four of its Hindi voices C, and no setting fixes that.
+
+     **What happens.** A sentence containing any Devanagari, when `SARVAM_API_KEY` is
+     saved and the voice bridge cleared the sentence, is voiced by Sarvam's
+     `bulbul:v3` (speaker `priya`, 24 kHz WAV, one REST call per sentence). The whole
+     sentence goes, English words in it included -- that is what makes Hinglish sound
+     right, and it is what the key's note says. Anything else, and every failure, is
+     Kokoro exactly as before. No key, no change: a stranger's install is untouched
+     until they add one in Setup & repair, where it takes effect immediately.
+
+     **Privacy is fail-closed.** `voice/tts.py` sends only a `CloudOk` -- a str
+     subclass the bridge wraps a reply sentence in. Announcements, the confirm
+     prompt, health checks and prerender pass plain strings, so they can never
+     leave, including anything added later that forgets to think about it. The
+     bridge stops wrapping for the rest of a turn the moment that turn's voice
+     `tool_start` names a pinned tool. The pins are `router.privacy_pins` from config,
+     handed to the pipeline by the server: only the cloud router carries them as an
+     attribute, and reading them off the provider silently fell back to a hardcoded
+     list on local_primary -- the one mode where Sarvam is the only thing sending a
+     reply off the PC. `tool_start` is published before the tool runs and the bus is
+     FIFO per subscriber, so it arrives before any token that could carry the result;
+     a sentence half-buffered at that moment is completed by pinned text and is marked
+     when queued, so it stays local too. The flag clears only when no voice turn is
+     left open, because a cancelled turn can publish its `turn_end` after the next one
+     has started and pinned. The bus drops the oldest event when a subscriber falls
+     behind, and a dropped event might have been the pin, so a gap in `seq` also
+     keeps the rest of the turn local. **Scope, stated as it is:** per turn, from the
+     tool call on -- the same as the router. Hindi spoken before the tool ran has
+     already gone, a later reply that repeats a pinned one is not covered, and Hindi
+     written by the local brain (local_primary, or the Devanagari language pin) now
+     leaves the PC to be voiced. The key's note in the wizard and Setup & repair says
+     all of that.
+
+     **The key.** Sent in Sarvam's documented `api-subscription-key` header. Bearer
+     is documented as accepted too, but only a real key could prove it, and a wrong
+     guess would get a real key a 403, classified invalid and never saved. KeySpec
+     gained `auth_header`, and the speaking path reads the URL and header from the
+     same spec as the probe. Sarvam has no key-check endpoint, so the probe voices
+     two characters (about Rs 0.006); sent with no key it answered 403
+     `invalid_api_key_error` live on 2026-09-30, so it does check.
+
+     **Failure never costs the reply.** An exception escaping `synth` would drop the
+     rest of the reply, so everything falls back inside it. The wait is a real 4 s
+     wall clock -- the request runs on a daemon thread -- because httpx times each
+     socket operation, not the request, leaves DNS uncapped, and nothing polls the
+     kill switch while synth blocks. Any failure (transport, timeout, any non-200, a
+     malformed, empty or stereo body) switches Sarvam off for 2 minutes with one line
+     in the activity feed: an offline PC pays one stall rather than one per sentence,
+     and a failure that repeats, such as a speaker name Sarvam rejects, is seen once
+     instead of silently costing every sentence. Chunks over 400 characters go
+     straight to Kokoro: the API takes 2500, but a reply flushed without full stops
+     can be one huge chunk that cannot be voiced inside 4 s, and its timeout would
+     switch Sarvam off for nothing -- 400 is a guess until a real key's latency is
+     measured. Only the failure's type or status is logged: httpx puts an illegal
+     header value, key and all, into its exception text, and the key is stripped so
+     a pasted newline cannot produce one.
+
+     **Cost and terms.** Rs 30 per 10,000 characters; Rs 100 of signup credit (about
+     33,000 characters) that never expires; about Rs 540 a month at 30 Hindi replies
+     a day of 200 characters. Each user's own key only -- the terms forbid sharing
+     credentials or giving third parties access, so a key must never ship. Sarvam
+     keeps workspace data indefinitely until an owner sets a retention period, and
+     its privacy policy trains on inputs unless you opt out; set retention to 0 days
+     and turn training off in the dashboard.
+
+     **Not built, on purpose.** No prefetch: sentences are synthesised after the
+     previous one finishes, and Sarvam's real latency is unmeasured until a real
+     key is used, so the gap is a checklist row first. No streaming, no pace or
+     pitch knobs, no Hindi announcements through Sarvam. Unproven without a real
+     key: the 200 response shape, the gap between sentences, whether `priya` suits,
+     and whether a louder voice trips barge-in through the speakers.

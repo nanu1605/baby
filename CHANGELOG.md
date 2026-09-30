@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- **Baby's English voice is Bella.** Picked by ear over the previous default. An
+  existing install keeps its setting until you change `voice: tts: voice_en` to
+  `af_bella` in `%LOCALAPPDATA%\baby\config.yaml`.
+
+- **Hindi can sound like a person.** Add a Sarvam AI key in Setup & repair and
+  Hindi sentences are spoken by Sarvam's Bulbul voice instead of the built-in one.
+  It is optional and uses your own Sarvam account (Rs 100 of free credit, then
+  about Rs 3 per thousand characters). Every sentence Baby says aloud that
+  contains Hindi is sent whole to Sarvam in India to be voiced, English words in
+  it included. Once a reply reads a file or runs a command, the rest of it is
+  voiced on your PC. A sentence with no Hindi in it never leaves. If Sarvam is
+  unreachable, Baby speaks Hindi with the built-in voice and says so in the
+  activity feed.
+
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
 Fixes reported from running Baby on an actual machine rather than a VM -- five

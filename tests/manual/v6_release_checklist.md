@@ -492,6 +492,34 @@ started with, and this whole section would measure the old ~49%.
       stays well under the recognition peak while it talks.
 - [ ] **A typed question barely registers.** Type one. A brief blip at most, no sustained climb.
 
+### Hindi through Sarvam AI (unreleased)
+
+Needs the owner's own Sarvam key -- nothing here can be checked without one. First,
+in the Sarvam dashboard: data retention for Model APIs set to 0 days, model training
+off. Then add the key in Setup & repair. On an upgraded install, also set
+`voice: tts: voice_en: af_bella` in `%LOCALAPPDATA%\baby\config.yaml`, then quit
+Baby from the tray and start it again -- the seeded config is never overwritten.
+
+- [ ] **The key is checked.** A real key reads as working and is saved; the same
+      key with a few characters changed is rejected and not saved.
+- [ ] **Hindi sounds human, English is Bella.** Ask something in Hindi. Devanagari
+      sentences are Sarvam's voice; any English sentence in the same reply is Bella.
+      Judge whether the switch between them is acceptable.
+- [ ] **The gap between Hindi sentences.** Ask for a four- or five-sentence Hindi
+      answer. If the pause between sentences is clearly longer than in English
+      (over about a second), Sarvam needs a one-sentence lookahead.
+- [ ] **A file stays local.** Ask Baby, in Hindi, to read a small text file and tell
+      you what it says. Anything said before it opened the file may be Sarvam's
+      voice; everything after, including the file's contents, is the built-in one.
+- [ ] **Offline falls back.** Turn Wi-Fi off and ask in Hindi. At most one pause of
+      about 4 s, then the built-in voice, a "Sarvam unavailable" line in the activity
+      feed, and no further pauses for the next two minutes.
+- [ ] **No self-interruption.** On speakers, not headphones: a Hindi reply plays to
+      the end without Baby hearing itself and stopping.
+- [ ] **Before building:** re-render the ready cue so it is Bella too --
+      `uv run python -m voice.tts --prerender "Baby ready" assets/baby_ready.wav` (it is
+      staged into the installer from the build machine and is not tracked).
+
 ## 6. Regression on the real box
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.
