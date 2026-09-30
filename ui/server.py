@@ -118,6 +118,27 @@ def _ui_history(config: dict) -> str:
     return "off" if val == "off" else "on"
 
 
+def _voice_config(config: dict) -> dict:
+    """The `voice:` block plus the `conversation:` block that sits beside it.
+
+    `conversation:` is top-level in config.yaml, but the pipeline reads it out of
+    the one dict it is handed. That dict used to be `voice:` alone, so follow-up
+    mode always ran on the pipeline's code defaults and a configured end phrase
+    was ignored (DECISIONS #168).
+
+    A key left empty in YAML arrives as None. Those are dropped so the pipeline's
+    own default applies, as it did while the whole block was being ignored --
+    the pipeline is built outside voice's fail-soft load, so a None here would
+    stop Baby starting at all.
+    """
+    voice = dict(config.get("voice") or {})
+    conversation = config.get("conversation") or {}
+    voice.setdefault(
+        "conversation", {key: value for key, value in conversation.items() if value is not None}
+    )
+    return voice
+
+
 class _StateDeriver:
     """Fold the bus event stream into a single pipeline state for the gauge (B1c).
 
@@ -1630,7 +1651,7 @@ async def run_ui(config: dict, with_voice: bool = False) -> int:
             suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
         )
         voice_pipeline = VoicePipeline(
-            asyncio.get_running_loop(), voice_agent, bus, config.get("voice", {})
+            asyncio.get_running_loop(), voice_agent, bus, _voice_config(config)
         )
         voice_ok, voice_notes = await asyncio.to_thread(voice_pipeline.load)
         for note in voice_notes:

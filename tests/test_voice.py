@@ -1572,3 +1572,237 @@ async def test_scored_utterance_is_audit_logged(db):
     assert payload["score"] == pytest.approx(0.77, abs=1e-3)
     assert payload["tier"] == "trusted"
     assert "model" in payload
+
+
+# -- 14. per-turn timing, and the conversation block reaching voice (DECISIONS #168) --
+
+
+def _shipped_config():
+    from pathlib import Path
+
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / "installer" / "config.default.yaml"
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _timing_lines(feed):
+    lines = []
+    while not feed.empty():
+        event = feed.get_nowait()
+        text = str(event.payload.get("text", ""))
+        if event.kind == "status" and text.startswith("voice: timing "):
+            lines.append(text)
+    return lines
+
+
+def _timing_labels(line):
+    return [part.split()[0] for part in line.removeprefix("voice: timing ").split(" · ")]
+
+
+async def _speak_one_turn(db, script):
+    """Listen -> submit -> respond on the fakes; returns (pipeline, feed queue)."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, bus = await _make_pipeline(db, script)
+    feed = bus.subscribe()
+    pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    fb = FrameBuffer()
+    await asyncio.to_thread(pipeline._listen, fb)
+    await asyncio.sleep(0.1)  # let the turn reach the provider and stream back
+    await asyncio.to_thread(pipeline._respond, fb)
+    await asyncio.sleep(0.1)  # let the feed line and the audit row land
+    bridge.cancel()
+    return pipeline, feed
+
+
+async def test_voice_turn_publishes_one_timing_line(db):
+    """Each spoken turn says where its wait went: one line, every stage, in order."""
+    _, feed = await _speak_one_turn(db, ["It is noon. Enjoy!"])
+    lines = _timing_lines(feed)
+    assert len(lines) == 1
+    assert _timing_labels(lines[0]) == [
+        "stt", "request", "token", "sentence", "tts", "audio", "end"
+    ]
+    # ui/server.py moves the orb on these words in a voice status line, the graph
+    # pulses on "heard", and the activity socket raises a toast on the rest; a
+    # timing line must do none of it.
+    for word in (
+        "listening", "stopped", "interrupted", "heard", "ended",
+        "wiped", "kill", "error", "cancelled", "offline", "degraded",
+    ):
+        assert word not in lines[0]
+
+
+async def test_voice_turn_timing_is_audited(db):
+    """The same figures land in audit_log, so a soak can be read back later."""
+    import json as _json
+
+    await _speak_one_turn(db, ["It is noon. Enjoy!"])
+    rows = await db._fetchall("SELECT args FROM audit_log WHERE tool = 'voice_timing'")
+    assert len(rows) == 1
+    figures = _json.loads(rows[0]["args"])
+    assert list(figures) == ["stt", "request", "token", "sentence", "tts", "audio", "end"]
+    seconds = list(figures.values())
+    assert seconds == sorted(seconds), "each stage is measured from the same start"
+    assert all(value >= 0 for value in seconds)
+
+
+async def test_timing_starts_when_the_user_stopped_not_when_the_vad_noticed(db):
+    """The VAD reports the end only after its silence window, so the wait the
+    user feels began that long ago -- a longer window must show up as wait."""
+    pipeline, _, _ = await _make_pipeline(db, ["ok"], cfg_over={"vad_silence_ms": 5000})
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    timing = pipeline._timing
+    assert timing["stt_done"] - timing["speech_end"] >= 5.0
+
+
+async def test_an_interrupted_turn_reports_how_fast_it_went_quiet(db):
+    pipeline, _, bus = await _make_pipeline(db, [])
+    feed = bus.subscribe()
+    now = time.monotonic()
+    pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
+    pipeline.sentence_q.put("A very long sentence being spoken right now.")
+    pipeline.audio.frames += [SPEECH] * 10
+    pipeline._turn_future = concurrent.futures.Future()
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await asyncio.sleep(0.05)
+    lines = _timing_lines(feed)
+    assert len(lines) == 1
+    labels = _timing_labels(lines[0])
+    assert labels[-1] == "cut" and "end" not in labels
+
+
+async def test_a_finished_turn_is_reported_once(db):
+    """A later end-of-turn marker with no turn behind it (a stale sentinel, a
+    kill phrase that submitted nothing) must not replay the last turn's line."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, feed = await _speak_one_turn(db, ["It is noon."])
+    pipeline.sentence_q.put(None)
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await asyncio.sleep(0.05)
+    assert len(_timing_lines(feed)) == 1
+
+
+async def test_audio_is_stamped_when_sound_leaves_not_when_it_is_queued(db):
+    """"audio" is the first block written to the speaker. A sentence that was
+    synthesised but never sounded must not count as Baby starting to speak."""
+
+    class SilentAudio(FakeAudio):
+        def play(self, samples, samplerate, stop, on_level=None):
+            return False  # stopped before the first block was written
+
+    pipeline, _, bus = await _make_pipeline(db, [])
+    pipeline.audio = SilentAudio()
+    feed = bus.subscribe()
+    now = time.monotonic()
+    pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
+    pipeline.sentence_q.put("Synthesised, never heard.")
+    pipeline.sentence_q.put(None)
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await asyncio.sleep(0.05)
+    labels = _timing_labels(_timing_lines(feed)[0])
+    assert "tts" in labels and "audio" not in labels
+
+
+async def test_the_check_the_screen_line_does_not_take_the_replys_stamps(db):
+    """A confirmation is spoken before the model has written anything. If that
+    canned line took the tts/audio stamps they would precede the first token,
+    and the reply's own would never be recorded."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    feed = bus.subscribe()
+    now = time.monotonic()
+    pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
+    pipeline.sentence_q.put(CONFIRM_SENTENCE)
+    pipeline.sentence_q.put(None)
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await asyncio.sleep(0.05)
+    assert pipeline.tts.synthed == [CONFIRM_SENTENCE]  # still spoken
+    labels = _timing_labels(_timing_lines(feed)[0])
+    assert "tts" not in labels and "audio" not in labels
+
+
+async def test_a_killed_turn_reports_nothing_and_leaves_nothing_behind(db):
+    pipeline, _, bus = await _make_pipeline(db, [])
+    feed = bus.subscribe()
+    now = time.monotonic()
+    pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
+    pipeline.sentence_q.put("A long sentence still being spoken right now.")
+    pipeline._turn_future = concurrent.futures.Future()
+
+    def trip():
+        time.sleep(0.03)
+        pipeline.cancel_turn()
+
+    threading.Thread(target=trip, daemon=True).start()
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await asyncio.sleep(0.05)
+    assert _timing_lines(feed) == []
+    assert pipeline._timing == {}
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"voice": {}, "conversation": None},
+        {"voice": None, "conversation": {"end_phrases": None}},
+        {"conversation": {"window_s": None, "enabled": None, "cue": None}},
+        {},
+    ],
+)
+def test_an_empty_conversation_key_means_the_default_not_a_crash(config):
+    """`conversation:` or `end_phrases:` with nothing under it is None in YAML.
+    While the block was ignored that was harmless; now it must still be, because
+    the pipeline is built outside voice's fail-soft load and a raise there stops
+    Baby starting at all."""
+    from ui import server
+
+    pipeline = VoicePipeline(None, None, None, server._voice_config(config))
+    assert pipeline.conversation_enabled is True
+    assert pipeline.conversation_window_s == 60
+    assert "stop listening" in pipeline.end_phrases
+
+
+def test_the_server_hands_conversation_settings_to_voice():
+    """`conversation:` is top-level in config.yaml; the pipeline only reads the
+    dict it is given. Handing it `voice:` alone left follow-up mode on code
+    defaults and ignored every configured end phrase."""
+    import inspect
+
+    from ui import server
+
+    config = {
+        "voice": {"barge_in": False},
+        "conversation": {"enabled": False, "window_s": 7, "end_phrases": ["enough"]},
+    }
+    voice = server._voice_config(config)
+    assert voice["barge_in"] is False
+    assert "conversation" not in config["voice"], "the caller's config is not edited"
+
+    pipeline = VoicePipeline(None, None, None, voice)
+    assert pipeline.conversation_enabled is False
+    assert pipeline.conversation_window_s == 7
+    assert pipeline.end_phrases == ("enough",)
+    assert "_voice_config(config)" in inspect.getsource(server.run_ui)
+
+
+def test_the_shipped_end_phrases_are_the_ones_the_pipeline_uses():
+    from ui import server
+
+    config = _shipped_config()
+    pipeline = VoicePipeline(None, None, None, server._voice_config(config))
+    assert pipeline.end_phrases == tuple(config["conversation"]["end_phrases"])

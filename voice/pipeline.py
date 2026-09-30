@@ -44,6 +44,21 @@ _VAD_FRAME = 512
 _WAKE_CHUNK = 1280
 _BARGE_IN_FRAMES = 6  # ~200 ms of sustained speech
 
+# Per-turn timing, reported as seconds since the user stopped speaking. The
+# labels are what the feed line shows, and none of them may contain a word the
+# UI matches on status text, or a timing line would move the orb or raise a
+# toast: "listening", "stopped", "interrupted", "heard", "conversation ended"
+# (ui/server.py _StateDeriver, the graph's edge map) and "wiped", "kill",
+# "error", "cancelled", "offline", "degraded" (useActivitySocket TOAST_STATUS).
+_TIMING_LABELS = (
+    ("stt_done", "stt"),
+    ("submitted", "request"),
+    ("first_token", "token"),
+    ("first_sentence", "sentence"),
+    ("tts_start", "tts"),
+    ("first_audio", "audio"),
+)
+
 
 def normalize_transcript(text: str) -> str:
     """Lowercase, strip punctuation (incl. danda), collapse whitespace."""
@@ -128,6 +143,10 @@ class VoicePipeline:
 
         self._text_buf = ""
         self._turn_future = None
+        # Monotonic stamps for the turn in flight (see _TIMING_LABELS). The voice
+        # thread and the bridge write different keys; one line per turn reports them.
+        self._timing: dict[str, float] = {}
+        self._vad_silence_s = float(cfg.get("vad_silence_ms", 400)) / 1000.0
         self._stopping = threading.Event()
         # Kill switch: force-stop live playback + the running turn (the UI /kill
         # cancelled the turn future but Baby kept speaking the already-queued
@@ -335,6 +354,14 @@ class VoicePipeline:
         _publish is thread-safe, so publishing from the player thread is fine."""
         self._publish("tts_rms", rms=quantize_level(level))
 
+    def _emit_reply_level(self, level: float) -> None:
+        """on_level for a sentence of the reply: the first call is the first
+        ~100 ms block actually written to the speaker, which is what "audio"
+        means in the timing line -- stamping before the player thread starts
+        would leave out opening the output device."""
+        self._mark("first_audio")
+        self._emit_tts_level(level)
+
     def _submit(self, text: str):
         return asyncio.run_coroutine_threadsafe(self.agent.run_turn(text), self.loop)
 
@@ -380,6 +407,52 @@ class VoicePipeline:
             except queue.Empty:
                 return
 
+    # -- per-turn timing ---------------------------------------------------------
+
+    def _mark(self, key: str) -> None:
+        """Stamp the first time `key` happens in the turn in flight."""
+        self._timing.setdefault(key, time.monotonic())
+
+    def _report_timing(self, cut: float | None = None) -> None:
+        """One feed line and one audit row for the turn that just ended.
+
+        Every figure is seconds since the user stopped speaking. `cut` is set
+        when the user interrupted: seconds from detecting their speech to the
+        speaker going quiet.
+        """
+        timing, self._timing = self._timing, {}
+        start = timing.get("speech_end")
+        if start is None:
+            return
+        parts = {
+            label: round(timing[key] - start, 2)
+            for key, label in _TIMING_LABELS
+            if key in timing
+        }
+        if cut is None:
+            parts["end"] = round(time.monotonic() - start, 2)
+        else:
+            parts["cut"] = round(cut, 2)
+        line = " · ".join(f"{label} {value:.1f}s" for label, value in parts.items())
+        self._publish("status", text=f"voice: timing {line}")
+        db = getattr(self.agent, "db", None)
+        if db is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(
+                db.add_audit(
+                    getattr(self.agent, "channel", "voice"),
+                    "voice_timing",
+                    json.dumps(parts),
+                    "allow",
+                    1,
+                    line,
+                ),
+                self.loop,
+            )
+        except Exception:  # noqa: BLE001 — audit logging is best-effort
+            pass
+
     # -- bridge (runs on the asyncio loop) ---------------------------------------
 
     async def _bridge(self) -> None:
@@ -391,9 +464,11 @@ class VoicePipeline:
                 if event.channel != "voice":
                     continue
                 if event.kind == "token":
+                    self._mark("first_token")
                     self._text_buf += event.payload.get("text", "")
                     sentences, self._text_buf = split_sentences(self._text_buf)
                     for sentence in sentences:
+                        self._mark("first_sentence")
                         self.sentence_q.put(sentence)
                 elif event.kind == "confirm_request":
                     self.sentence_q.put(CONFIRM_SENTENCE)
@@ -401,6 +476,7 @@ class VoicePipeline:
                     if event.payload.get("status") == "ok":
                         sentences, self._text_buf = split_sentences(self._text_buf, final=True)
                         for sentence in sentences:
+                            self._mark("first_sentence")
                             self.sentence_q.put(sentence)
                     else:  # cancelled/error: never speak a stale buffer
                         self._text_buf = ""
@@ -499,6 +575,7 @@ class VoicePipeline:
         grace = self.conversation_window_s if followup else self.listen_grace_s
         speech_deadline = time.monotonic() + grace
         hard_deadline = speech_deadline + self.max_utterance_s  # cap a runaway
+        done = False
         while not self._stopping.is_set():
             now = time.monotonic()
             if not getattr(self.vad, "speech_started", False) and now > speech_deadline:
@@ -524,6 +601,9 @@ class VoicePipeline:
             if done:
                 break
 
+        # The VAD only reports the end once its silence window has passed, so
+        # the user actually stopped that long ago -- the wait they feel starts there.
+        speech_end = time.monotonic() - (self._vad_silence_s if done else 0.0)
         self.state = IDLE
         # No speech at all (false wake, or the user stayed quiet): skip the
         # expensive STT call on pure silence and say so in the feed. In a
@@ -537,6 +617,7 @@ class VoicePipeline:
             return
         pcm = np.concatenate(recorded)
         text, lang = self.stt.transcribe(pcm)
+        stt_done = time.monotonic()
         if not text:
             if followup:
                 self._session_cue()
@@ -611,6 +692,11 @@ class VoicePipeline:
         # stale sentinel from a cancelled prior turn must not end it early.
         self._interrupt.clear()
         self._drain_sentences()
+        self._timing = {
+            "speech_end": speech_end,
+            "stt_done": stt_done,
+            "submitted": time.monotonic(),
+        }
         self._turn_future = self._submit(text)
         self.state = RESPONDING
 
@@ -677,6 +763,7 @@ class VoicePipeline:
                 if self._interrupt.is_set():
                     self._abort_speaking(stop_playback)
                     return
+                self._report_timing()
                 # Conversation mode: keep the mic hot for a wake-word-free
                 # follow-up (opens only now that playback is fully done, so Baby
                 # never transcribes its own speech). Disabled → back to IDLE.
@@ -686,11 +773,19 @@ class VoicePipeline:
                     self.state = IDLE
                 return
             if sentence is not _NOTHING:
+                # The canned "check the screen" line is not the model's reply: if
+                # it took the tts/audio stamps they would land before the first
+                # token, and the reply's own would never be recorded.
+                reply = sentence is not CONFIRM_SENTENCE
+                if reply:
+                    self._mark("tts_start")
                 pcm, sample_rate = self.tts.synth(sentence)
                 player = threading.Thread(
                     target=self.audio.play,
                     args=(pcm, sample_rate, stop_playback),
-                    kwargs={"on_level": self._emit_tts_level},
+                    kwargs={
+                        "on_level": self._emit_reply_level if reply else self._emit_tts_level
+                    },
                     daemon=True,
                 )
                 player.start()
@@ -702,10 +797,12 @@ class VoicePipeline:
                         return
                     speech_frames = self._barge_in_step(frames, speech_frames, stop_playback)
                     if stop_playback.is_set():
+                        heard_at = time.monotonic()
                         player.join(timeout=1.0)
                         self._cancel_turn()
                         self._drain_sentences()
                         self._publish("status", text="voice: interrupted")
+                        self._report_timing(cut=time.monotonic() - heard_at)
                         self._enter_listening(frames)
                         return
                 continue
@@ -715,6 +812,7 @@ class VoicePipeline:
                 self._cancel_turn()
                 self._drain_sentences()
                 self._publish("status", text="voice: interrupted")
+                self._report_timing(cut=0.0)
                 self._enter_listening(frames)
                 return
 
@@ -725,6 +823,7 @@ class VoicePipeline:
         self._cancel_turn()
         self._drain_sentences()
         self._interrupt.clear()
+        self._timing = {}  # a killed turn is not a wait worth measuring
         self.state = IDLE
         self._publish("status", text="voice: stopped by kill switch")
 
