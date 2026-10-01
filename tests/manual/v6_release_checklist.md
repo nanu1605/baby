@@ -532,6 +532,19 @@ microphone, and none of it has had one yet. A config change only takes effect af
 - [ ] **A long answer is spoken whole and in order.** Ask for "twenty facts about the
       moon, numbered". Baby speaks all twenty in order, with no sentence repeated or
       skipped.
+- [ ] **Interrupting keeps your words.** Set `voice: barge_in_keep_audio: true` (you
+      use a headset) and restart. Ask for a long answer and, while Baby is speaking,
+      say "stop, what's the time instead". Baby stops with no beep, and the chat shows
+      the whole of what you said, from "stop" onwards, as the next question.
+- [ ] **A one-word interruption is enough.** Ask for a long answer and say just
+      "stop" over it. Baby stops and treats "stop" as your turn; it does not say it
+      heard nothing.
+- [ ] **"Bas" over Baby ends the conversation.** In a conversation, say "bas" (if it
+      is in your `end_phrases`) while Baby is talking. Baby stops and the
+      conversation ends; it does not answer "bas".
+- [ ] **The speaker goes quiet at once.** Interrupt in the middle of a sentence.
+      Baby's voice cuts off mid-word, and the timing line ends in `cut 0.0s` or
+      `cut 0.1s` (it was 0.2-0.3 s before this change).
 
 ## 6. Regression on the real box
 

@@ -3046,3 +3046,52 @@ Running log of non-obvious choices made during the build. Newest last.
      reply -- or any the model writes slower than Baby speaks -- still waits for its
      synthesis. The timing line and the owner's ear decide whether that needs one
      continuous stream.
+171. **Interrupting Baby can keep what you said, and the speaker goes quiet at once.**
+     Spec item 4. The barge-in itself already existed: Silero VAD, six 32 ms frames of
+     speech while Baby talks, playback stopped, the turn cancelled. Cancelling the
+     turn reaches the model's stream through the router and closes it; a test now pins
+     that through `CloudRouter`, since nothing did before. What happened next was the
+     problem.
+
+     **The interrupting words were thrown away.** Barge-in went straight into the
+     wake-word path: a beep, the microphone drained, the capture buffer cleared. The
+     words that had just interrupted Baby -- at least the 200 ms it takes to notice,
+     usually the whole of "stop" -- were gone, and a beep played over the user, who
+     then had to say it all again. While Baby speaks, the last ~0.5 s of microphone
+     chunks are now kept (sixteen 32 ms chunks: the streak and a little lead). With
+     `voice.barge_in_keep_audio` on, barge-in puts them back in front of the capture
+     buffer, with no beep and no drain, and `_listen` runs unchanged. It hears and
+     endpoints the replayed speech like any other. Seeding the transcript buffer
+     directly was the obvious way and the wrong one: `_listen` discards a capture
+     whose VAD never saw speech start, so a one-word "stop" would have come back as
+     "heard nothing". Kill phrase and speaker check run on the whole utterance as
+     before, and an end phrase said over Baby ("bas") now closes the conversation as
+     it does in a follow-up window, instead of being sent to the model as a question.
+
+     **Off for a fresh install, on for the owner.** There is no echo cancellation
+     (#49). The review fed Baby's own voice at 3% of full volume into the real Silero
+     VAD while it spoke: that alone trips barge-in at the 0.6 threshold, and with the
+     audio kept, the replay is a turn made of Baby's own words, which it then answers.
+     Discarding the audio, as before, ends in "heard nothing" instead. So the shipped
+     config and the code default are `false`, and a headset owner -- this one -- sets
+     `true`. Replaying only when the user is still talking after playback stops would
+     tell the two apart, but a one-word "stop" is over by then.
+
+     **Interrupting no longer buys back speaker trust.** Barge-in entered listening as
+     a fresh wake, which resets the session-trust smoother to optimistic: an unknown
+     speaker could regain tools by talking over Baby. It is now the same session, like
+     a follow-up -- with the audio kept or not.
+
+     **The speaker stopped late.** Playback writes 100 ms blocks and checks the stop
+     flag between them, but leaving the `with sd.OutputStream` calls `stop()`, which
+     plays out whatever the device still has queued. It now calls `abort()` instead,
+     including for a stop that lands after the last block is written, by waiting out
+     the stream's latency on the stop flag: unstopped, that wait is the drain `stop()`
+     would have done anyway. Measured by the review on the real default device: stop
+     to silence 0.23-0.30 s before, 0.02-0.11 s after. The `cut` figure in the timing
+     line (#168) shows it on an installed build.
+
+     **The limit, stated.** With the audio kept on open speakers, the kept half-second
+     also holds Baby's own last words: the transcript can start with them, and a short
+     "baby stop" can be pushed past the five-word kill-phrase limit (it is then an
+     ordinary turn; the old one is cancelled either way).

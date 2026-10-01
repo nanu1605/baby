@@ -35,6 +35,17 @@ when you talk over it -- so this release fixes what was missing around it.
   out of steps on a long task, it used to go quiet and then play the listening sound
   as if it had answered. It now says so out loud. And one sentence that cannot be
   prepared no longer takes the rest of the answer with it.
+- **With a headset, interrupting Baby can keep what you said.** Talking over Baby
+  stops it, plays a beep, and throws away the words you had just said, so you say
+  them again after the beep. Set `voice: barge_in_keep_audio: true` and Baby instead
+  carries straight on listening, starting from the words that interrupted it. It is
+  off by default because on open speakers Baby can hear its own voice, take it for
+  an interruption, and answer itself.
+- **Baby stops talking the moment you interrupt.** It used to finish the bit of
+  audio already sent to the speaker first.
+- **Interrupting no longer resets speaker recognition.** If you use voice
+  recognition, a voice Baby did not recognise could win back its trust by talking
+  over it. An interruption now counts as part of the same conversation.
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
