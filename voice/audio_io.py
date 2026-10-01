@@ -40,6 +40,18 @@ class FrameBuffer:
     def clear(self) -> None:
         self._buf = None
 
+    def prepend(self, chunks) -> None:
+        """Put already-popped chunks back in front, oldest first (barge-in keeps
+        the words that interrupted Baby by replaying them into the capture)."""
+        import numpy as np
+
+        parts = [chunk.reshape(-1) for chunk in chunks]
+        if not parts:
+            return
+        if self._buf is not None:
+            parts.append(self._buf)
+        self._buf = np.concatenate(parts)
+
 
 class AudioIO:
     """Persistent input stream + on-demand chunked output."""
@@ -112,6 +124,9 @@ class AudioIO:
         ) as out:
             for start in range(0, len(samples), chunk):
                 if stop.is_set():
+                    # Drop what the device still has queued. Leaving the `with`
+                    # calls stop(), which plays the buffered audio out first.
+                    out.abort()
                     return False
                 block = samples[start : start + chunk]
                 out.write(block)
@@ -120,6 +135,13 @@ class AudioIO:
                         on_level(rms(block))
                     except Exception:  # noqa: BLE001 — amplitude must never kill audio
                         pass
+            # The last block is written but still queued for about the output
+            # latency, and leaving the `with` waits for all of it: a stop that
+            # lands now must abort too. Unstopped, this wait is the same drain
+            # stop() would do anyway, so it adds nothing between sentences.
+            if stop.wait(getattr(out, "latency", 0) or 0):
+                out.abort()
+                return False
         return not stop.is_set()
 
     def beep(self) -> None:

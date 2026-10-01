@@ -93,6 +93,7 @@ voice:
     voice_hi: hf_beta
     speed: 1.05
     cpu_threads: 4                      # onnxruntime otherwise takes every core per sentence (DECISIONS #167)
+    prefetch: true                      # make the next sentence while this one plays (DECISIONS #170)
   vad_silence_ms: 400
   vad_speech_wait_ms: 5000
   speaker_verify:
@@ -107,6 +108,7 @@ voice:
     demote_after: 2
   barge_in: true
   barge_in_threshold: 0.6
+  barge_in_keep_audio: false            # true keeps the words that interrupted Baby; headset only -- on open speakers Baby can hear and answer itself (DECISIONS #171)
   ready_announce:
     enabled: true
     phrase: "Baby ready"

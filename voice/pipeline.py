@@ -46,6 +46,9 @@ IDLE, LISTENING, RESPONDING = "idle", "listening", "responding"
 _VAD_FRAME = 512
 _WAKE_CHUNK = 1280
 _BARGE_IN_FRAMES = 6  # ~200 ms of sustained speech
+# Mic chunks kept while Baby speaks (~0.5 s): the barge-in streak plus a little
+# lead, replayed into the capture so the interrupting words are not lost.
+_HEARD_CHUNKS = 16
 # ponytail: a guess. Long enough that a model mid-"12.5" has sent the "5"
 # (tokens arrive tens of ms apart), short enough not to be heard as a pause.
 _QUIET_FLUSH_S = 0.25
@@ -162,6 +165,13 @@ class VoicePipeline:
         self.listen_grace_s = float(cfg.get("listen_grace_s", 10))
         self.barge_in = bool(cfg.get("barge_in", True))
         self.barge_in_threshold = float(cfg.get("barge_in_threshold", 0.6))
+        # Keep what the user said while interrupting, instead of beeping and
+        # making them say it again. Off unless configured: with no echo
+        # cancellation (DECISIONS #49), Baby's own voice on open speakers can
+        # trip barge-in, and the kept audio would then be a turn Baby answers
+        # itself. On a headset it is safe (DECISIONS #171).
+        self.barge_keep_audio = bool(cfg.get("barge_in_keep_audio", False))
+        self._heard: collections.deque = collections.deque(maxlen=_HEARD_CHUNKS)
         # P3 conversation mode: after Baby speaks, keep the mic hot for a
         # wake-word-free follow-up until an end phrase or window_s of silence.
         conv = cfg.get("conversation", {})
@@ -689,14 +699,23 @@ class VoicePipeline:
         # the keyboard and already owns the PC.
         self._listen_source = source
         # B6: a fresh wake/PTT starts a new conversation session — reset the trust
-        # smoother to optimistic. Follow-ups keep accumulating within the session.
-        if source != "followup":
+        # smoother to optimistic. Follow-ups keep accumulating within the session,
+        # and so does a barge-in: interrupting must not buy an unknown speaker
+        # back the optimistic trust of a fresh session.
+        if source not in ("followup", "barge"):
             self.session_trust.reset()
-        # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
-        if source != "followup" or self.conversation_cue:
-            self.audio.beep()
-        self.audio.drain()  # never transcribe Baby's own just-played speech
-        frames.clear()
+        if source == "barge" and self.barge_keep_audio:
+            # The user is already talking: no beep over them, and the frames
+            # that tripped the barge-in go back in front of the capture, which
+            # then hears and endpoints them like any other speech.
+            frames.prepend(self._heard)
+        else:
+            # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
+            if source != "followup" or self.conversation_cue:
+                self.audio.beep()
+            self.audio.drain()  # never transcribe Baby's own just-played speech
+            frames.clear()
+        self._heard.clear()
         self._drain_sentences()  # drop any stale sentinel from a cancelled turn
         self.vad.reset()
         self.state = LISTENING
@@ -769,8 +788,12 @@ class VoicePipeline:
         # Conversation end phrase ("baby stop listening", "bas") cleanly closes
         # the follow-up window. Checked BEFORE the kill phrase so "baby stop
         # listening" ends the session as a session-close, not as a mid-turn kill
-        # (the kill phrase "baby stop" would otherwise shadow it).
-        if followup and is_end_phrase(text, self.end_phrases):
+        # (the kill phrase "baby stop" would otherwise shadow it). Said over
+        # Baby it closes the conversation too: a kept barge-in capture reaches
+        # here, and "bas" must not be sent to the model as a question.
+        if self._listen_source in ("followup", "barge") and is_end_phrase(
+            text, self.end_phrases
+        ):
             self._session_cue()
             self._publish("status", text="voice: conversation ended")
             return
@@ -896,6 +919,7 @@ class VoicePipeline:
         turn_q = self.sentence_q
         stop_playback = threading.Event()
         speech_frames = 0
+        self._heard.clear()  # only this reply's audio may be replayed
         ready: collections.deque = collections.deque()  # (pcm, rate, is_reply), in order
         inflight = None  # (future, is_reply) for the sentence being synthesised
         player: threading.Thread | None = None
@@ -963,7 +987,7 @@ class VoicePipeline:
                 self._drain_sentences()
                 self._publish("status", text="voice: interrupted")
                 self._report_timing(cut=time.monotonic() - heard_at if player else 0.0)
-                self._enter_listening(frames)
+                self._enter_listening(frames, source="barge")
                 return
 
             # A turn can die without publishing its end (it raised between
@@ -1064,6 +1088,7 @@ class VoicePipeline:
             return 0
         frames.push(frame)
         while (chunk := frames.pop(_VAD_FRAME)) is not None:
+            self._heard.append(chunk)
             if self.vad.is_speech(chunk, self.barge_in_threshold):
                 speech_frames += 1
                 if speech_frames >= _BARGE_IN_FRAMES:

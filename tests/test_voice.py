@@ -2116,11 +2116,12 @@ def _let_respond_out(pipeline):
 
 
 @contextlib.asynccontextmanager
-async def _responding(pipeline):
+async def _responding(pipeline, frames=None):
     """_respond running on a worker thread for the length of the block."""
     from voice.audio_io import FrameBuffer
 
-    task = asyncio.ensure_future(asyncio.to_thread(pipeline._respond, FrameBuffer()))
+    frames = FrameBuffer() if frames is None else frames
+    task = asyncio.ensure_future(asyncio.to_thread(pipeline._respond, frames))
     try:
         yield task
     finally:
@@ -2663,6 +2664,276 @@ async def test_an_announcement_is_synthesised_on_the_synth_worker(db):
 
     await asyncio.to_thread(pipeline._idle, FrameBuffer())
     assert seen and seen[0].startswith("baby-tts")
+
+
+# -- 17. barge-in: stop at once, keep the words (DECISIONS #171) -------------------
+
+
+def test_play_aborts_the_output_stream_on_stop(monkeypatch):
+    """Leaving the `with` calls the stream's stop(), which plays out whatever the
+    device still has queued -- Baby kept talking for a beat after being cut off."""
+    import sys
+    import types
+
+    from voice.audio_io import AudioIO
+
+    calls = []
+    stop = threading.Event()
+
+    class FakeStream:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            calls.append("exit")
+
+        def write(self, block):
+            calls.append("write")
+            stop.set()  # the user speaks during the first block
+
+        def abort(self):
+            calls.append("abort")
+
+    monkeypatch.setitem(sys.modules, "sounddevice", types.SimpleNamespace(OutputStream=FakeStream))
+    played = AudioIO().play(np.zeros(24000, dtype=np.int16), 24000, stop)
+    assert played is False
+    assert calls == ["write", "abort", "exit"]
+
+
+def test_frame_buffer_prepend_puts_chunks_back_in_order():
+    from voice.audio_io import FrameBuffer
+
+    buf = FrameBuffer()
+    buf.push(np.array([5, 6], dtype=np.int16))
+    buf.prepend([np.array([1, 2], dtype=np.int16), np.array([3, 4], dtype=np.int16)])
+    assert buf.pop(6).tolist() == [1, 2, 3, 4, 5, 6]
+    buf.prepend([])
+    assert buf.pop(1) is None
+
+
+class RecordingSTT(FakeSTT):
+    def __init__(self, text="stop, I meant the other one"):
+        super().__init__(text)
+        self.heard = []
+
+    def transcribe(self, pcm):
+        self.heard.append(pcm)
+        return super().transcribe(pcm)
+
+
+def _speech_chunks(pcm):
+    return int((pcm == SPEECH[0]).sum()) // len(SPEECH)
+
+
+_KEEP = {"barge_in_keep_audio": True}
+
+
+async def _barge_in_then_listen(db, frames_after_trigger, cfg_over=None, stt=None):
+    """Baby speaks; the user talks over it (6 speech frames trip barge-in), then
+    `frames_after_trigger`. Keep-audio on unless cfg_over says otherwise.
+    Returns the pipeline after the capture."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over={**_KEEP, **(cfg_over or {})})
+    pipeline.stt = stt or RecordingSTT()
+    pipeline.sentence_q.put("A very long sentence being spoken right now.")
+    pipeline.audio.frames += [SPEECH] * 6 + list(frames_after_trigger)
+    pipeline._turn_future = concurrent.futures.Future()
+    fb = FrameBuffer()
+    async with _responding(pipeline, fb) as respond:
+        await _finish(respond)
+    assert pipeline.state == LISTENING
+    await asyncio.to_thread(pipeline._listen, fb)
+    return pipeline
+
+
+async def test_barge_in_keeps_the_interrupting_words(db):
+    """The words that interrupted Baby were thrown away and a beep played over
+    the user, who had to say it all again. They are now the start of the capture."""
+    pipeline = await _barge_in_then_listen(db, [SPEECH] * 4 + [SILENCE] * 3)
+    assert pipeline.audio.beeped == 0
+    assert len(pipeline.stt.heard) == 1
+    assert _speech_chunks(pipeline.stt.heard[0]) == 10  # the 6 that tripped it, then 4
+
+
+async def test_short_interjection_is_transcribed(db):
+    """"Stop!" is about as long as the barge-in streak itself. Replaying the
+    streak through the normal capture means it is heard and endpointed like any
+    other speech, instead of the capture starting on the silence after it."""
+    pipeline = await _barge_in_then_listen(db, [SILENCE] * 3)
+    assert len(pipeline.stt.heard) == 1
+    assert _speech_chunks(pipeline.stt.heard[0]) == 6
+
+
+async def test_keep_audio_off_beeps_and_discards(db):
+    pipeline = await _barge_in_then_listen(
+        db,
+        [SPEECH] * 4 + [SILENCE] * 3,
+        # The follow-up cue off: the beep here is the wake beep, not the cue.
+        cfg_over={"barge_in_keep_audio": False, "conversation": {"enabled": False, "cue": False}},
+    )
+    assert pipeline.audio.beeped == 1
+    assert _speech_chunks(pipeline.stt.heard[0]) == 4  # only what came after the beep
+
+
+async def test_an_end_phrase_said_over_baby_ends_the_conversation(db):
+    """In a follow-up window "bas" closes the conversation. Said over Baby it
+    used to be lost with the beep; kept, it must close it too -- not be sent to
+    the model as a question."""
+    pipeline = await _barge_in_then_listen(
+        db,
+        [SILENCE] * 3,
+        cfg_over={"conversation": {"enabled": True, "end_phrases": ["bas"]}},
+        stt=RecordingSTT("bas"),
+    )
+    assert pipeline.state == "idle"
+    assert pipeline._turn_future is None or pipeline._turn_future.cancelled()
+
+
+async def test_a_partial_frame_is_not_lost_at_the_switch(db):
+    """Mic blocks do not line up with 512-sample chunks, so the capture buffer
+    holds a remainder when barge-in trips. It belongs after the replayed chunks."""
+    louder = np.full(768, 2000, dtype=np.int16)  # 1.5 chunks, told apart by value
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over=_KEEP)
+    pipeline.stt = RecordingSTT()
+    pipeline.sentence_q.put("A very long sentence being spoken right now.")
+    pipeline.audio.frames += [SPEECH] * 5 + [louder] + [SILENCE] * 3
+    pipeline._turn_future = concurrent.futures.Future()
+    fb = FrameBuffer()
+    async with _responding(pipeline, fb) as respond:
+        await _finish(respond)
+    await asyncio.to_thread(pipeline._listen, fb)
+    pcm = pipeline.stt.heard[0]
+    assert (pcm[: 5 * 512] == SPEECH[0]).all()
+    assert (pcm[5 * 512 : 5 * 512 + 768] == 2000).all()  # the whole frame, in order
+
+
+async def test_only_this_replys_audio_is_replayed(db):
+    """Audio kept during an earlier reply must not come back in front of a later
+    interruption."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over=_KEEP)
+    pipeline.stt = RecordingSTT()
+    stale = np.full(512, 4242, dtype=np.int16)
+    pipeline._heard.extend([stale] * 5)
+    pipeline.sentence_q.put("A very long sentence being spoken right now.")
+    pipeline.audio.frames += [SPEECH] * 6 + [SILENCE] * 3
+    pipeline._turn_future = concurrent.futures.Future()
+    fb = FrameBuffer()
+    async with _responding(pipeline, fb) as respond:
+        await _finish(respond)
+    await asyncio.to_thread(pipeline._listen, fb)
+    assert not (pipeline.stt.heard[0] == 4242).any()
+
+
+@pytest.mark.parametrize("keep", [True, False])
+async def test_barge_in_does_not_reset_session_trust(db, keep):
+    """A fresh wake starts a new session with optimistic speaker trust. An
+    interruption is the same session, whether or not its audio is kept: an
+    unknown speaker must not win back trust by talking over Baby."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over={"barge_in_keep_audio": keep})
+    resets = []
+    pipeline.session_trust.reset = lambda: resets.append(True)
+    pipeline.sentence_q.put("A very long sentence being spoken right now.")
+    pipeline.audio.frames += [SPEECH] * 10
+    pipeline._turn_future = concurrent.futures.Future()
+    fb = FrameBuffer()
+    async with _responding(pipeline, fb) as respond:
+        await _finish(respond)
+    assert pipeline.state == LISTENING
+    assert resets == []
+    pipeline._enter_listening(fb)  # a wake word still starts a new session
+    assert resets == [True]
+
+
+def test_play_aborts_a_stop_that_lands_on_the_last_block(monkeypatch):
+    """The last block is written but still queued for the output latency, and
+    leaving the `with` waits for all of it. A stop arriving then must abort too."""
+    import sys
+    import types
+
+    from voice.audio_io import AudioIO
+
+    calls = []
+    stop = threading.Event()
+
+    class FakeStream:
+        latency = 0.2
+
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            calls.append("exit")
+
+        def write(self, block):
+            calls.append("write")
+
+        def abort(self):
+            calls.append("abort")
+
+    monkeypatch.setitem(sys.modules, "sounddevice", types.SimpleNamespace(OutputStream=FakeStream))
+    threading.Timer(0.05, stop.set).start()  # after the only block is written
+    played = AudioIO().play(np.zeros(1200, dtype=np.int16), 24000, stop)
+    assert played is False
+    assert calls == ["write", "abort", "exit"]
+
+
+async def test_interrupting_closes_the_provider_stream(db):
+    """Cancelling the voice turn reaches the model's stream through the real
+    router, which is what stops the generation (and the billing), not just the
+    speech."""
+    from core.providers.base import Chunk
+    from core.router import CloudRouter
+
+    class Streaming:
+        name = "fake"
+        closed = False
+        started = None
+
+        async def chat(self, messages, tools=None, **opts):
+            try:
+                yield Chunk(delta="Once upon a time ")
+                Streaming.started = True
+                await asyncio.sleep(30)
+                yield Chunk(done=True)
+            finally:
+                Streaming.closed = True
+
+        async def healthy(self):
+            return True
+
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.agent.provider = CloudRouter(Streaming())
+    pipeline._turn_future = pipeline._submit("tell me a story")
+    await _until(lambda: Streaming.started)
+    pipeline._cancel_turn()
+    await _until(lambda: Streaming.closed)
+
+
+def test_the_shipped_config_names_the_new_voice_switches():
+    """Prefetch is on for everyone. Keeping the interruption is off for a fresh
+    install -- on open speakers Baby can trip barge-in on its own voice and would
+    then answer itself -- and on in a headset owner's own config."""
+    voice = _shipped_config()["voice"]
+    assert voice["tts"]["prefetch"] is True
+    assert voice["barge_in_keep_audio"] is False
+    pipeline = VoicePipeline(None, None, None, voice)
+    assert pipeline.prefetch is True and pipeline.barge_keep_audio is False
+    # The code agrees, for an upgraded install whose config has neither key.
+    bare = VoicePipeline(None, None, None, {})
+    assert bare.prefetch is True and bare.barge_keep_audio is False
 
 
 def test_the_shipped_end_phrases_are_the_ones_the_pipeline_uses():
