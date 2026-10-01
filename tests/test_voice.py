@@ -251,6 +251,7 @@ def test_normalize_transcript():
 
 import asyncio  # noqa: E402
 import concurrent.futures  # noqa: E402
+import contextlib  # noqa: E402
 import queue as queue_mod  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
@@ -1733,6 +1734,7 @@ async def _speak_one_turn(db, script):
 
     pipeline, _, bus = await _make_pipeline(db, script)
     feed = bus.subscribe()
+    watch = bus.subscribe()
     pipeline.audio.frames += [SPEECH, SPEECH, SILENCE, SILENCE]
     bridge = asyncio.create_task(pipeline._bridge())
     await asyncio.sleep(0)
@@ -1742,6 +1744,10 @@ async def _speak_one_turn(db, script):
     await asyncio.to_thread(pipeline._respond, fb)
     await asyncio.sleep(0.1)  # let the feed line and the audit row land
     bridge.cancel()
+    # A healthy turn ends on its own end marker. The watchdog would end it too,
+    # a second late, and every test above would still pass.
+    bus.unsubscribe(watch)
+    assert not any("without its end marker" in line for line in _status_lines(watch))
     return pipeline, feed
 
 
@@ -1797,9 +1803,8 @@ async def test_an_interrupted_turn_reports_how_fast_it_went_quiet(db):
     pipeline.sentence_q.put("A very long sentence being spoken right now.")
     pipeline.audio.frames += [SPEECH] * 10
     pipeline._turn_future = concurrent.futures.Future()
-    from voice.audio_io import FrameBuffer
 
-    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await _respond_once(pipeline)
     await asyncio.sleep(0.05)
     lines = _timing_lines(feed)
     assert len(lines) == 1
@@ -1810,11 +1815,10 @@ async def test_an_interrupted_turn_reports_how_fast_it_went_quiet(db):
 async def test_a_finished_turn_is_reported_once(db):
     """A later end-of-turn marker with no turn behind it (a stale sentinel, a
     kill phrase that submitted nothing) must not replay the last turn's line."""
-    from voice.audio_io import FrameBuffer
 
     pipeline, feed = await _speak_one_turn(db, ["It is noon."])
     pipeline.sentence_q.put(None)
-    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await _respond_once(pipeline)
     await asyncio.sleep(0.05)
     assert len(_timing_lines(feed)) == 1
 
@@ -1834,9 +1838,8 @@ async def test_audio_is_stamped_when_sound_leaves_not_when_it_is_queued(db):
     pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
     pipeline.sentence_q.put("Synthesised, never heard.")
     pipeline.sentence_q.put(None)
-    from voice.audio_io import FrameBuffer
 
-    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await _respond_once(pipeline)
     await asyncio.sleep(0.05)
     labels = _timing_labels(_timing_lines(feed)[0])
     assert "tts" in labels and "audio" not in labels
@@ -1852,9 +1855,8 @@ async def test_the_check_the_screen_line_does_not_take_the_replys_stamps(db):
     pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
     pipeline.sentence_q.put(CONFIRM_SENTENCE)
     pipeline.sentence_q.put(None)
-    from voice.audio_io import FrameBuffer
 
-    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await _respond_once(pipeline)
     await asyncio.sleep(0.05)
     assert pipeline.tts.synthed == [CONFIRM_SENTENCE]  # still spoken
     labels = _timing_labels(_timing_lines(feed)[0])
@@ -1874,9 +1876,8 @@ async def test_a_killed_turn_reports_nothing_and_leaves_nothing_behind(db):
         pipeline.cancel_turn()
 
     threading.Thread(target=trip, daemon=True).start()
-    from voice.audio_io import FrameBuffer
 
-    await asyncio.to_thread(pipeline._respond, FrameBuffer())
+    await _respond_once(pipeline)
     await asyncio.sleep(0.05)
     assert _timing_lines(feed) == []
     assert pipeline._timing == {}
@@ -2062,6 +2063,606 @@ async def test_an_event_arriving_as_the_deadline_fires_is_read_first(db, monkeyp
     task.cancel()
     assert raced
     assert _queued(pipeline) == ["It costs 12.5 dollars."]
+
+
+# -- 16. a queue per turn, prefetch, and turns that end badly (DECISIONS #170) ----
+
+
+class GatedAudio(FakeAudio):
+    """Playback blocks until the gate opens (or it is stopped)."""
+
+    def __init__(self, frames=None):
+        super().__init__(frames)
+        self.gate = threading.Event()
+
+    def play(self, samples, samplerate, stop, on_level=None):
+        self.play_calls += 1
+        while not self.gate.is_set():
+            if stop.is_set():
+                return False
+            time.sleep(0.005)
+        return True
+
+
+class GatedTTS(FakeTTS):
+    """Synthesis blocks until the gate opens."""
+
+    def __init__(self):
+        super().__init__()
+        self.gate = threading.Event()
+
+    def synth(self, sentence):
+        self.synthed.append(sentence)
+        self.gate.wait(timeout=5)
+        return np.zeros(2400, dtype=np.int16), 24000
+
+
+async def _until(predicate, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < deadline, "condition never became true"
+        await asyncio.sleep(0.01)
+
+
+def _let_respond_out(pipeline):
+    """Make a still-running _respond return: its thread lives in the loop's
+    executor, and a test that fails while it runs would hang at loop close
+    instead of reporting the failure."""
+    pipeline._stopping.set()
+    for stage in (pipeline.audio, pipeline.tts):
+        gate = getattr(stage, "gate", None)
+        if gate is not None:
+            gate.set()
+
+
+@contextlib.asynccontextmanager
+async def _responding(pipeline):
+    """_respond running on a worker thread for the length of the block."""
+    from voice.audio_io import FrameBuffer
+
+    task = asyncio.ensure_future(asyncio.to_thread(pipeline._respond, FrameBuffer()))
+    try:
+        yield task
+    finally:
+        if not task.done():
+            _let_respond_out(pipeline)
+        await asyncio.wait({task}, timeout=5)
+
+
+async def _finish(respond, timeout=5.0):
+    """Await a _responding task with a bound. Not wait_for: on timeout it would
+    cancel the task, _responding would then see it done and leave the thread."""
+    done, _ = await asyncio.wait({respond}, timeout=timeout)
+    assert done, "_respond did not return"
+    respond.result()
+
+
+async def _respond_once(pipeline, timeout=5.0):
+    """Run _respond to its return; fail (not hang) if it never returns."""
+    async with _responding(pipeline) as task:
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        assert done, "_respond did not return"
+        task.result()
+
+
+def _status_lines(feed):
+    lines = []
+    while not feed.empty():
+        event = feed.get_nowait()
+        if event.kind == "status":
+            lines.append(str(event.payload.get("text", "")))
+    return lines
+
+
+async def test_next_sentence_synthesized_during_playback(db):
+    """Prefetch: sentence two is made while sentence one is still playing. It
+    used to start only once one had finished, a synth-length gap at every stop."""
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.audio = GatedAudio()
+    for item in ("One.", "Two.", None):
+        pipeline.sentence_q.put(item)
+    async with _responding(pipeline) as respond:
+        await _until(
+            lambda: pipeline.tts.synthed == ["One.", "Two."] and pipeline.audio.play_calls == 1
+        )
+        assert pipeline.audio.play_calls == 1  # still on the first sentence
+        pipeline.audio.gate.set()
+        await _finish(respond)
+    assert pipeline.audio.play_calls == 2
+    assert pipeline.state == "idle"
+
+
+async def test_prefetch_holds_a_bounded_amount_of_audio(db):
+    """A very long reply must not be synthesised whole into memory: one playing,
+    two ready, the rest stay as text until there is room."""
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.audio = GatedAudio()
+    for n in range(10):
+        pipeline.sentence_q.put(f"Sentence {n}.")
+    pipeline.sentence_q.put(None)
+    async with _responding(pipeline) as respond:
+        await _until(lambda: len(pipeline.tts.synthed) == 3)
+        await asyncio.sleep(0.15)
+        assert len(pipeline.tts.synthed) == 3
+        pipeline.audio.gate.set()
+        await _finish(respond)
+    assert pipeline.tts.synthed == [f"Sentence {n}." for n in range(10)]  # all, in order
+
+
+async def test_prefetch_off_makes_one_sentence_at_a_time(db):
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over={"tts": {"prefetch": False}})
+    pipeline.audio = GatedAudio()
+    for item in ("One.", "Two.", None):
+        pipeline.sentence_q.put(item)
+    async with _responding(pipeline) as respond:
+        await _until(lambda: pipeline.audio.play_calls == 1)
+        await asyncio.sleep(0.15)
+        assert pipeline.tts.synthed == ["One."]
+        pipeline.audio.gate.set()
+        await _finish(respond)
+    assert pipeline.tts.synthed == ["One.", "Two."]
+
+
+async def test_barge_in_detected_while_synth_runs(db):
+    """Kokoro takes over half a second per sentence, and the mic was not read
+    for any of it. Speaking over Baby while it is about to talk must land."""
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.tts = GatedTTS()
+    pipeline.sentence_q.put("A sentence that is still being synthesised.")
+    pipeline.audio.frames += [SPEECH] * 10
+    fake_turn = concurrent.futures.Future()
+    pipeline._turn_future = fake_turn
+    await _respond_once(pipeline, timeout=3)
+    assert pipeline.state == LISTENING
+    assert fake_turn.cancelled()
+    assert pipeline.audio.play_calls == 0  # it never got to speak
+    pipeline.tts.gate.set()
+
+
+async def test_failed_sentence_is_skipped_rest_is_spoken(db):
+    """One Kokoro error used to raise out of the pipeline and drop the rest of
+    the reply. It now costs that sentence only, and says so in the feed."""
+
+    class FlakyTTS(FakeTTS):
+        def synth(self, sentence):
+            if "two" in sentence:
+                raise RuntimeError("kokoro fell over")
+            return super().synth(sentence)
+
+    pipeline, _, bus = await _make_pipeline(db, [])
+    pipeline.tts = FlakyTTS()
+    feed = bus.subscribe()
+    for item in ("Sentence one.", "Sentence two.", "Sentence three.", None):
+        pipeline.sentence_q.put(item)
+    await _respond_once(pipeline)
+    await asyncio.sleep(0.05)
+    assert pipeline.audio.play_calls == 2
+    assert pipeline.tts.synthed == ["Sentence one.", "Sentence three."]
+    assert any("skipped a sentence" in line for line in _status_lines(feed))
+
+
+async def test_a_sentence_that_cannot_be_played_does_not_end_the_reply(db):
+
+    class FlakyAudio(FakeAudio):
+        def play(self, samples, samplerate, stop, on_level=None):
+            self.play_calls += 1
+            if self.play_calls == 1:
+                raise OSError("device went away")
+            return True
+
+    pipeline, _, bus = await _make_pipeline(db, [])
+    pipeline.audio = FlakyAudio()
+    feed = bus.subscribe()
+    for item in ("One.", "Two.", None):
+        pipeline.sentence_q.put(item)
+    await _respond_once(pipeline)
+    await asyncio.sleep(0.05)
+    assert pipeline.audio.play_calls == 2
+    assert pipeline.state == "idle"
+    assert any("could not play a sentence" in line for line in _status_lines(feed))
+
+
+async def test_stale_sentinel_lands_in_the_old_queue(db):
+    """The point of a queue per turn: whatever a cut-off turn still publishes
+    goes to the queue it was given, which nobody is reading any more."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    old_q = pipeline.sentence_q
+    bus.publish("turn_start", "voice", turn_id=1)
+    bus.publish("token", "voice", text="Old words. ")
+    await asyncio.sleep(0.01)  # turn 1 is well under way before the next is submitted
+
+    new_q = queue_mod.Queue()  # what _submit and _run_turn do for the next turn
+    pipeline.sentence_q = pipeline._next_q = new_q
+    bus.publish("token", "voice", text="Still old. ")
+    bus.publish("turn_end", "voice", turn_id=1, status="cancelled", reply="")
+    bus.publish("turn_start", "voice", turn_id=2)
+    bus.publish("token", "voice", text="New words. ")
+    bus.publish("turn_end", "voice", turn_id=2, status="ok", reply="")
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+
+    assert _queued(pipeline) == ["New words.", None]
+    old = []
+    while not old_q.empty():
+        old.append(old_q.get_nowait())
+    assert old == ["Old words.", "Still old.", None]
+
+
+async def test_turn_end_of_another_turn_is_ignored(db):
+    """A cut-off turn can finish unwinding after the next one has started. Its
+    end must not be taken for the end of the turn now speaking."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("turn_start", "voice", turn_id=2)
+    bus.publish("token", "voice", text="Still talking. ")
+    bus.publish("turn_end", "voice", turn_id=1, status="cancelled", reply="")
+    await asyncio.sleep(0.05)
+    assert _queued(pipeline) == ["Still talking."]  # no end marker
+    bus.publish("turn_end", "voice", turn_id=2, status="ok", reply="")
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+    assert _queued(pipeline) == [None]
+
+
+async def test_new_turn_waits_for_cancelled_turn_to_unwind(db):
+    """The previous turn's last events must all be published before the next
+    turn's turn_start, or they would be read as the next turn's."""
+
+    class SlowToStop:
+        def __init__(self):
+            self.log = []
+
+        async def run_turn(self, text):
+            self.log.append(f"start {text}")
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                await asyncio.sleep(0.2)  # writing the closure marker, publishing turn_end
+                self.log.append(f"unwound {text}")
+                raise
+
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.agent = SlowToStop()
+    first = pipeline._submit("one")
+    await asyncio.sleep(0.05)
+    first.cancel()
+    second = pipeline._submit("two")
+    await _until(lambda: "start two" in pipeline.agent.log)
+    assert pipeline.agent.log == ["start one", "unwound one", "start two"]
+    second.cancel()
+    await asyncio.sleep(0.3)
+
+
+async def test_a_turn_that_never_unwinds_does_not_block_voice_forever(db, monkeypatch):
+    """The wait for the previous turn is capped. Without the cap, one turn that
+    swallowed its cancellation would hold every later voice turn for good."""
+    import voice.pipeline as pipeline_module
+
+    class IgnoresCancellation:
+        def __init__(self):
+            self.log = []
+            self.let_go = False
+
+        async def run_turn(self, text):
+            self.log.append(f"start {text}")
+            while not self.let_go:
+                try:
+                    await asyncio.sleep(0.02)
+                except asyncio.CancelledError:
+                    continue  # swallowed: this turn will not stop when told to
+
+    monkeypatch.setattr(pipeline_module, "_UNWIND_WAIT_S", 0.05)
+    pipeline, _, _ = await _make_pipeline(db, [])
+    agent = pipeline.agent = IgnoresCancellation()
+    first = pipeline._submit("one")
+    await asyncio.sleep(0.05)
+    first.cancel()
+    second = pipeline._submit("two")
+    try:
+        await _until(lambda: "start two" in agent.log, timeout=1.0)
+    finally:
+        agent.let_go = True  # both turns return, so the loop can close
+        await asyncio.wait(
+            {asyncio.wrap_future(first), asyncio.wrap_future(second)}, timeout=1.0
+        )
+
+
+async def test_the_kill_switch_lands_during_synthesis(db):
+    """The voice thread no longer sits inside Kokoro, so /kill does not wait
+    for the sentence to be made first -- and nothing of it is played."""
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.tts = GatedTTS()  # holds every synthesis for 5 s unless released
+    pipeline.sentence_q.put("A sentence Kokoro is still making.")
+    pipeline._turn_future = concurrent.futures.Future()
+    pipeline.state = "responding"
+
+    def trip():
+        time.sleep(0.05)
+        pipeline.cancel_turn()
+
+    threading.Thread(target=trip, daemon=True).start()
+    started = time.monotonic()
+    await _respond_once(pipeline, timeout=4)
+    assert time.monotonic() - started < 2.5, "waited for the synthesis to finish"
+    assert pipeline.state == "idle"
+    assert pipeline.audio.play_calls == 0
+    pipeline.tts.gate.set()
+
+
+async def test_a_cut_off_turn_lands_in_its_own_queue_end_to_end(db):
+    """Through the real _submit, _run_turn, agent and bridge: a turn cut off
+    mid-reply, and the next one started at once. Nothing of the first reaches
+    the second's queue."""
+    from core.providers.base import Chunk
+
+    class SlowFirstTurn:
+        name = "fake"
+        calls = 0
+
+        async def chat(self, messages, tools=None, **opts):
+            SlowFirstTurn.calls += 1
+            if SlowFirstTurn.calls == 1:
+                yield Chunk(delta="First turn words. And more")
+                await asyncio.sleep(10)
+            yield Chunk(delta="Second turn.")
+            yield Chunk(done=True)
+
+        async def healthy(self):
+            return True
+
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.agent.provider = SlowFirstTurn()
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    first = pipeline._turn_future = pipeline._submit("one")
+    first_q = pipeline.sentence_q
+    await _until(lambda: not first_q.empty())
+    pipeline._cancel_turn()
+    second = pipeline._submit("two")
+    second_q = pipeline.sentence_q
+    await asyncio.wait({asyncio.wrap_future(second)}, timeout=2)
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+    assert first.cancelled()
+    spoken_second = []
+    while not second_q.empty():
+        spoken_second.append(second_q.get_nowait())
+    assert spoken_second == ["Second turn.", None]
+    spoken_first = []
+    while not first_q.empty():
+        spoken_first.append(first_q.get_nowait())
+    assert spoken_first == ["First turn words.", None]  # the half sentence is dropped
+
+
+async def test_a_failing_model_is_apologised_for_with_its_real_turn(db):
+    from voice.pipeline import APOLOGY_EN
+
+    class Broken:
+        name = "fake"
+
+        async def chat(self, messages, tools=None, **opts):
+            raise RuntimeError("provider down")
+            yield  # pragma: no cover
+
+        async def healthy(self):
+            return True
+
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.agent.provider = Broken()
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    future = pipeline._submit("anything")
+    await asyncio.wait({asyncio.wrap_future(future)}, timeout=2)
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+    assert _queued(pipeline) == [APOLOGY_EN, None]
+
+
+async def test_each_turn_gets_its_own_queue(db):
+    pipeline, _, bus = await _make_pipeline(db, ["First reply.", "Second reply."])
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    before = pipeline.sentence_q
+    await asyncio.wrap_future(pipeline._submit("one"))
+    await asyncio.sleep(0.05)
+    first = pipeline.sentence_q
+    assert first is not before
+    assert _queued(pipeline) == ["First reply.", None]
+    await asyncio.wrap_future(pipeline._submit("two"))
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+    assert pipeline.sentence_q is not first
+    assert _queued(pipeline) == ["Second reply.", None]
+    assert first.empty()
+
+
+async def test_respond_ends_when_turn_died_silently(db):
+    """A turn can die without publishing its end (it raised between turn_start
+    and its try block). _respond used to wait there until someone spoke."""
+
+    from voice.pipeline import APOLOGY_EN
+
+    pipeline, _, bus = await _make_pipeline(db, [])
+    feed = bus.subscribe()
+    dead = concurrent.futures.Future()
+    dead.set_exception(RuntimeError("died before its try block"))
+    pipeline._turn_future = dead
+    pipeline.state = "responding"
+    started = time.monotonic()
+    await _respond_once(pipeline, timeout=4)
+    assert 0.9 < time.monotonic() - started < 3.0
+    assert pipeline.state == "idle"
+    assert pipeline.tts.synthed == [APOLOGY_EN]  # it raised: say so
+    await asyncio.sleep(0.05)
+    assert any("without its end marker" in line for line in _status_lines(feed))
+
+
+async def test_a_turn_that_ended_quietly_is_not_apologised_for(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+    finished = concurrent.futures.Future()
+    finished.set_result("a reply whose end marker the bus dropped")
+    pipeline._turn_future = finished
+    await _respond_once(pipeline, timeout=4)
+    assert pipeline.state == "idle"
+    assert pipeline.tts.synthed == []
+
+
+async def test_a_running_turn_is_not_given_up_on(db, monkeypatch):
+    """The watchdog is for a turn that is OVER. A slow tool is not that."""
+    import voice.pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module, "_DEAD_TURN_S", 0.1)
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline._turn_future = concurrent.futures.Future()  # still running
+    async with _responding(pipeline) as respond:
+        await asyncio.sleep(0.8)  # eight watchdog periods
+        assert not respond.done()
+        pipeline.sentence_q.put(None)
+        await _finish(respond)
+
+
+async def test_a_synthesis_of_the_wrong_shape_costs_one_sentence(db):
+    class OddTTS(FakeTTS):
+        def synth(self, sentence):
+            if "two" in sentence:
+                return (np.zeros(10, dtype=np.int16),)  # not (pcm, rate)
+            return super().synth(sentence)
+
+    pipeline, _, _ = await _make_pipeline(db, [])
+    pipeline.tts = OddTTS()
+    for item in ("Sentence one.", "Sentence two.", "Sentence three.", None):
+        pipeline.sentence_q.put(item)
+    await _respond_once(pipeline)
+    assert pipeline.audio.play_calls == 2
+    assert pipeline.state == "idle"
+
+
+async def test_the_synth_worker_never_holds_the_process_open(db):
+    """A pool worker is joined at interpreter exit, so a shutdown landing mid-
+    sentence waited for Kokoro -- forever, if a call hung."""
+    pipeline, _, _ = await _make_pipeline(db, [])
+    await asyncio.to_thread(pipeline._synth, "Hello.")
+    assert pipeline._synth_thread.name == "baby-tts"
+    assert pipeline._synth_thread.daemon
+
+
+async def test_error_and_capped_turns_are_spoken(db):
+    """Both used to end in silence and a follow-up beep: an error cleared the
+    buffer, and the tool-limit message is never streamed as tokens at all."""
+    from voice.pipeline import APOLOGY_EN, APOLOGY_HI
+
+    pipeline, _, bus = await _make_pipeline(db, [])
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="Half a sentence that never fini")
+    bus.publish("turn_end", "voice", status="error", reply="")
+    await asyncio.sleep(0.05)
+    assert _queued(pipeline) == [APOLOGY_EN, None]
+
+    pipeline._heard_hindi = True
+    bus.publish("turn_end", "voice", status="error", reply="")
+    await asyncio.sleep(0.05)
+    assert _queued(pipeline) == [APOLOGY_HI, None]
+
+    bus.publish("turn_end", "voice", status="capped", reply="I hit my tool-step limit. Continue?")
+    await asyncio.sleep(0.05)
+    assert _queued(pipeline) == ["I hit my tool-step limit.", "Continue?", None]
+
+    bus.publish("token", "voice", text="Half a sentence that never fini")
+    bus.publish("turn_end", "voice", status="cancelled", reply="(stopped)")
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+    assert _queued(pipeline) == [None]  # a cancelled turn stays silent
+
+
+async def test_bridge_survives_a_raising_event(db):
+    """The bridge is the only thing feeding speech. One malformed event used to
+    kill it, and Baby went silent for good with nothing in the feed."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    feed = bus.subscribe()
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text=None)  # "" + None raises
+    bus.publish("token", "voice", text="Still here. ")
+    await asyncio.sleep(0.05)
+    assert not bridge.done()
+    bridge.cancel()
+    assert _queued(pipeline) == ["Still here."]
+    assert any("could not queue speech" in line for line in _status_lines(feed))
+
+
+async def test_a_new_turn_starts_with_an_empty_buffer(db):
+    """Text left over from a turn that never ended must not be glued to the
+    front of the next turn's first sentence."""
+    pipeline, _, bus = await _make_pipeline(db, [])
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    bus.publish("token", "voice", text="Leftover half of a")
+    bus.publish("turn_start", "voice", turn_id=7)
+    bus.publish("token", "voice", text="Fresh. ")
+    await asyncio.sleep(0.05)
+    bridge.cancel()
+    assert _queued(pipeline) == ["Fresh."]
+
+
+@pytest.mark.parametrize(
+    ("heard", "hindi"), [("आज मौसम कैसा है", True), ("how is the weather", False)]
+)
+async def test_the_apology_language_follows_what_was_heard(db, heard, hindi):
+    from voice.audio_io import FrameBuffer
+
+    pipeline, _, _ = await _make_pipeline(db, ["ok"], stt_text=heard)
+    pipeline._heard_hindi = not hindi
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert pipeline._heard_hindi is hindi
+
+
+async def test_disabled_barge_in_still_paces_on_the_mic(db):
+    """With barge-in off the mic poll returned before reading, so the playback
+    loop span a whole core. It must still wait on the mic, and never judge it."""
+
+    class CountingAudio(FakeAudio):
+        reads = 0
+
+        def read(self, timeout=None):
+            self.reads += 1
+            return super().read(timeout)
+
+    class NeverAskedVAD(FakeVAD):
+        def is_speech(self, chunk, threshold=None):
+            raise AssertionError("barge-in is off: the mic must not be judged")
+
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over={"barge_in": False})
+    pipeline.audio = CountingAudio([SPEECH] * 10)
+    pipeline.vad = NeverAskedVAD()
+    pipeline.sentence_q.put("A sentence.")
+    pipeline.sentence_q.put(None)
+    await _respond_once(pipeline)
+    assert pipeline.state == "idle"
+    assert pipeline.audio.play_calls == 1  # played through
+    assert 0 < pipeline.audio.reads < 200  # paced by the mic, not spinning
+
+
+async def test_an_announcement_is_synthesised_on_the_synth_worker(db):
+    pipeline, _, _ = await _make_pipeline(db, [])
+    seen = []
+    real = pipeline.tts.synth
+
+    def synth(text):
+        seen.append(threading.current_thread().name)
+        return real(text)
+
+    pipeline.tts.synth = synth
+    pipeline.announce("Task done.")
+    from voice.audio_io import FrameBuffer
+
+    await asyncio.to_thread(pipeline._idle, FrameBuffer())
+    assert seen and seen[0].startswith("baby-tts")
 
 
 def test_the_shipped_end_phrases_are_the_ones_the_pipeline_uses():
