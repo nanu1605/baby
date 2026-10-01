@@ -519,6 +519,19 @@ microphone, and none of it has had one yet. A config change only takes effect af
 - [ ] **"Let me check" comes before the answer.** Ask something that needs a tool
       ("how much free disk space do I have"). If Baby says a line before using the
       tool, you hear it on its own, then the answer -- never run together.
+- [ ] **Speech runs on between sentences.** Ask for something with a four- or
+      five-sentence answer. The pause at each full stop is a breath, not a wait. Then
+      set `voice: tts: prefetch: false`, restart, and ask again: the pauses are
+      clearly longer. Put it back to `true`.
+- [ ] **An interruption before the first word lands before it.** Ask for "one very
+      long sentence about the history of tea". The moment its text appears in the
+      chat, and before you hear it, start talking. You hear no syllable of the
+      answer, and the timing line ends in `cut 0.0s`. (The automated test
+      `test_barge_in_detected_while_synth_runs` is the exact check; this is the
+      by-ear one.)
+- [ ] **A long answer is spoken whole and in order.** Ask for "twenty facts about the
+      moon, numbered". Baby speaks all twenty in order, with no sentence repeated or
+      skipped.
 
 ## 6. Regression on the real box
 

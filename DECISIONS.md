@@ -2973,3 +2973,76 @@ Running log of non-obvious choices made during the build. Newest last.
      sentences are a real delay. Nor a streaming on/off switch: there is no
      non-streaming path in Baby to fall back to, and building one is the rewrite the
      spec forbids.
+170. **The next sentence is made while this one plays, and every turn has its own queue.**
+     Spec item 3. Baby already spoke a reply sentence by sentence, in order, from one
+     queue. Three things were wrong with how.
+
+     **Synthesis blocked the voice thread.** `_respond` called Kokoro inline, about
+     0.6 s a sentence (#167), and only then started playback, so sentence N+1 was not
+     begun until N had finished: a synthesis-length gap at every full stop. For those
+     0.6 s nothing read the microphone, so talking over Baby just before it spoke was
+     only noticed once the sentence had started, and the kill switch waited too.
+     Kokoro now runs on one worker thread and `_respond` is a loop that never blocks:
+     collect a finished synthesis, start the next, start the next player, poll the
+     mic. Announcements go through the same worker, so Kokoro is never asked for two
+     things at once. The worker is a plain daemon thread rather than a
+     ThreadPoolExecutor: a pool's worker is joined at interpreter exit, so a shutdown
+     landing mid-sentence would have waited for Kokoro, forever if a call hung. For
+     the same reason an announcement waits at most 30 s for its synthesis: it runs on
+     the voice thread while idle, and a call that never came back would leave Baby
+     deaf to the wake word for good.
+
+     **Bounded.** One sentence playing and at most two more, synthesised or being
+     made; the rest of a long reply stays as text until there is room. The text queue
+     itself has no cap: it holds the reply's own sentences and nothing else, and a cap
+     there could only drop speech -- including the "check the screen" line.
+     `voice.tts.prefetch: false` gives one sentence at a time, which is how before and
+     after are compared on the same build; it is about 20 ms slower per sentence than
+     the old code was, against ~600 ms of synthesis.
+
+     **Stale audio was kept out by timing, not by construction.** A cut-off turn's
+     leftovers were drained when listening began and again before the next submit. A
+     late end-of-turn marker arriving after that would have ended the next reply
+     early. The first design for this stamped every queue item with a generation and
+     had each consumer drop what was not live. The review found it could hang: the
+     kill switch runs on the asyncio thread, and racing the voice thread it could mark
+     the live turn stale, so that turn's own end marker was dropped and `_respond`
+     never returned. It also changed the shape of every queue item, breaking nine
+     existing tests.
+
+     What is built has no shared state to corrupt. `_submit` makes a new queue for
+     the turn, and the bridge switches to it when it reads that turn's `turn_start`.
+     A turn that was cut off can only ever write into the queue it was given, which
+     nobody reads any more. A new turn waits (up to 5 s) for the one before it to
+     finish unwinding, and a `turn_end` whose turn id is not the adopted turn's is
+     ignored. The review checked what a cancelled `run_turn` can still publish: its
+     own `turn_end`, with its own id, and nothing else -- nothing in core, tools, db or
+     memory swallows a cancellation -- so the id check alone keeps a late end out of
+     the next turn. The 5 s cap stops one turn that did ignore its cancellation from
+     holding voice forever.
+
+     **Turns that end badly now say so.** A turn that ended in an error cleared the
+     buffer and left silence followed by the follow-up cue; it now speaks one line of
+     apology, in Hindi if the question was. A turn that hit the tool limit was silent
+     for a different reason -- its message is never streamed as tokens -- and is now
+     spoken from the `turn_end` itself. A cancelled turn stays silent. A turn that
+     dies without publishing its end at all (it raised between `turn_start` and its
+     `try`, or the bus dropped the event) used to leave `_respond` waiting until
+     someone spoke; one second after the turn is over with nothing left to say,
+     `_respond` now ends it, with the apology if the turn raised. Still silent: a
+     memory command that fails, because `_run_memory_command` reports `ok` whatever
+     happened, and that is the agent's to fix, not the voice path's.
+
+     **Found on the way.** One Kokoro error raised out of `_respond` and dropped the
+     rest of the reply; it now costs that sentence and says so in the feed. A device
+     error already cost only its sentence, but silently; it is reported now too. One
+     malformed event killed the bridge coroutine, after which Baby was silent for good
+     with nothing to say why; each event is now handled under a guard. And with
+     `barge_in: false` the mic poll returned before reading, so the playback loop
+     span a whole core; it still reads, and discards.
+
+     **Unproven.** How long the pause between sentences actually is on real hardware.
+     Each sentence still opens its own output stream, and the first sentence of a
+     reply -- or any the model writes slower than Baby speaks -- still waits for its
+     synthesis. The timing line and the owner's ear decide whether that needs one
+     continuous stream.

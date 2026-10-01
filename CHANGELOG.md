@@ -24,6 +24,17 @@ when you talk over it -- so this release fixes what was missing around it.
 - **Lists are spoken item by item.** A list without full stops used to be held back
   and read in one go at the very end of the reply. Each line is now spoken as soon as
   it is written.
+- **Shorter pauses between sentences.** Baby used to finish saying one sentence
+  before it began preparing the next, which left a pause at every full stop. It now
+  prepares the next sentence while it is still speaking.
+- **Interrupting lands sooner.** While Baby was preparing a sentence it was not
+  listening, so speaking over it just before it started to talk was only noticed once
+  it had begun the sentence. It listens the whole time now, and the stop button acts
+  at once too.
+- **Baby tells you when an answer went wrong.** If the answer failed, or Baby ran
+  out of steps on a long task, it used to go quiet and then play the listening sound
+  as if it had answered. It now says so out loud. And one sentence that cannot be
+  prepared no longer takes the rest of the answer with it.
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
