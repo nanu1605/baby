@@ -3095,3 +3095,60 @@ Running log of non-obvious choices made during the build. Newest last.
      also holds Baby's own last words: the transcript can start with them, and a short
      "baby stop" can be pushed past the five-word kill-phrase limit (it is then an
      ordinary turn; the old one is cancelled either way).
+172. **A spoken turn tells the model it is spoken.**
+     Spec item 5. The persona had one line for voice -- "keep spoken (voice) replies
+     short and clear" -- in a prompt that never said which channel a turn came from,
+     so the model could not act on it. Voice replies came back as text written to be
+     read: markdown, lists, "Sure! I'd be happy to help", the question restated.
+
+     `system_prompt` takes the channel. A voice turn gets one extra block, after the
+     memories and summary and before the language pin, so the pin stays the last word:
+     talk like a person, short answers to simple questions, no markdown, lists, emoji
+     or links; the words come from speech recognition, so answer what was meant and
+     never the fragments; act only on the final version of a self-correction ("open
+     Chrome -- no wait, VS Code"); resolve "that" and "it" from the conversation; a
+     few words at most for thinking aloud; no stock openers or closers. The
+     agent's trailing nudge gets the short form of the same rules on voice turns. The
+     comment beside it already records why: on the local 9B, rules at the head of the
+     prompt lose to a long history, and the 9B is what answers Hindi voice turns (the
+     language pin).
+
+     **Hindi is written in Devanagari when it will be spoken.** The voice is chosen
+     per sentence by script: any Devanagari goes to the Hindi voice. A Hindi reply
+     written in Latin letters went to the English voice, which is what the owner heard
+     as "Bella speaking Hindi". The block asks for Hindi words in Devanagari and English
+     words and names in Latin. espeak switches language inside a sentence, so the
+     English words in a Hindi sentence get English sounds -- but it marks each switch
+     as "(en)...(hi)", and kokoro-onnx passed those letters to Kokoro, which spoke
+     them: about a second of stray syllables in "VS Code और Chrome खोल दिए हैं".
+     Hindi sentences with an English word in them already did this; the new rule
+     makes them common. `TextToSpeech.synth` now phonemizes the sentence itself,
+     drops the marks and hands Kokoro the phonemes.
+
+     **Two things that were spoken and should not be.** The persona allows an emoji in
+     casual chat and espeak reads its name ("done thumbs up"); the speech funnel now
+     drops emoji, whatever the prompt says. And the block lets the model end a complex
+     answer by offering more, while a tool turn also gets the system's own "Next: want
+     me to ...?". Two offers leave "yes" answering the wrong one, so a spoken reply
+     that already ends in a question gets no second offer. Typed turns are unchanged.
+
+     **Every other channel is untouched, and a test holds it.** Typed chat, tasks,
+     Telegram and the scheduler get the same bytes as before: the test pins the
+     SHA-256 of the prompt as it was, for six channels and three argument sets, and
+     of the trailing nudge, which moved from `core/agent.py` to
+     `core/prompts.trailing_nudge` so the eval below sends the same one. The self-heal
+     path that rebuilds a
+     rejected context from the summary keeps the voice block too.
+
+     **Corrections and references are the model's job, measured.** The spec's intent
+     layer asks for corrections, thinking aloud and "how much was that?" to be
+     understood, and prefers the primary model over a second call. That is what this
+     block does. `scripts/voice_eval.py` checks it against a real model: ten spoken
+     transcripts through Baby's own voice prompt and tool schemas, scored on the tool
+     calls (VS Code opened, never Chrome; the invoice searched, never the budget), on
+     the one fact an answer needs, and on the shape of the reply -- not on its wording.
+     A test holds its messages byte for byte to what the voice agent sends. A run that
+     never reached the model is counted as an error, not as a wrong answer. The Hindi
+     case only says something about a cloud model in game mode: on a normal day the
+     language pin sends a Devanagari turn to the local model. The results will be
+     recorded with the model choice.

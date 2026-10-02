@@ -46,6 +46,16 @@ when you talk over it -- so this release fixes what was missing around it.
 - **Interrupting no longer resets speaker recognition.** If you use voice
   recognition, a voice Baby did not recognise could win back its trust by talking
   over it. An interruption now counts as part of the same conversation.
+- **Baby knows its answer will be spoken.** Voice turns now tell the model to talk
+  like a person: no lists, formatting, "Sure, I'd be happy to help" or your question
+  repeated back; short answers to short questions; and when you correct yourself
+  mid-sentence ("open Chrome -- no wait, VS Code"), act only on what you settled on.
+- **Hindi answers go to the Hindi voice.** Baby is now asked to write spoken Hindi in
+  Hindi script, which is what picks the Hindi voice; Hindi in English letters went to
+  the English one. English words inside a Hindi sentence no longer come with stray
+  "en" and "hi" sounds.
+- **Baby no longer reads out emoji** ("done thumbs up"), and a spoken answer that
+  already ends in a question is no longer followed by a second "want me to ...?".
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 

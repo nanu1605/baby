@@ -545,6 +545,17 @@ microphone, and none of it has had one yet. A config change only takes effect af
 - [ ] **The speaker goes quiet at once.** Interrupt in the middle of a sentence.
       Baby's voice cuts off mid-word, and the timing line ends in `cut 0.0s` or
       `cut 0.1s` (it was 0.2-0.3 s before this change).
+- [ ] **Answers sound spoken.** Ask "give me three tips for better sleep". Baby says
+      them as sentences, with no "first point" list reading, no "Sure!" and no
+      repeating your question.
+- [ ] **A self-correction is followed.** Say "open Chrome -- no wait, open Notepad".
+      Notepad opens; Chrome does not.
+- [ ] **"That" is understood.** Ask about a product's price, then "how much was
+      that again?". Baby answers with the price, without asking what you mean.
+- [ ] **Hindi in the Hindi voice.** Ask something in Hindi, or in Hinglish. The
+      answer is spoken in the Hindi voice, not the English one, and English words
+      in it ("Chrome", "weekend") are said plainly, with no "en" or "hi" sounds
+      around them. (The chat window shows typed conversations only.)
 
 ## 6. Regression on the real box
 
