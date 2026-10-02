@@ -1222,6 +1222,15 @@ def test_strip_markdown_drops_leaked_think_tags():
     assert strip_markdown("<think> hm </think> okay") == "hm okay"
 
 
+def test_strip_markdown_drops_emoji():
+    from voice.tts import strip_markdown
+
+    assert strip_markdown("Done 👍") == "Done"
+    assert strip_markdown("Ha, nice one 😄!") == "Ha, nice one !"
+    assert strip_markdown("Sunny ☀️ today") == "Sunny today"
+    assert strip_markdown("हो गया ✅") == "हो गया"
+
+
 def test_synth_strips_markdown_before_kokoro():
     import numpy as np
 
@@ -1229,15 +1238,49 @@ def test_synth_strips_markdown_before_kokoro():
 
     spoken = []
 
+    class FakeTokenizer:
+        def phonemize(self, text, lang):
+            return text
+
     class FakeKokoro:
-        def create(self, sentence, voice, speed, lang):
-            spoken.append(sentence)
+        tokenizer = FakeTokenizer()
+
+        def create(self, phonemes, voice, speed, is_phonemes):
+            assert is_phonemes
+            spoken.append(phonemes)
             return np.zeros(10, dtype=np.float32), 24000
 
     tts = TextToSpeech()
     tts._kokoro = FakeKokoro()
     tts.synth("**Nexon EV** wins.")
     assert spoken == ["Nexon EV wins."]
+
+
+def test_synth_drops_espeak_language_switch_marks():
+    """espeak writes "(en)...(hi)" round the English words of a Hindi sentence;
+    Kokoro would say those letters. Real phonemizer, no model needed."""
+    import numpy as np
+
+    from voice.tts import TextToSpeech
+
+    spoken = []
+
+    class FakeKokoro:
+        from kokoro_onnx.tokenizer import Tokenizer
+
+        tokenizer = Tokenizer()
+
+        def create(self, phonemes, voice, speed, is_phonemes):
+            spoken.append((phonemes, voice))
+            return np.zeros(10, dtype=np.float32), 24000
+
+    tts = TextToSpeech()
+    tts._kokoro = FakeKokoro()
+    tts.synth("Chrome खोल दिया।")
+    (phonemes, voice), = spoken
+    assert voice == "hf_beta"
+    assert "(" not in phonemes and ")" not in phonemes
+    assert "kɹ" in phonemes  # "Chrome" still gets English sounds
 
 
 def test_synth_pure_markdown_returns_silence():

@@ -373,6 +373,20 @@ async def test_successful_suggestion_arms_pending(db):
     assert agent.pending_suggestion == "Want me to zip it?"
 
 
+async def test_spoken_reply_that_asks_gets_no_second_offer(db):
+    # The voice prompt lets the model offer more itself; a second, system offer
+    # would leave "yes" answering the wrong question. Typed replies keep theirs.
+    for channel, offered in (("voice", False), ("cli", True)):
+        script = [_tc("echo_tool", {"text": "x"}), "Done. Want the details?", "Zip it?"]
+        conv_id = await db.create_conversation(channel)
+        agent = AgentCore(
+            FakeProvider(script), db, conv_id, channel=channel, suggest_next_step=True
+        )
+        reply = await agent.run_turn("do the thing")
+        assert ("Next:" in reply) is offered, channel
+        assert (agent.pending_suggestion is not None) is offered, channel
+
+
 async def test_proceed_executes_prior_suggestion_via_loop(db):
     script = [_tc("echo_tool", {"text": "zip"}), "done zipping"]
     agent, provider, _ = await _make_agent(db, script)

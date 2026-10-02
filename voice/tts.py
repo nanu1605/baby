@@ -144,7 +144,13 @@ _MD_RULES: tuple[tuple[re.Pattern, str], ...] = (
     # only after "dot": a domain or a file extension, never "check.It".
     (re.compile(r"(?<=\d)\.(?=\d)"), " point "),
     (re.compile(r"(?<=[A-Za-z0-9])\.(?=[a-z]{2,}\b)"), " dot "),
+    # espeak reads an emoji's name: "Done 👍" became "done thumbs up".
+    (re.compile(r"[\U0001f300-\U0001faff\u2600-\u27bf\ufe0f]"), " "),
 )
+
+
+# espeak's language-switch marks in phonemizer output: "(en)", "(hi)", "(en-us)".
+_SWITCH_FLAG_RE = re.compile(r"\([a-z]{2,3}(?:-[a-z]{2,3})?\)")
 
 
 def strip_markdown(text: str) -> str:
@@ -214,8 +220,12 @@ class TextToSpeech:
         if not sentence:  # pure-markdown chunk (e.g. a lone "**")
             return np.zeros(0, dtype=np.int16), SAMPLE_RATE
         voice, lang = pick_voice(sentence, self.voice_en, self.voice_hi)
+        # espeak marks a switch of language inside a sentence -- the English words
+        # in a Hindi one -- as "(en)...(hi)", and kokoro-onnx hands those letters to
+        # Kokoro, which says them. Phonemize here so the marks can go first.
+        phonemes = _SWITCH_FLAG_RE.sub("", self._kokoro.tokenizer.phonemize(sentence, lang))
         samples, sample_rate = self._kokoro.create(
-            sentence, voice=voice, speed=self.speed, lang=lang
+            phonemes, voice=voice, speed=self.speed, is_phonemes=True
         )
         pcm16 = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
         return pcm16, sample_rate
