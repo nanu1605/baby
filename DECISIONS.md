@@ -3152,3 +3152,56 @@ Running log of non-obvious choices made during the build. Newest last.
      case only says something about a cloud model in game mode: on a normal day the
      language pin sends a Devanagari turn to the local model. The results will be
      recorded with the model choice.
+173. **The intent layer is a filter, a longer pause and a language list -- not a second model.**
+     Spec item 6 asks for filler, corrections, thinking aloud, incomplete speech,
+     confirmations, cancellations and references to be told apart before anything is
+     acted on, and warns against a second LLM call that doubles latency and cost.
+     Most of the list already had an owner. Confirmations and cancellations are the
+     strict yes/no parsers and end phrases in `core/intents.py` and the kill phrases
+     in `voice/pipeline.py`. Corrections and references are the primary model's job,
+     given the voice block of #172 and 30 messages of history. What was left is three
+     small things.
+
+     **Thinking aloud is not a turn.** "Uh... let me think" went to the model, which
+     answered it. `is_filler` is true when a short utterance (eight words at most) is
+     nothing but filler -- "uh", "hmm", "let me think", "one second", "wait",
+     "matlab", "sochne do", "हम्म" -- and never for anything `parse_yes` or `parse_no`
+     would read, because "ok", "haan" or "ruko" can answer a pending question. Nor
+     for a question: Whisper keeps the "?" of a rising voice, and "Matlab?" or "So?"
+     asks something. Nor for "mm-hmm", which is assent. The pipeline then listens
+     again with the same wait as before (ten seconds after a wake word), without a
+     model call, a reply or a beep; the feed shows what was set aside. A side effect
+     worth having: a "hmm" no longer uses up a pending next-step offer. Three fillers
+     in a row and the fourth goes to the model as usual, so thinking aloud cannot hold
+     the mic open without a wake word for ever; and a filler after push-to-talk does
+     not carry push-to-talk's exemption from speaker verification into the next
+     capture. `voice.filler_filter: false` turns it off. Devanagari fillers are
+     matched as whole phrases, because the shared normaliser splits Devanagari at its
+     combining marks; the word cap counts the words as spoken, before that split.
+     The mic is not drained after a filler, so a question begun while the filler was
+     being transcribed is kept -- which also means that capture is read from queued
+     audio and its end of speech cannot be timed, so that turn has no timing line.
+
+     **The pause that ends an utterance is 700 ms, not 400.** 400 ms cut people off
+     mid-thought ("the thing we talked about... the database"), and the cut-off half
+     went to the model. 700 ms is 0.3 s more wait against a ~3.3 s transcription, and
+     the timing line (#168) counts it, because it measures from when the user stopped,
+     not from when the VAD noticed. The VAD and the timing line now read the setting
+     from one place, so they cannot disagree. It is a tuning knob,
+     `voice.vad_silence_ms`; every installed config names 400, and keeps it until the
+     owner changes it. The alternative, waiting longer when a transcript ends on a
+     dangling "and" or "matlab", was not built: it needs word lists in three scripts
+     and adds seconds to "I think so".
+
+     **Whisper can be held to the languages the owner speaks.** It picks the likeliest
+     of about a hundred languages, and Hindi with an Indian accent can come out as
+     Urdu, Punjabi or Marathi -- the owner's report. `voice.stt.languages` (say
+     `[en, hi]`) wraps the CTranslate2 model so its language detection puts the best
+     allowed language first; faster-whisper reads the first entry, so that is the
+     whole change, and the encoder still runs once (#167). There is no public seam
+     that detects within a set and encodes once: `transcribe` throws its detection's
+     encoder output away, and the CTranslate2 object cannot be patched in place. The
+     default is empty, which locks nothing, because a stranger may speak something
+     other than English or Hindi; an unknown code is ignored rather than locking out
+     every language. A hand-edited `languages: en, hi`, `"[en, hi]"` or `[EN, HI]`
+     is read as `[en, hi]`, and `languages: hi` as Hindi alone.

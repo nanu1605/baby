@@ -56,6 +56,16 @@ when you talk over it -- so this release fixes what was missing around it.
   "en" and "hi" sounds.
 - **Baby no longer reads out emoji** ("done thumbs up"), and a spoken answer that
   already ends in a question is no longer followed by a second "want me to ...?".
+- **"Uh... let me think" no longer gets an answer.** Thinking aloud used to be sent to
+  Baby as a question. Baby now listens again for your actual question. "Yes", "no",
+  "haan", "ruko" and anything said as a question ("matlab?") are never treated this
+  way.
+- **Baby waits a little longer before deciding you have finished.** A short pause
+  mid-sentence used to end what you were saying. New installs wait 0.7 s instead of
+  0.4 s; on an existing install set `voice: vad_silence_ms: 700` to match.
+- **Hindi is less often heard as another language.** Set `voice: stt: languages:
+  [en, hi]` and speech recognition only chooses between English and Hindi, instead
+  of sometimes hearing Hindi as Urdu or Punjabi.
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 

@@ -556,6 +556,16 @@ microphone, and none of it has had one yet. A config change only takes effect af
       answer is spoken in the Hindi voice, not the English one, and English words
       in it ("Chrome", "weekend") are said plainly, with no "en" or "hi" sounds
       around them. (The chat window shows typed conversations only.)
+- [ ] **Thinking aloud is ignored.** After waking Baby, say "uh... let me think",
+      pause, then ask a real question. Baby says nothing to the first part and answers
+      the question; the feed shows `voice: listening (thinking aloud: 'Uh... let me
+      think.')` or similar.
+- [ ] **A pause mid-sentence is not the end.** Set `voice: vad_silence_ms: 700`,
+      restart, and ask a question with a short pause in the middle ("what's the
+      weather... in Indore"). Baby hears the whole question.
+- [ ] **Hindi stays Hindi.** Set `voice: stt: languages: [en, hi]`, restart, and ask
+      five or six questions in Hindi. Each one shows in the feed as `voice: heard`
+      followed by Devanagari, none in Urdu script or another language.
 
 ## 6. Regression on the real box
 
