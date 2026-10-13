@@ -60,6 +60,7 @@ def test_the_voice_block_says_what_the_spec_asks():
         "Resolve \"that\"",
         "thinking aloud",
         "No stock openers",
+        "already knows",
         "Devanagari",
     ):
         assert rule in VOICE_STYLE, rule

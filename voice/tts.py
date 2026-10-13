@@ -122,6 +122,13 @@ def ends_sentence(buf: str) -> bool:
     return stripped[-2:-1].isdigit() or not _is_abbreviation(stripped)
 
 
+# espeak reads an emoji's name: "Done 👍" became "done thumbs up". Pictographs,
+# flags, arrows, shapes, stars, and the joiners that glue emoji together.
+EMOJI_RE = re.compile(
+    r"[\U0001f000-\U0001faff\u2190-\u21ff\u2300-\u23ff\u25a0-\u25ff"
+    r"\u2600-\u27bf\u2b00-\u2bff\ufe0f\u200d\u20e3]"
+)
+
 # Markdown → speakable text: Kokoro/espeak read "**" aloud ("asterisk
 # asterisk" — owner report). Applied inside synth(), the single funnel for
 # replies, announcements, and the briefing. Order matters: paired constructs
@@ -144,8 +151,7 @@ _MD_RULES: tuple[tuple[re.Pattern, str], ...] = (
     # only after "dot": a domain or a file extension, never "check.It".
     (re.compile(r"(?<=\d)\.(?=\d)"), " point "),
     (re.compile(r"(?<=[A-Za-z0-9])\.(?=[a-z]{2,}\b)"), " dot "),
-    # espeak reads an emoji's name: "Done 👍" became "done thumbs up".
-    (re.compile(r"[\U0001f300-\U0001faff\u2600-\u27bf\ufe0f]"), " "),
+    (EMOJI_RE, " "),
 )
 
 

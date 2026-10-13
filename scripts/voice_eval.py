@@ -42,6 +42,7 @@ from core.prompts import (  # noqa: E402
     system_prompt,
     trailing_nudge,
 )
+from voice.tts import EMOJI_RE  # noqa: E402
 
 OUT_DIR = ROOT / "bench_results" / "voice_eval"
 OPENED = json.dumps({"status": "opened"})
@@ -56,7 +57,6 @@ _MARKDOWN = (
     # list items; one or two digits, so "180. Fifteen twelves" or a year is not one
     re.compile(r"^\s*([-*•]|\d{1,2}[.)])\s+", re.MULTILINE),
 )
-_EMOJI = re.compile("[\U0001f300-\U0001faff☀-➿]")
 
 
 def words(text: str) -> int:
@@ -70,7 +70,7 @@ def spoken_shape(text: str) -> list[str]:
         problems.append("markdown")
     if _STOCK_OPENER.search(text):
         problems.append("stock opener")
-    if _EMOJI.search(text):
+    if EMOJI_RE.search(text):
         problems.append("emoji")
     return problems
 
