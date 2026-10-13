@@ -3240,3 +3240,119 @@ def test_the_shipped_end_phrases_are_the_ones_the_pipeline_uses():
     config = _shipped_config()
     pipeline = VoicePipeline(None, None, None, server._voice_config(config))
     assert pipeline.end_phrases == tuple(config["conversation"]["end_phrases"])
+
+
+# -- 19. end to end: stream, speak, interrupt, carry on (spec Phase 8) ----------
+
+
+class _StreamingProvider(FakeProvider):
+    """Streams each scripted reply a word at a time, pausing after every sentence
+    the way a real model's tokens trickle in. Knows whether it is mid-stream."""
+
+    def __init__(self, script, pause=0.5):
+        super().__init__(script)
+        self.pause = pause
+        self.streaming = False
+        self.cancelled = 0
+
+    async def chat(self, messages, tools=None, **opts):
+        from core.providers.base import Chunk
+
+        self.requests.append([dict(m) for m in messages])
+        words = self.script.pop(0).split(" ")
+        self.streaming = True
+        try:
+            for n, word in enumerate(words):
+                yield Chunk(delta=word if n == 0 else f" {word}")
+                await asyncio.sleep(self.pause if word.endswith(".") else 0.01)
+            yield Chunk(done=True)
+        except (asyncio.CancelledError, GeneratorExit):
+            self.cancelled += 1
+            raise
+        finally:
+            self.streaming = False
+
+
+class _NumberedTTS(FakeTTS):
+    """Every clip carries the number of the sentence it was made from."""
+
+    def synth(self, sentence):
+        self.synthed.append(sentence)
+        return np.full(2400, len(self.synthed), dtype=np.int16), 24000
+
+
+class _ListeningAudio(FakeAudio):
+    """Records which sentence each play() was and whether the model was still
+    writing at the time; the user starts talking over the second sentence."""
+
+    def __init__(self, tts, provider, talk_over):
+        super().__init__()
+        self.tts, self.provider, self.talk_over = tts, provider, talk_over
+        self.played = []  # (sentence, model still streaming, stopped early)
+
+    def play(self, samples, samplerate, stop, on_level=None):
+        sentence = self.tts.synthed[int(samples[0]) - 1]
+        streaming = self.provider.streaming
+        if len(self.played) == 1 and self.talk_over:
+            # The user talks over sentence two, which plays until Baby stops it
+            # (bounded): however slow the machine, the cut lands in this sentence.
+            self.play_calls += 1
+            self.frames += self.talk_over
+            self.talk_over = None
+            finished = not stop.wait(5)
+        else:
+            finished = super().play(samples, samplerate, stop, on_level)
+        self.played.append((sentence, streaming, not finished))
+        return finished
+
+
+async def test_a_conversation_end_to_end(db):
+    """Wake, ask, and the answer starts playing while the model is still writing;
+    sentences play in order; talking over Baby stops it mid-sentence and closes the
+    model's stream; nothing from the old answer plays after that; and the words
+    that interrupted are the start of the next question, which gets its answer."""
+    from voice.audio_io import FrameBuffer
+
+    first = "It's sunny today. Twenty eight degrees. Light wind from the west. Carry water."
+    provider = _StreamingProvider([first, "Tomorrow brings rain."])
+    pipeline, _, bus = await _make_pipeline(db, [], frames=[WAKE], cfg_over=_KEEP)
+    pipeline.agent.provider = provider
+    pipeline.tts = _NumberedTTS()
+    said = ["what's the weather", "and tomorrow?"]
+    pipeline.stt = RecordingSTT()
+    pipeline.stt.transcribe = lambda pcm: (pipeline.stt.heard.append(pcm), (said.pop(0), "en"))[1]
+    talk_over = [SPEECH] * 6 + [SPEECH] * 4 + [SILENCE] * 3
+    pipeline.audio = _ListeningAudio(pipeline.tts, provider, talk_over)
+    pipeline.audio.frames += [WAKE, SPEECH, SPEECH, SILENCE, SILENCE]
+    bridge = asyncio.create_task(pipeline._bridge())
+    await asyncio.sleep(0)
+    fb = FrameBuffer()
+    try:
+        await asyncio.to_thread(pipeline._idle, fb)
+        await asyncio.to_thread(pipeline._listen, fb)
+        assert pipeline.state == "responding"
+        async with _responding(pipeline, fb) as respond:
+            await _finish(respond, timeout=10)
+        assert pipeline.state == LISTENING  # straight back to listening, no beep
+        beeps_after_wake = pipeline.audio.beeped
+
+        played = [sentence for sentence, _, _ in pipeline.audio.played]
+        # First audio while the model was still writing the answer.
+        assert pipeline.audio.played[0][1] is True
+        # In order, and cut off during the sentence the user talked over.
+        assert played == ["It's sunny today.", "Twenty eight degrees."]
+        assert pipeline.audio.played[1][2] is True
+        await _until(lambda: provider.cancelled == 1, timeout=5)
+
+        # The words that interrupted begin the next capture.
+        await asyncio.to_thread(pipeline._listen, fb)
+        assert _speech_chunks(pipeline.stt.heard[1]) == 10
+        assert pipeline.audio.beeped == beeps_after_wake
+        async with _responding(pipeline, fb) as respond:
+            await _finish(respond, timeout=10)
+    finally:
+        bridge.cancel()
+    # Nothing from the first answer played after the interruption.
+    later = [sentence for sentence, _, _ in pipeline.audio.played[2:]]
+    assert later == ["Tomorrow brings rain."]
+    assert pipeline.state == "idle"
