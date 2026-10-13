@@ -53,7 +53,9 @@ when you talk over it -- so this release fixes what was missing around it.
 - **Hindi answers go to the Hindi voice.** Baby is now asked to write spoken Hindi in
   Hindi script, which is what picks the Hindi voice; Hindi in English letters went to
   the English one. English words inside a Hindi sentence no longer come with stray
-  "en" and "hi" sounds.
+  "en" and "hi" sounds. Hinglish is asked for the same way, but most models still
+  answer it in English letters, so a Hinglish answer is usually still read by the
+  English voice.
 - **Baby no longer reads out emoji** ("done thumbs up"), and a spoken answer that
   already ends in a question is no longer followed by a second "want me to ...?".
 - **"Uh... let me think" no longer gets an answer.** Thinking aloud used to be sent to

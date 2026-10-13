@@ -3205,3 +3205,70 @@ Running log of non-obvious choices made during the build. Newest last.
      other than English or Hindi; an unknown code is ignored rather than locking out
      every language. A hand-edited `languages: en, hi`, `"[en, hi]"` or `[EN, HI]`
      is read as `[en, hi]`, and `languages: hi` as Hindi alone.
+174. **gpt-5.4-mini was measured against gpt-4o-mini, and the swap waits for the owner.**
+     Spec item 1 asks for a fast model through OpenRouter, and the owner chose
+     `openai/gpt-5.4-mini` for every channel if it passed four bars set before the run:
+     a bench score at least gpt-4o-mini's from the same run; first token p50 no worse
+     than 1.2 s and p95 under the 3.5 s voice cutoff; no request rejected for
+     `temperature`; and the router's recovery probe (a 1-token completion) working.
+     It fails the first bar narrowly, so `installer/config.default.yaml` still names
+     `openai/gpt-4o-mini`. Any fix for a failed bar was to be an edit to
+     `core/providers/nvidia.py`, frozen ground; this one is not a provider problem at
+     all, and the call belongs to the owner.
+
+     The bench (`scripts/pick_nim_model.py --tag voice-upgrade`, 2026-10-13 at 10:30
+     IST -- morning, not the evening peak the script asks for -- five runs of each of
+     T1-T8 through Baby's provider class with Baby's real tool schemas):
+
+     | model | quality | first token p50 | p95 | score | stream errors |
+     |---|---|---|---|---|---|
+     | openai/gpt-4o-mini | 100 | 1.01 s | 2.86 s | 96.0 | 0 |
+     | openai/gpt-5.4-mini | 100 | 1.20 s | 2.85 s | 95.2 | 0 |
+     | openai/gpt-5.4-nano | 100 | 1.25 s | 2.57 s | 95.0 | 0 |
+
+     Quality is the mean pass rate over the eight tests; the score subtracts four
+     points per second of median first token. All three are perfect on quality, so
+     the whole gap is 0.19 s of median first token. The first report had
+     gpt-5.4-mini at 0% on T4 (honest about a failed tool) and nano at 40%: both write
+     typographic apostrophes ("couldn’t open Spotify"), which the honesty check did not
+     recognise, and "open Spotify" then read as a claim of success. Their replies were
+     honest. The check now normalises the apostrophe and also accepts "isn't
+     installed", and the saved replies were rescored without a new call. The live
+     agent had the same blind spot: its one forced re-ask when a reply promises an
+     action and calls no tool matched only "I'll", never "I’ll". It takes both now.
+
+     The other three bars pass. No request failed: OpenRouter lists no `temperature`
+     for the gpt-5.4 models and drops the one Baby sends. The recovery probe worked
+     for all three. The latency bar passes narrowly and off-peak: gpt-5.4-mini's median
+     is 1.198 s against 1.2 s, and one first token in forty (3.94 s) went past the
+     voice cutoff, the only one of any model. gpt-4o-mini's p95 was 4.01 s in the
+     evening run of #83 and 2.86 s this morning, so a run at the owner's evening hours
+     could tip it.
+
+     The voice eval (#172; ten spoken cases, three runs each) is where the new model
+     is better: 90% against 83% for gpt-4o-mini and 70% for nano. gpt-4o-mini still
+     opened with "Sure!" once in three despite the voice rules, and once searched the
+     web for a price already in the conversation; nano used "focus" for "open VS
+     Code", ran past the ninety words a spoken Supabase answer gets, and answered
+     thinking aloud with more than the few words it calls for. Every model failed the
+     Hinglish case.
+
+     Cost, from the token counts of five voice turns on a fresh install (no history
+     yet, so a floor): gpt-5.4-mini $0.00174 a turn, gpt-4o-mini $0.00038, nano
+     $0.00073 -- 4.6 times as much, about $5 a month against about $1 at a hundred
+     voice turns a day, rising with history.
+
+     So the owner is choosing between better-behaved spoken replies for 4.6 times the
+     cost and 0.2 s more median wait, with no difference on Baby's tool battery. To
+     take it, change `models.nim_primary.model` to `openai/gpt-5.4-mini` in
+     `%LOCALAPPDATA%\baby\config.yaml` (and in the shipped template, with the two
+     README lines that name gpt-4o-mini, if it should be everyone's default).
+
+     **Spoken Hinglish now names its script, which helps one model only.** Every model
+     answered a Hinglish voice turn in Latin letters, which the English voice reads.
+     The pin said "Reply ONLY in Hinglish", and each model took that over VOICE_STYLE.
+     On a voice turn both pins now say "Hinglish, with every Hindi word in Devanagari
+     and English words in Latin". gpt-5.4-mini then wrote most of its Hindi words in
+     Devanagari in two runs of three, still with a few in Latin; gpt-4o-mini and nano
+     did not change. Typed turns are unchanged. Doing it reliably needs transliteration
+     before speech, or a voice that reads Hinglish as written -- the parked Sarvam work.
