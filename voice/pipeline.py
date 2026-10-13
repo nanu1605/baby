@@ -28,7 +28,7 @@ import threading
 import time
 from pathlib import Path
 
-from core.intents import is_end_phrase
+from core.intents import is_end_phrase, is_filler
 from core.prompts import detect_language
 from voice.amplitude import Throttle, quantize_level, rms_int16
 from voice.tts import ends_sentence, split_sentences
@@ -46,6 +46,13 @@ IDLE, LISTENING, RESPONDING = "idle", "listening", "responding"
 _VAD_FRAME = 512
 _WAKE_CHUNK = 1280
 _BARGE_IN_FRAMES = 6  # ~200 ms of sustained speech
+# Quiet that ends an utterance. 400 ms cut people off mid-thought ("the thing we
+# talked about... the database"); 700 ms is 0.3 s more wait against a ~3.3 s
+# transcription. A tuning knob (voice.vad_silence_ms), set from live use.
+_VAD_SILENCE_MS = 700
+# Fillers in a row that only re-open the mic. The next one goes to the model, so
+# thinking aloud cannot hold the mic open without a wake word for ever.
+_MAX_FILLERS = 3
 # Mic chunks kept while Baby speaks (~0.5 s): the barge-in streak plus a little
 # lead, replayed into the capture so the interrupting words are not lost.
 _HEARD_CHUNKS = 16
@@ -171,6 +178,9 @@ class VoicePipeline:
         # trip barge-in, and the kept audio would then be a turn Baby answers
         # itself. On a headset it is safe (DECISIONS #171).
         self.barge_keep_audio = bool(cfg.get("barge_in_keep_audio", False))
+        # Thinking aloud never becomes a turn (core.intents.is_filler).
+        self.filler_filter = bool(cfg.get("filler_filter", True))
+        self._fillers = 0  # in a row, since the last wake / PTT / follow-up
         self._heard: collections.deque = collections.deque(maxlen=_HEARD_CHUNKS)
         # P3 conversation mode: after Baby speaks, keep the mic hot for a
         # wake-word-free follow-up until an end phrase or window_s of silence.
@@ -191,7 +201,7 @@ class VoicePipeline:
         # Monotonic stamps for the turn in flight (see _TIMING_LABELS). The voice
         # thread and the bridge write different keys; one line per turn reports them.
         self._timing: dict[str, float] = {}
-        self._vad_silence_s = float(cfg.get("vad_silence_ms", 400)) / 1000.0
+        self._vad_silence_s = float(cfg.get("vad_silence_ms", _VAD_SILENCE_MS)) / 1000.0
         self._stopping = threading.Event()
         # Kill switch: force-stop live playback + the running turn (the UI /kill
         # cancelled the turn future but Baby kept speaking the already-queued
@@ -283,7 +293,8 @@ class VoicePipeline:
             from voice.vad import VoiceDetector
 
             self.vad = VoiceDetector(
-                silence_ms=int(self.cfg.get("vad_silence_ms", 400)),
+                # One reading of the setting, shared with the timing line.
+                silence_ms=round(self._vad_silence_s * 1000),
                 speech_wait_ms=int(self.cfg.get("vad_speech_wait_ms", 5000)),
             )
         self.vad.load()
@@ -301,6 +312,7 @@ class VoicePipeline:
                 cpu_threads=int(stt_cfg.get("cpu_threads", 4)),
                 beam_size=int(stt_cfg.get("beam_size", 1)),
                 hotwords=str(stt_cfg.get("hotwords", "")),
+                languages=stt_cfg.get("languages") or (),
             )
         self.stt.load()
         return ""
@@ -698,6 +710,7 @@ class VoicePipeline:
         # PTT bypasses speaker verification: whoever pressed the hotkey is at
         # the keyboard and already owns the PC.
         self._listen_source = source
+        self._fillers = 0
         # B6: a fresh wake/PTT starts a new conversation session — reset the trust
         # smoother to optimistic. Follow-ups keep accumulating within the session,
         # and so does a barge-in: interrupting must not buy an unknown speaker
@@ -802,6 +815,18 @@ class VoicePipeline:
             self._drain_sentences()
             self._publish("status", text="voice: stopped by kill phrase")
             return
+        if self.filler_filter and self._fillers < _MAX_FILLERS and is_filler(text):
+            # Thinking aloud ("uh... let me think") is not a request: no model
+            # call and no reply. Keep listening -- the question is coming.
+            self._fillers += 1
+            # Push-to-talk's pass on speaker verification covers one capture.
+            if self._listen_source == "ptt":
+                self._listen_source = "wake"
+            # Not "heard": the UI would light the path to the model.
+            self._publish("status", text=f"voice: listening (thinking aloud: {text!r})")
+            self.vad.reset()
+            self.state = LISTENING
+            return
         # Game-mode escape hatch: a bare "game mode on/off" toggles directly,
         # no model in the loop — in game mode with the cloud down there is NO
         # brain left to call the set_game_mode tool (observed live deadlock).
@@ -856,7 +881,11 @@ class VoicePipeline:
         # stale sentinel from a cancelled prior turn must not end it early.
         self._interrupt.clear()
         self._drain_sentences()
-        self._timing = {
+        # After a filler this capture was read from the mic audio queued while the
+        # filler was transcribed, so the VAD found its end late by an unknown amount.
+        # ponytail: no timing line for that turn rather than a wrong one; stamp
+        # each mic block in AudioIO if those turns ever need measuring.
+        self._timing = {} if self._fillers else {
             "speech_end": speech_end,
             "stt_done": stt_done,
             "submitted": time.monotonic(),

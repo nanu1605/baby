@@ -101,3 +101,60 @@ def test_wipe_confirmation_true(text):
 def test_bare_confirm_never_wipes(text):
     # review #3: only an explicit wipe confirmation erases — never a stray yes/confirm
     assert is_wipe_confirmation(text) is False
+
+
+# -- thinking aloud (DECISIONS #173) ------------------------------------------------
+
+_FILLER = [
+    "uh", "Um...", "Hmm.", "hmm, let me think", "Uh, one second.", "wait", "hold on, hold on",
+    "well, so, like", "let me think about it", "matlab...", "ek second", "sochne do",
+    "हम्म", "एक सेकंड", "अं... सोचने दो", "हम्म, मतलब",
+]
+_NOT_FILLER = [
+    "uh, open chrome", "what time is it", "so what is the weather", "you know what, open notepad",
+    "hmm, play some music", "matlab kya hai", "मतलब क्या है", "हम्म, बत्ती जलाओ",
+    "wait, what was the price", "um um um um um um um um um",  # past the 8-word cap
+    "accha", "",
+]
+
+
+@pytest.mark.parametrize("text", _FILLER)
+def test_is_filler(text):
+    from core.intents import is_filler
+
+    assert is_filler(text)
+
+
+@pytest.mark.parametrize("text", _NOT_FILLER)
+def test_a_request_is_not_filler(text):
+    from core.intents import is_filler
+
+    assert not is_filler(text)
+
+
+def test_filler_never_shadows_yes_or_no():
+    """"ok", "haan", "ruko" can answer a pending question or confirmation, so
+    nothing a yes/no parser reads may ever be swallowed as thinking aloud."""
+    from core.intents import _NO_PHRASES, _YES_PHRASES, is_filler
+
+    for phrase in (*_YES_PHRASES, *_NO_PHRASES, *_YES, *_NO):
+        assert not is_filler(phrase), phrase
+
+
+def test_yes_and_no_win_even_if_the_filler_list_grows(monkeypatch):
+    """The lists do not overlap today; the guard keeps it that way if someone adds
+    "ok" or "nahi" as a filler later."""
+    import core.intents as intents
+
+    monkeypatch.setattr(intents, "_FILLER_TOKENS", intents._FILLER_TOKENS | {"ok", "nahi"})
+    assert intents.is_filler("uh")
+    assert not intents.is_filler("ok")
+    assert not intents.is_filler("nahi")
+
+
+def test_a_question_or_assent_is_not_filler():
+    from core.intents import is_filler
+
+    for said in ("Matlab?", "मतलब?", "So?", "Hmm?", "Mm-hmm.", "Mm hm."):
+        assert not is_filler(said), said
+    assert is_filler("हम्म, एक सेकंड, सोचने दो")  # five spoken words, more once normalised

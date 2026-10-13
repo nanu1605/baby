@@ -10,6 +10,8 @@ pass below, against ~5.6 s and ~44 CPU-seconds before (two passes, 8 threads).
 
 from __future__ import annotations
 
+import re
+
 SAMPLE_RATE = 16000
 _MIN_SPEECH_S = 0.3
 
@@ -29,6 +31,32 @@ _JUNK = frozenset(
 )
 
 
+class _LanguageLock:
+    """The CTranslate2 Whisper model, except that language detection prefers
+    the allowed languages.
+
+    Whisper picks the likeliest of its ~100 languages, and Hindi spoken with an
+    Indian accent can come out as Urdu, Punjabi or Marathi. faster-whisper reads
+    the first entry of each detect_language() result, so putting the best
+    allowed language first is the whole change -- the encoder still runs once
+    (#167), and every other attribute goes straight through.
+    """
+
+    def __init__(self, inner, allowed) -> None:
+        self._inner = inner
+        self._allowed = {f"<|{code}|>" for code in allowed}
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def detect_language(self, *args, **kwargs):
+        # sorted() is stable: the allowed languages keep their likelihood order.
+        return [
+            sorted(segment, key=lambda pair: pair[0] not in self._allowed)
+            for segment in self._inner.detect_language(*args, **kwargs)
+        ]
+
+
 class SpeechToText:
     def __init__(
         self,
@@ -39,6 +67,7 @@ class SpeechToText:
         beam_size: int = 1,
         hotwords: str = "",
         local_files_only: bool = False,
+        languages: tuple[str, ...] = (),
     ) -> None:
         self.model_name = model
         self.device = device
@@ -50,6 +79,11 @@ class SpeechToText:
         self.hotwords = hotwords
         # See Embedder: only provisioning's offline retry sets this.
         self.local_files_only = local_files_only
+        # voice.stt.languages, e.g. ("en", "hi"); empty = any language Whisper knows.
+        # A hand-edited config may say `hi`, `en, hi`, "[en, hi]" or `[EN, HI]`.
+        if not isinstance(languages, (list, tuple)):
+            languages = re.split(r"[\s,\[\]]+", str(languages))
+        self.languages = tuple(c for c in (str(code).strip().lower() for code in languages) if c)
         self._model = None
 
     def load(self) -> None:
@@ -62,6 +96,10 @@ class SpeechToText:
             cpu_threads=self.cpu_threads,
             local_files_only=self.local_files_only,
         )
+        # A code Whisper does not know would lock out every language; ignore it.
+        known = [code for code in self.languages if code in self._model.supported_languages]
+        if known:
+            self._model.model = _LanguageLock(self._model.model, known)
 
     def transcribe(self, pcm16) -> tuple[str, str]:
         """int16 mono 16 kHz samples -> (text, language).

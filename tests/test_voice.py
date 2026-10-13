@@ -2979,6 +2979,261 @@ def test_the_shipped_config_names_the_new_voice_switches():
     assert bare.prefetch is True and bare.barge_keep_audio is False
 
 
+# -- 18. thinking aloud, the pause, and Whisper's language (DECISIONS #173) ---------
+
+
+async def test_filler_keeps_listening_without_a_turn(db):
+    """"Uh... let me think" used to go to the model, which answered it. It is
+    not a request: no model call, no beep, and the mic stays open for the real one."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, provider, bus = await _make_pipeline(db, ["ok"])
+    said = ["Uh... let me think.", "what time is it"]
+    pipeline.stt.transcribe = lambda pcm: (said.pop(0), "en")
+    # The question is already in the mic queue while the filler is transcribed;
+    # a drain there would throw its start away.
+    pipeline.audio.drain = pipeline.audio.frames.clear
+    events = bus.subscribe()
+    frames = FrameBuffer()
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    pipeline.audio.frames += [SILENCE] + [SPEECH] * 3 + [SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, frames)
+    await asyncio.sleep(0.1)
+    assert pipeline.state == LISTENING
+    assert provider.requests == []
+    assert pipeline.audio.beeped == 0
+    statuses = []
+    while not events.empty():
+        event = events.get_nowait()
+        if event.kind == "status":
+            statuses.append(event.payload["text"])
+    # The feed shows what was set aside, without "heard" (the UI would light the
+    # path to the model, and nothing went there).
+    assert statuses == ["voice: listening (thinking aloud: 'Uh... let me think.')"]
+    # The VAD starts over, so the real question is captured whole.
+    assert pipeline.vad.speech_started is False
+    await asyncio.to_thread(pipeline._listen, frames)
+    await asyncio.sleep(0.1)
+    assert provider.requests
+    # That capture was read from audio queued during the filler's transcription,
+    # so its end-of-speech time is unknown: no timing line rather than a wrong one.
+    assert "speech_end" not in pipeline._timing
+
+
+async def test_a_filler_is_not_scored_as_a_speaker(db):
+    """Thinking aloud never reaches speaker verification, so a "hmm" cannot move
+    the session's trust either way."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, provider, _ = await _make_pipeline(db, ["never"], stt_text="hmm")
+    pipeline.verifier = FakeVerifier(ok=False, similarity=0.1)
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    assert pipeline.verifier.calls == 0
+    assert not pipeline.session_trust._scores
+    assert provider.requests == []
+
+
+async def test_with_the_filter_off_filler_is_a_turn(db):
+    from voice.audio_io import FrameBuffer
+
+    pipeline, provider, _ = await _make_pipeline(
+        db, ["ok"], stt_text="Uh... let me think.", cfg_over={"filler_filter": False}
+    )
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert pipeline.state == "responding"
+    assert provider.requests
+
+
+async def test_a_short_yes_is_never_taken_for_filler(db):
+    from voice.audio_io import FrameBuffer
+
+    pipeline, provider, _ = await _make_pipeline(db, ["ok"], stt_text="haan")
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, FrameBuffer())
+    await asyncio.sleep(0.1)
+    assert provider.requests
+
+
+async def test_thinking_aloud_cannot_hold_the_mic_open_for_ever(db):
+    """Three fillers in a row only re-open the mic; the fourth is a turn, so a
+    wake word cannot be stretched into an open mic by "hmm" every few seconds."""
+    from voice.audio_io import FrameBuffer
+    from voice.pipeline import _MAX_FILLERS
+
+    assert _MAX_FILLERS == 3  # what DECISIONS #173 promises
+    pipeline, provider, _ = await _make_pipeline(db, ["ok"], stt_text="hmm")
+    frames = FrameBuffer()
+
+    async def say_hmm():
+        pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+        await asyncio.to_thread(pipeline._listen, frames)
+
+    for _ in range(3):
+        await say_hmm()
+        assert pipeline.state == LISTENING
+    # A new wake word starts the count again: three more are set aside.
+    pipeline._enter_listening(frames)
+    assert pipeline._fillers == 0
+    for _ in range(3):
+        await say_hmm()
+        assert pipeline.state == LISTENING
+    assert provider.requests == []
+    await say_hmm()
+    await asyncio.sleep(0.1)
+    assert provider.requests
+
+
+async def test_push_to_talk_pass_covers_one_capture(db):
+    """PTT skips speaker verification for what is said after the hotkey -- not for
+    whoever speaks after a filler, however long later."""
+    from voice.audio_io import FrameBuffer
+
+    pipeline, provider, _ = await _make_pipeline(db, ["ok"], stt_text="uh")
+    pipeline.verifier = FakeVerifier(ok=True, similarity=0.9)
+    frames = FrameBuffer()
+    pipeline._enter_listening(frames, source="ptt")
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, frames)
+    assert pipeline.verifier.calls == 0
+    assert pipeline._listen_source == "wake"
+    pipeline.stt.text = "what time is it"
+    pipeline.audio.frames += [SPEECH, SILENCE, SILENCE]
+    await asyncio.to_thread(pipeline._listen, frames)
+    await asyncio.sleep(0.1)
+    assert pipeline.verifier.calls == 1
+    assert provider.requests
+
+
+def test_the_pause_that_ends_an_utterance_is_longer():
+    voice = _shipped_config()["voice"]
+    assert voice["vad_silence_ms"] == 700
+    # A config that does not name the key; every installed one names 400.
+    assert VoicePipeline(None, None, None, {})._vad_silence_s == 0.7
+    assert voice["filler_filter"] is True
+    assert voice["stt"]["languages"] == []  # unlocked unless the owner chooses
+
+
+@pytest.mark.parametrize(("cfg", "ms"), [({}, 700), ({"vad_silence_ms": 400}, 400)])
+def test_the_vad_waits_as_long_as_the_timing_line_says(monkeypatch, cfg, ms):
+    import voice.vad as vad_module
+
+    monkeypatch.setattr(vad_module.VoiceDetector, "load", lambda self: None)
+    pipeline = VoicePipeline(None, None, None, cfg)
+    pipeline._load_vad()
+    assert pipeline.vad.silence_ms == ms
+    assert pipeline._vad_silence_s == ms / 1000
+
+
+class _FakeCT2Whisper:
+    """Stands in for ctranslate2.models.Whisper: detection sorted by likelihood."""
+
+    is_multilingual = True
+
+    def __init__(self, ranked):
+        self.ranked = ranked
+
+    def detect_language(self, encoder_output):
+        return [list(self.ranked)]
+
+    def encode(self, features, to_cpu=False):
+        return ("encoded", features)
+
+
+def test_language_lock_prefers_best_allowed():
+    """Hindi heard as Urdu: with [en, hi] allowed, Hindi comes first, and the
+    allowed ones keep their likelihood order."""
+    from voice.stt import _LanguageLock
+
+    inner = _FakeCT2Whisper([("<|ur|>", 0.5), ("<|hi|>", 0.3), ("<|en|>", 0.1), ("<|pa|>", 0.1)])
+    locked = _LanguageLock(inner, ["en", "hi"])
+    assert [code for code, _ in locked.detect_language("enc")[0]] == [
+        "<|hi|>", "<|en|>", "<|ur|>", "<|pa|>",
+    ]
+
+
+def test_language_lock_delegates_the_rest():
+    from voice.stt import _LanguageLock
+
+    inner = _FakeCT2Whisper([("<|en|>", 1.0)])
+    locked = _LanguageLock(inner, ["en"])
+    assert locked.is_multilingual is True
+    assert locked.encode("f") == ("encoded", "f")
+
+
+class _FakeWhisperModel:
+    supported_languages = ["en", "hi", "ur", "pa"]
+
+    def __init__(self, *args, **kwargs):
+        self.model = _FakeCT2Whisper([("<|ur|>", 0.6), ("<|hi|>", 0.4)])
+
+
+def _load_stt(monkeypatch, languages):
+    import faster_whisper
+
+    from voice.stt import SpeechToText
+
+    monkeypatch.setattr(faster_whisper, "WhisperModel", _FakeWhisperModel)
+    stt = SpeechToText(languages=languages)
+    stt.load()
+    return stt
+
+
+def test_unlocked_default_leaves_model_untouched(monkeypatch):
+    from voice.stt import _LanguageLock
+
+    assert not isinstance(_load_stt(monkeypatch, ())._model.model, _LanguageLock)
+    # A code Whisper does not know is ignored, not a lock on every language.
+    assert not isinstance(_load_stt(monkeypatch, ("xx",))._model.model, _LanguageLock)
+
+
+@pytest.mark.parametrize(
+    ("written", "read"),
+    [("hi", ("hi",)), ("en, hi", ("en", "hi")), ("[en, hi]", ("en", "hi")),
+     (["EN", "HI"], ("en", "hi")), ((" hi ",), ("hi",))],
+)
+def test_hand_written_languages_still_lock(monkeypatch, written, read):
+    stt = _load_stt(monkeypatch, written)
+    assert stt.languages == read
+    assert stt._model.model.detect_language("enc")[0][0][0] == "<|hi|>"
+
+
+@pytest.mark.parametrize("written", [True, 1, None])
+def test_odd_language_values_lock_nothing_and_do_not_crash(monkeypatch, written):
+    from voice.stt import _LanguageLock
+
+    assert not isinstance(_load_stt(monkeypatch, written or ())._model.model, _LanguageLock)
+
+
+def test_configured_languages_lock_detection(monkeypatch):
+    stt = _load_stt(monkeypatch, ("en", "hi"))
+    assert stt._model.model.detect_language("enc")[0][0][0] == "<|hi|>"
+
+
+async def test_the_pipeline_hands_the_languages_to_whisper(db, monkeypatch):
+    import voice.stt as stt_module
+
+    seen = {}
+
+    class Recording(stt_module.SpeechToText):
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+            super().__init__(**kwargs)
+
+        def load(self):
+            pass
+
+    monkeypatch.setattr(stt_module, "SpeechToText", Recording)
+    # Written by hand as a string rather than a list: still two languages.
+    pipeline, _, _ = await _make_pipeline(db, [], cfg_over={"stt": {"languages": "en, hi"}})
+    pipeline.stt = None
+    pipeline._load_stt()
+    assert "languages" in seen
+    assert pipeline.stt.languages == ("en", "hi")
+
+
 def test_the_shipped_end_phrases_are_the_ones_the_pipeline_uses():
     from ui import server
 
