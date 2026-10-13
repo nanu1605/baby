@@ -229,8 +229,17 @@ async def test_empty_reply_and_empty_retry_serves_honest_line(db):
     from core.agent import _EMPTY_REPLY_FALLBACK
 
     agent, provider, conv_id = await _make_agent(db, ["", ""])
+    agent.bus = EventBus()
+    feed = agent.bus.subscribe()
     reply = await agent.run_turn("hi")
     assert reply == _EMPTY_REPLY_FALLBACK
+    # Published as a token too, so a voice turn speaks it instead of going quiet.
+    tokens = []
+    while not feed.empty():
+        event = feed.get_nowait()
+        if event.kind == "token":
+            tokens.append(event.payload["text"])
+    assert "".join(tokens).strip() == _EMPTY_REPLY_FALLBACK
     assert "(no response)" not in reply
     # The silence is recorded for the audit trail.
     row = await db._fetchone(

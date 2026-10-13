@@ -188,12 +188,12 @@ class VoicePipeline:
         self.conversation_enabled = bool(conv.get("enabled", True))
         self.conversation_window_s = float(conv.get("window_s", 60))
         self.conversation_cue = bool(conv.get("cue", True))
-        self.end_phrases = tuple(
-            conv.get(
-                "end_phrases",
-                ("baby stop listening", "stop listening", "bas", "bas baby", "so jao"),
-            )
+        phrases = conv.get(
+            "end_phrases",
+            ("baby stop listening", "stop listening", "bas", "bas baby", "so jao"),
         )
+        # `end_phrases: bas` by hand is one phrase, not the letters b, a, s.
+        self.end_phrases = (phrases,) if isinstance(phrases, str) else tuple(phrases)
 
         self._text_buf = ""
         self._token_at = 0.0  # monotonic time of the last voice token (bridge)
@@ -985,11 +985,11 @@ class VoicePipeline:
                     if sentence is None:
                         ended = True
                     else:
-                        # The canned "check the screen" line is not the model's
-                        # reply: if it took the tts/audio stamps they would land
-                        # before the first token, and the reply's own would
-                        # never be recorded.
-                        reply = sentence is not CONFIRM_SENTENCE
+                        # The canned "check the screen" line and the apology are
+                        # not the model's reply: if they took the tts/audio stamps
+                        # they would land before (or without) the first token, and
+                        # the timing line would read as a reply spoken.
+                        reply = sentence not in (CONFIRM_SENTENCE, APOLOGY_EN, APOLOGY_HI)
                         if reply:
                             self._mark("tts_start")
                         inflight = (self._synth_later(sentence), reply)

@@ -529,6 +529,11 @@ class AgentCore:
                         1,
                         "empty model output — served honest fallback",
                     )
+                    # Nothing was streamed, so say it the way the decline path
+                    # does: a voice turn otherwise ends in silence (#170).
+                    self.bus.publish(
+                        "token", self.channel, text=reply, turn_id=turn_id, source="baby_core"
+                    )
                 # Skip when the model already wrote a "Next:" line itself —
                 # it mimics suggestions seen in history, and appending a real
                 # one produced double "Next:" lines (observed live). A spoken

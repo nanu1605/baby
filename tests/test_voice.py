@@ -1229,6 +1229,13 @@ def test_strip_markdown_drops_emoji():
     assert strip_markdown("Ha, nice one 😄!") == "Ha, nice one !"
     assert strip_markdown("Sunny ☀️ today") == "Sunny today"
     assert strip_markdown("हो गया ✅") == "हो गया"
+    for said, spoken in (("Top pick ⭐", "Top pick"), ("Alarm ⏰ set", "Alarm set"),
+                         ("Play ▶️ now", "Play now"), ("India 🇮🇳 wins", "India wins"),
+                         ("Family 👨‍👩‍👧 trip", "Family trip"),
+                         ("Press 1️⃣", "Press 1"), ("Thumbs 👍🏽", "Thumbs")):
+        assert strip_markdown(said) == spoken, said
+    # Not emoji: kept, because espeak reads them right.
+    assert strip_markdown("It is 25°C and costs ₹500.") == "It is 25°C and costs ₹500."
 
 
 def test_synth_strips_markdown_before_kokoro():
@@ -1888,20 +1895,26 @@ async def test_audio_is_stamped_when_sound_leaves_not_when_it_is_queued(db):
     assert "tts" in labels and "audio" not in labels
 
 
-async def test_the_check_the_screen_line_does_not_take_the_replys_stamps(db):
-    """A confirmation is spoken before the model has written anything. If that
-    canned line took the tts/audio stamps they would precede the first token,
-    and the reply's own would never be recorded."""
+@pytest.mark.parametrize("canned", ["confirm", "apology_en", "apology_hi"])
+async def test_the_check_the_screen_line_does_not_take_the_replys_stamps(db, canned):
+    """A confirmation is spoken before the model has written anything, and an
+    apology instead of anything it wrote. If either canned line took the
+    tts/audio stamps, the timing line would read as a reply spoken."""
+    from voice.pipeline import APOLOGY_EN, APOLOGY_HI
+
+    line = {"confirm": CONFIRM_SENTENCE, "apology_en": APOLOGY_EN, "apology_hi": APOLOGY_HI}[
+        canned
+    ]
     pipeline, _, bus = await _make_pipeline(db, [])
     feed = bus.subscribe()
     now = time.monotonic()
     pipeline._timing = {"speech_end": now, "stt_done": now, "submitted": now}
-    pipeline.sentence_q.put(CONFIRM_SENTENCE)
+    pipeline.sentence_q.put(line)
     pipeline.sentence_q.put(None)
 
     await _respond_once(pipeline)
     await asyncio.sleep(0.05)
-    assert pipeline.tts.synthed == [CONFIRM_SENTENCE]  # still spoken
+    assert pipeline.tts.synthed == [line]  # still spoken
     labels = _timing_labels(_timing_lines(feed)[0])
     assert "tts" not in labels and "audio" not in labels
 
@@ -1968,7 +1981,38 @@ def test_the_server_hands_conversation_settings_to_voice():
     assert pipeline.conversation_enabled is False
     assert pipeline.conversation_window_s == 7
     assert pipeline.end_phrases == ("enough",)
-    assert "_voice_config(config)" in inspect.getsource(server.run_ui)
+    assert "_build_voice(" in inspect.getsource(server.run_ui)
+    assert "_voice_config(config)" in inspect.getsource(server._build_voice)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [{"voice": {"vad_silence_ms": "700ms"}}, {"voice": {"vad_silence_ms": None}},
+     {"conversation": {"window_s": "10s"}}],
+)
+async def test_a_mistyped_voice_setting_costs_voice_not_the_app(config):
+    """These are read when the pipeline is built, outside load()'s fail-soft
+    path: a hand-edit typo used to stop Baby starting at all."""
+    from ui import server
+
+    pipeline, ok, notes = await server._build_voice(None, None, None, config)
+    assert pipeline is None and ok is False
+    assert notes[0].startswith("voice unavailable: bad voice setting")
+
+
+async def test_a_good_voice_config_is_built_and_loaded(monkeypatch):
+    from ui import server
+
+    monkeypatch.setattr(VoicePipeline, "load", lambda self: (True, ["loaded"]))
+    pipeline, ok, notes = await server._build_voice(None, None, None, {"voice": {}})
+    assert isinstance(pipeline, VoicePipeline) and ok is True and notes == ["loaded"]
+
+
+def test_a_single_end_phrase_written_as_a_string_is_one_phrase():
+    """`end_phrases: bas` is one phrase, not the letters b, a and s -- which
+    would end the conversation on any short follow-up with an "a" in it."""
+    pipeline = VoicePipeline(None, None, None, {"conversation": {"end_phrases": "bas"}})
+    assert pipeline.end_phrases == ("bas",)
 
 
 # -- 15. the stream going quiet (DECISIONS #169) ---------------------------------
