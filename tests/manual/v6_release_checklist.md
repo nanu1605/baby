@@ -492,6 +492,100 @@ started with, and this whole section would measure the old ~49%.
       stays well under the recognition peak while it talks.
 - [ ] **A typed question barely registers.** Type one. A brief blip at most, no sustained climb.
 
+### Conversational voice (unreleased)
+
+The spec's six upgrades, as built (DECISIONS #168 onward). Everything here needs a real
+microphone, and none of it has had one yet. A config change only takes effect after
+**Quit Baby (app)** from the tray and starting Baby again.
+
+- [ ] **A timing line follows every spoken reply.** Ask anything by voice. After Baby
+      finishes, the activity feed shows one `voice: timing stt … · request … · token …
+      · sentence … · tts … · audio … · end …` line, and the orb does not change state
+      because of it. Note the `stt` and `audio` figures: they are the baseline.
+      `audio` is when the first sound left the speaker, counted from when you stopped
+      talking.
+- [ ] **Follow-up settings apply.** Set `conversation: window_s: 10`, restart, ask
+      something and then stay silent. The follow-up window closes after about ten
+      seconds, not sixty. Put it back afterwards.
+- [ ] **Decimals are spoken with "point".** Ask "what is 12.5 plus 3.25". You hear
+      "twelve point five" and "fifteen point seven five" (or "seventy five"), with no
+      pause inside a number.
+- [ ] **A site name is spoken with "dot".** Ask "what is the address of Wikipedia".
+      You hear "wikipedia dot org", not two separate words.
+- [ ] **A long list starts before it is finished.** Ask for "ten things to pack for a
+      trip, one per line". Baby starts speaking the first items while the model is
+      still writing the rest: in the timing line `sentence` is within a fraction of a
+      second of `token`, and well before `end`.
+- [ ] **"Let me check" comes before the answer.** Ask something that needs a tool
+      ("how much free disk space do I have"). If Baby says a line before using the
+      tool, you hear it on its own, then the answer -- never run together.
+- [ ] **Speech runs on between sentences.** Ask for something with a four- or
+      five-sentence answer. The pause at each full stop is a breath, not a wait. Then
+      set `voice: tts: prefetch: false`, restart, and ask again: the pauses are
+      clearly longer. Put it back to `true`.
+- [ ] **An interruption before the first word lands before it.** Ask for "one very
+      long sentence about the history of tea". The moment the orb turns to speaking,
+      and before you hear anything, start talking. You hear no syllable of the
+      answer, and the timing line ends in `cut 0.0s`. (The automated test
+      `test_barge_in_detected_while_synth_runs` is the exact check; this is the
+      by-ear one.)
+- [ ] **A long answer is spoken whole and in order.** Ask for "twenty facts about the
+      moon, numbered". Baby speaks all twenty in order, with no sentence repeated or
+      skipped.
+- [ ] **Interrupting keeps your words.** Set `voice: barge_in_keep_audio: true` (you
+      use a headset) and restart. Ask for a long answer and, while Baby is speaking,
+      say "stop, what's the time instead". Baby stops with no beep, and the feed's
+      `voice: heard` line shows the whole of what you said, from "stop" onwards.
+- [ ] **A one-word interruption is enough.** Ask for a long answer and say just
+      "stop" over it. Baby stops and treats "stop" as your turn; it does not say it
+      heard nothing.
+- [ ] **"Bas" over Baby ends the conversation.** In a conversation, say "bas" (if it
+      is in your `end_phrases`) while Baby is talking. Baby stops and the
+      conversation ends; it does not answer "bas".
+- [ ] **The speaker goes quiet at once.** Interrupt in the middle of a sentence.
+      Baby's voice cuts off mid-word, and the timing line ends in `cut 0.0s` or
+      `cut 0.1s` (it was 0.2-0.3 s before this change).
+- [ ] **Answers sound spoken.** Ask "give me three tips for better sleep". Baby says
+      them as sentences, with no "first point" list reading, no "Sure!" and no
+      repeating your question. (On `gpt-4o-mini` a "Sure!" turned up once in three
+      eval runs; #174.)
+- [ ] **A self-correction is followed.** Say "open Chrome -- no wait, open Notepad".
+      Notepad opens; Chrome does not.
+- [ ] **"That" is understood.** Ask about a product's price, then "how much was
+      that again?". Baby answers with the price, without asking what you mean.
+- [ ] **Hindi in the Hindi voice.** Ask something in Hindi. The answer is spoken in
+      the Hindi voice, not the English one, and English words in it ("Chrome",
+      "weekend") are said plainly, with no "en" or "hi" sounds around them. Then ask
+      in Hinglish and note which voice answers: on `gpt-4o-mini` it is usually the
+      English one, a known limit (#174). (The chat window shows typed conversations
+      only.)
+- [ ] **Thinking aloud is ignored.** After waking Baby, say "uh... let me think",
+      pause, then ask a real question. Baby says nothing to the first part and answers
+      the question; the feed shows `voice: listening (thinking aloud: 'Uh... let me
+      think.')` or similar.
+- [ ] **A pause mid-sentence is not the end.** Set `voice: vad_silence_ms: 700`,
+      restart, and ask a question with a short pause in the middle ("what's the
+      weather... in Indore"). Baby hears the whole question.
+- [ ] **Hindi stays Hindi.** Set `voice: stt: languages: [en, hi]`, restart, and ask
+      five or six questions in Hindi. Each one shows in the feed as `voice: heard`
+      followed by Devanagari, none in Urdu script or another language.
+- [ ] **Your config, after installing this build.** These keys are read from
+      `%LOCALAPPDATA%\baby\config.yaml`, which an install never overwrites, so a
+      returning install keeps its old values until you change them:
+      `voice: stt: languages: [en, hi]`, `voice: vad_silence_ms: 700`, and, with the
+      headset on, `voice: barge_in_keep_audio: true`. Quit Baby (app) from the tray
+      and start it again.
+- [ ] **Before and after, ten turns each.** With `voice: tts: prefetch: false`, ask
+      ten questions by voice whose answers run to a few sentences, and copy the ten
+      timing lines from the feed. Set it back to `true`, restart, and ask the same
+      ten. `end` should drop, because the gap between sentences is gone; `stt` and
+      `audio` (the first sentence) should not move much. Those twenty lines are the
+      before/after table for the pull request.
+- [ ] **The model, last and only if you choose it** (DECISIONS #174). Set
+      `models: nim_primary: model: openai/gpt-5.4-mini`, restart, and ask the same ten
+      again. Compare `token` (first word from the model) with the run before. Put it
+      back to `openai/gpt-4o-mini` if the wait is worse than the answers are better.
+
 ## 6. Regression on the real box
 
 Baby is still the same assistant — confirm v6 packaging did not disturb it.

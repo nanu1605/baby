@@ -1,0 +1,11 @@
+model: openai/gpt-5.4-nano  test: T5  run: 2
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Haan Tanishq 😄 Baby on duty!  
+
+Abhi mere paas tumhare PC ki live status dekhne ke liye screen/sensors check karne ki request nahi aayi—bolo, kya chahiye?  
+- current screen kya chal raha hai  
+- performance/temps check  
+- koi app open/close karna hai  
+- ya kuch specific kaam start karna hai

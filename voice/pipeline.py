@@ -18,6 +18,8 @@ every transcript passes (wake capture, push-to-talk, and barge-in capture).
 from __future__ import annotations
 
 import asyncio
+import collections
+import concurrent.futures
 import functools
 import json
 import queue
@@ -26,9 +28,10 @@ import threading
 import time
 from pathlib import Path
 
-from core.intents import is_end_phrase
+from core.intents import is_end_phrase, is_filler
+from core.prompts import detect_language
 from voice.amplitude import Throttle, quantize_level, rms_int16
-from voice.tts import split_sentences
+from voice.tts import ends_sentence, split_sentences
 
 _PUNCT_RE = re.compile(r"[^\w\s]|[_।]", re.UNICODE)
 
@@ -43,6 +46,46 @@ IDLE, LISTENING, RESPONDING = "idle", "listening", "responding"
 _VAD_FRAME = 512
 _WAKE_CHUNK = 1280
 _BARGE_IN_FRAMES = 6  # ~200 ms of sustained speech
+# Quiet that ends an utterance. 400 ms cut people off mid-thought ("the thing we
+# talked about... the database"); 700 ms is 0.3 s more wait against a ~3.3 s
+# transcription. A tuning knob (voice.vad_silence_ms), set from live use.
+_VAD_SILENCE_MS = 700
+# Fillers in a row that only re-open the mic. The next one goes to the model, so
+# thinking aloud cannot hold the mic open without a wake word for ever.
+_MAX_FILLERS = 3
+# Mic chunks kept while Baby speaks (~0.5 s): the barge-in streak plus a little
+# lead, replayed into the capture so the interrupting words are not lost.
+_HEARD_CHUNKS = 16
+# ponytail: a guess. Long enough that a model mid-"12.5" has sent the "5"
+# (tokens arrive tens of ms apart), short enough not to be heard as a pause.
+_QUIET_FLUSH_S = 0.25
+# A new turn waits this long for the one before it to finish unwinding.
+# ponytail: a turn that ignores cancellation for longer can still put tokens
+# into the next turn's queue. None does today (tools and the safety gate
+# re-raise CancelledError); tag bus events with a turn id if one ever does.
+_UNWIND_WAIT_S = 5.0
+_DEAD_TURN_S = 1.0  # the turn is over and silent, but its end marker never came
+_READY_AHEAD = 2  # sentences synthesised and waiting while one plays
+_SYNTH_WAIT_S = 30.0  # an announcement gives up on Kokoro after this (~0.6 s is normal)
+
+# Spoken when a turn ends in an error: silence reads as a dead assistant.
+APOLOGY_EN = "Sorry, something went wrong. Please ask me again."
+APOLOGY_HI = "माफ़ कीजिए, कुछ गड़बड़ हो गई। फिर से पूछिए।"
+
+# Per-turn timing, reported as seconds since the user stopped speaking. The
+# labels are what the feed line shows, and none of them may contain a word the
+# UI matches on status text, or a timing line would move the orb or raise a
+# toast: "listening", "stopped", "interrupted", "heard", "conversation ended"
+# (ui/server.py _StateDeriver, the graph's edge map) and "wiped", "kill",
+# "error", "cancelled", "offline", "degraded" (useActivitySocket TOAST_STATUS).
+_TIMING_LABELS = (
+    ("stt_done", "stt"),
+    ("submitted", "request"),
+    ("first_token", "token"),
+    ("first_sentence", "sentence"),
+    ("tts_start", "tts"),
+    ("first_audio", "audio"),
+)
 
 
 def normalize_transcript(text: str) -> str:
@@ -100,7 +143,23 @@ class VoicePipeline:
         self._listen_source = "wake"  # wake | ptt — PTT bypasses verification
 
         self.state = IDLE
+        # One queue PER TURN (_submit makes a new one): sentences, then None.
+        # A turn that was cut off can only write into a queue nobody reads, so
+        # none of its speech can play after the interruption.
         self.sentence_q: queue.Queue = queue.Queue()
+        # Bridge state, asyncio-loop thread only.
+        self._out_q = self.sentence_q  # the queue of the turn being read
+        self._next_q: queue.Queue | None = None  # a submitted turn, not yet started
+        self._live_turn = None  # turn_id the bridge adopted with _out_q
+        self._turn_task: asyncio.Task | None = None  # the latest voice turn
+        self._heard_hindi = False  # script of the last transcript (apology language)
+        # Kokoro runs on one worker thread, not the voice thread, so the mic is
+        # polled while it works and sentence N+1 is made while N plays. One
+        # worker: Kokoro is never asked for two things at once. A daemon, unlike
+        # a ThreadPoolExecutor's, so a shutdown never waits on a sentence.
+        self.prefetch = bool((cfg.get("tts") or {}).get("prefetch", True))
+        self._synth_jobs: queue.Queue = queue.Queue()
+        self._synth_thread: threading.Thread | None = None
         # Out-of-band announcements (task done, briefing). Spoken only while
         # IDLE — a live conversation always wins; overflow gets dropped.
         self.announce_q: queue.Queue = queue.Queue(maxsize=5)
@@ -113,21 +172,36 @@ class VoicePipeline:
         self.listen_grace_s = float(cfg.get("listen_grace_s", 10))
         self.barge_in = bool(cfg.get("barge_in", True))
         self.barge_in_threshold = float(cfg.get("barge_in_threshold", 0.6))
+        # Keep what the user said while interrupting, instead of beeping and
+        # making them say it again. Off unless configured: with no echo
+        # cancellation (DECISIONS #49), Baby's own voice on open speakers can
+        # trip barge-in, and the kept audio would then be a turn Baby answers
+        # itself. On a headset it is safe (DECISIONS #171).
+        self.barge_keep_audio = bool(cfg.get("barge_in_keep_audio", False))
+        # Thinking aloud never becomes a turn (core.intents.is_filler).
+        self.filler_filter = bool(cfg.get("filler_filter", True))
+        self._fillers = 0  # in a row, since the last wake / PTT / follow-up
+        self._heard: collections.deque = collections.deque(maxlen=_HEARD_CHUNKS)
         # P3 conversation mode: after Baby speaks, keep the mic hot for a
         # wake-word-free follow-up until an end phrase or window_s of silence.
         conv = cfg.get("conversation", {})
         self.conversation_enabled = bool(conv.get("enabled", True))
         self.conversation_window_s = float(conv.get("window_s", 60))
         self.conversation_cue = bool(conv.get("cue", True))
-        self.end_phrases = tuple(
-            conv.get(
-                "end_phrases",
-                ("baby stop listening", "stop listening", "bas", "bas baby", "so jao"),
-            )
+        phrases = conv.get(
+            "end_phrases",
+            ("baby stop listening", "stop listening", "bas", "bas baby", "so jao"),
         )
+        # `end_phrases: bas` by hand is one phrase, not the letters b, a, s.
+        self.end_phrases = (phrases,) if isinstance(phrases, str) else tuple(phrases)
 
         self._text_buf = ""
+        self._token_at = 0.0  # monotonic time of the last voice token (bridge)
         self._turn_future = None
+        # Monotonic stamps for the turn in flight (see _TIMING_LABELS). The voice
+        # thread and the bridge write different keys; one line per turn reports them.
+        self._timing: dict[str, float] = {}
+        self._vad_silence_s = float(cfg.get("vad_silence_ms", _VAD_SILENCE_MS)) / 1000.0
         self._stopping = threading.Event()
         # Kill switch: force-stop live playback + the running turn (the UI /kill
         # cancelled the turn future but Baby kept speaking the already-queued
@@ -219,7 +293,8 @@ class VoicePipeline:
             from voice.vad import VoiceDetector
 
             self.vad = VoiceDetector(
-                silence_ms=int(self.cfg.get("vad_silence_ms", 400)),
+                # One reading of the setting, shared with the timing line.
+                silence_ms=round(self._vad_silence_s * 1000),
                 speech_wait_ms=int(self.cfg.get("vad_speech_wait_ms", 5000)),
             )
         self.vad.load()
@@ -237,6 +312,7 @@ class VoicePipeline:
                 cpu_threads=int(stt_cfg.get("cpu_threads", 4)),
                 beam_size=int(stt_cfg.get("beam_size", 1)),
                 hotwords=str(stt_cfg.get("hotwords", "")),
+                languages=stt_cfg.get("languages") or (),
             )
         self.stt.load()
         return ""
@@ -335,8 +411,61 @@ class VoicePipeline:
         _publish is thread-safe, so publishing from the player thread is fine."""
         self._publish("tts_rms", rms=quantize_level(level))
 
+    def _emit_reply_level(self, level: float) -> None:
+        """on_level for a sentence of the reply: the first call is the first
+        ~100 ms block actually written to the speaker, which is what "audio"
+        means in the timing line -- stamping before the player thread starts
+        would leave out opening the output device."""
+        self._mark("first_audio")
+        self._emit_tts_level(level)
+
     def _submit(self, text: str):
-        return asyncio.run_coroutine_threadsafe(self.agent.run_turn(text), self.loop)
+        self.sentence_q = turn_q = queue.Queue()
+        return asyncio.run_coroutine_threadsafe(self._run_turn(text, turn_q), self.loop)
+
+    async def _run_turn(self, text: str, turn_q: queue.Queue) -> str:
+        """Run one voice turn, after the one before it has finished unwinding.
+
+        The bus is FIFO and the bridge adopts `turn_q` when it reads this
+        turn's turn_start. Waiting for the previous turn means every event it
+        published -- its late tokens, its cancelled turn_end -- is already
+        ahead of that turn_start in the queue, and so lands in the old turn_q.
+        """
+        previous, self._turn_task = self._turn_task, asyncio.current_task()
+        if previous is not None and not previous.done():
+            await asyncio.wait({previous}, timeout=_UNWIND_WAIT_S)
+        self._next_q = turn_q
+        return await self.agent.run_turn(text)
+
+    def _synth(self, text: str):
+        """Kokoro through the one synth worker, so an announcement never runs
+        beside a sentence still being made for a turn that was just cut off.
+
+        Bounded: this runs on the voice thread while IDLE, and a synthesis that
+        never came back would leave Baby deaf to the wake word for good.
+        """
+        return self._synth_later(text).result(timeout=_SYNTH_WAIT_S)
+
+    def _synth_later(self, text: str) -> concurrent.futures.Future:
+        """Queue one synthesis on the worker (started on first use)."""
+        if self._synth_thread is None:
+            self._synth_thread = threading.Thread(
+                target=self._synth_worker, name="baby-tts", daemon=True
+            )
+            self._synth_thread.start()
+        future: concurrent.futures.Future = concurrent.futures.Future()
+        self._synth_jobs.put((future, text))
+        return future
+
+    def _synth_worker(self) -> None:
+        while True:
+            future, text = self._synth_jobs.get()
+            if not future.set_running_or_notify_cancel():
+                continue
+            try:
+                future.set_result(self.tts.synth(text))
+            except BaseException as exc:  # noqa: BLE001 — handed to whoever waits on it
+                future.set_exception(exc)
 
     def _cancel_turn(self) -> None:
         if self._turn_future is not None and not self._turn_future.done():
@@ -380,6 +509,52 @@ class VoicePipeline:
             except queue.Empty:
                 return
 
+    # -- per-turn timing ---------------------------------------------------------
+
+    def _mark(self, key: str) -> None:
+        """Stamp the first time `key` happens in the turn in flight."""
+        self._timing.setdefault(key, time.monotonic())
+
+    def _report_timing(self, cut: float | None = None) -> None:
+        """One feed line and one audit row for the turn that just ended.
+
+        Every figure is seconds since the user stopped speaking. `cut` is set
+        when the user interrupted: seconds from detecting their speech to the
+        speaker going quiet.
+        """
+        timing, self._timing = self._timing, {}
+        start = timing.get("speech_end")
+        if start is None:
+            return
+        parts = {
+            label: round(timing[key] - start, 2)
+            for key, label in _TIMING_LABELS
+            if key in timing
+        }
+        if cut is None:
+            parts["end"] = round(time.monotonic() - start, 2)
+        else:
+            parts["cut"] = round(cut, 2)
+        line = " · ".join(f"{label} {value:.1f}s" for label, value in parts.items())
+        self._publish("status", text=f"voice: timing {line}")
+        db = getattr(self.agent, "db", None)
+        if db is None:
+            return
+        try:
+            asyncio.run_coroutine_threadsafe(
+                db.add_audit(
+                    getattr(self.agent, "channel", "voice"),
+                    "voice_timing",
+                    json.dumps(parts),
+                    "allow",
+                    1,
+                    line,
+                ),
+                self.loop,
+            )
+        except Exception:  # noqa: BLE001 — audit logging is best-effort
+            pass
+
     # -- bridge (runs on the asyncio loop) ---------------------------------------
 
     async def _bridge(self) -> None:
@@ -387,27 +562,91 @@ class VoicePipeline:
         q = self.bus.subscribe()
         try:
             while True:
-                event = await q.get()
-                if event.channel != "voice":
-                    continue
-                if event.kind == "token":
-                    self._text_buf += event.payload.get("text", "")
-                    sentences, self._text_buf = split_sentences(self._text_buf)
-                    for sentence in sentences:
-                        self.sentence_q.put(sentence)
-                elif event.kind == "confirm_request":
-                    self.sentence_q.put(CONFIRM_SENTENCE)
-                elif event.kind == "turn_end":
-                    if event.payload.get("status") == "ok":
-                        sentences, self._text_buf = split_sentences(self._text_buf, final=True)
-                        for sentence in sentences:
-                            self.sentence_q.put(sentence)
-                    else:  # cancelled/error: never speak a stale buffer
-                        self._text_buf = ""
-                    self.sentence_q.put(None)
+                try:
+                    # Timed only on an empty queue: once the deadline has passed
+                    # wait_for(…, 0) raises without looking, and the token that
+                    # completes "12." into "12.5" may already be waiting.
+                    wait = self._quiet_wait() if q.empty() else None
+                    event = await asyncio.wait_for(q.get(), wait)
+                except TimeoutError:
+                    # The model stopped on a full stop and nothing followed (the
+                    # next-step call has not started): say what is there.
+                    if not q.empty():
+                        continue
+                    event = None
+                try:
+                    if event is None:
+                        self._queue_sentences(final=True)
+                    elif event.channel == "voice":
+                        self._on_voice_event(event)
+                except Exception as exc:  # noqa: BLE001 — one bad event must not end voice
+                    # This coroutine is the only thing feeding speech: if it
+                    # dies, Baby goes silent for good and nothing says why.
+                    self._text_buf = ""
+                    self.bus.publish(
+                        "status", "voice",
+                        text=f"voice: could not queue speech ({type(exc).__name__})",
+                    )
         except asyncio.CancelledError:
             self.bus.unsubscribe(q)
             raise
+
+    def _on_voice_event(self, event) -> None:
+        kind = event.kind
+        if kind == "turn_start":
+            if self._next_q is not None:
+                self._out_q, self._next_q = self._next_q, None
+            self._live_turn = event.payload.get("turn_id")
+            self._text_buf = ""
+        elif kind == "token":
+            self._mark("first_token")
+            self._text_buf += event.payload.get("text", "")
+            self._token_at = time.monotonic()
+            self._queue_sentences()
+        elif kind == "tool_start":
+            # Published once the generation that asked for the tool has
+            # finished, so whatever is buffered is complete: say it now. Waiting
+            # for the quiet timer instead glued "Let me check." to the answer
+            # ("check.It is noon.") whenever the tool was quick, and let the
+            # confirm line below overtake it.
+            self._queue_sentences(final=True)
+        elif kind == "confirm_request":
+            self._queue_sentences(final=True)
+            self._out_q.put(CONFIRM_SENTENCE)
+        elif kind == "turn_end":
+            if event.payload.get("turn_id") != self._live_turn:
+                return  # a turn cut off earlier, finishing late: not this one's end
+            status = event.payload.get("status")
+            if status == "ok":
+                self._queue_sentences(final=True)
+            elif status == "capped":
+                # The tool-limit message is never streamed as tokens.
+                self._text_buf = str(event.payload.get("reply") or "")
+                self._queue_sentences(final=True)
+            else:  # error or cancelled: never speak a half-written buffer
+                self._text_buf = ""
+                if status == "error":
+                    self._out_q.put(APOLOGY_HI if self._heard_hindi else APOLOGY_EN)
+            self._out_q.put(None)
+
+    def _queue_sentences(self, final: bool = False) -> None:
+        sentences, self._text_buf = split_sentences(self._text_buf, final=final)
+        for sentence in sentences:
+            self._mark("first_sentence")
+            self._out_q.put(sentence)
+
+    def _quiet_wait(self) -> float | None:
+        """How long the bridge waits before flushing the buffer; None = forever.
+
+        A full stop only ends a sentence once the next character arrives
+        (split_sentences), so text that stops on one -- "Let me check." before a
+        tool call -- would be held until the tool finished. Counted from the last
+        token, not the last event: tts_rms arrives every 100 ms while Baby
+        speaks and would otherwise keep pushing the flush away.
+        """
+        if not ends_sentence(self._text_buf):
+            return None
+        return max(0.0, self._token_at + _QUIET_FLUSH_S - time.monotonic())
 
     # -- state machine (runs on the voice thread) ---------------------------------
 
@@ -442,7 +681,7 @@ class VoicePipeline:
         except queue.Empty:
             return False
         try:
-            pcm, sample_rate = self.tts.synth(text)
+            pcm, sample_rate = self._synth(text)
             self.audio.play(pcm, sample_rate, threading.Event())
             self._publish("status", text=f"voice: announced {text!r}")
         except Exception as exc:  # noqa: BLE001 — a failed announcement must not kill the loop
@@ -471,15 +710,25 @@ class VoicePipeline:
         # PTT bypasses speaker verification: whoever pressed the hotkey is at
         # the keyboard and already owns the PC.
         self._listen_source = source
+        self._fillers = 0
         # B6: a fresh wake/PTT starts a new conversation session — reset the trust
-        # smoother to optimistic. Follow-ups keep accumulating within the session.
-        if source != "followup":
+        # smoother to optimistic. Follow-ups keep accumulating within the session,
+        # and so does a barge-in: interrupting must not buy an unknown speaker
+        # back the optimistic trust of a fresh session.
+        if source not in ("followup", "barge"):
             self.session_trust.reset()
-        # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
-        if source != "followup" or self.conversation_cue:
-            self.audio.beep()
-        self.audio.drain()  # never transcribe Baby's own just-played speech
-        frames.clear()
+        if source == "barge" and self.barge_keep_audio:
+            # The user is already talking: no beep over them, and the frames
+            # that tripped the barge-in go back in front of the capture, which
+            # then hears and endpoints them like any other speech.
+            frames.prepend(self._heard)
+        else:
+            # Wake/PTT always beeps; a follow-up window beeps only if the cue is on.
+            if source != "followup" or self.conversation_cue:
+                self.audio.beep()
+            self.audio.drain()  # never transcribe Baby's own just-played speech
+            frames.clear()
+        self._heard.clear()
         self._drain_sentences()  # drop any stale sentinel from a cancelled turn
         self.vad.reset()
         self.state = LISTENING
@@ -499,6 +748,7 @@ class VoicePipeline:
         grace = self.conversation_window_s if followup else self.listen_grace_s
         speech_deadline = time.monotonic() + grace
         hard_deadline = speech_deadline + self.max_utterance_s  # cap a runaway
+        done = False
         while not self._stopping.is_set():
             now = time.monotonic()
             if not getattr(self.vad, "speech_started", False) and now > speech_deadline:
@@ -524,6 +774,9 @@ class VoicePipeline:
             if done:
                 break
 
+        # The VAD only reports the end once its silence window has passed, so
+        # the user actually stopped that long ago -- the wait they feel starts there.
+        speech_end = time.monotonic() - (self._vad_silence_s if done else 0.0)
         self.state = IDLE
         # No speech at all (false wake, or the user stayed quiet): skip the
         # expensive STT call on pure silence and say so in the feed. In a
@@ -537,6 +790,7 @@ class VoicePipeline:
             return
         pcm = np.concatenate(recorded)
         text, lang = self.stt.transcribe(pcm)
+        stt_done = time.monotonic()
         if not text:
             if followup:
                 self._session_cue()
@@ -547,8 +801,12 @@ class VoicePipeline:
         # Conversation end phrase ("baby stop listening", "bas") cleanly closes
         # the follow-up window. Checked BEFORE the kill phrase so "baby stop
         # listening" ends the session as a session-close, not as a mid-turn kill
-        # (the kill phrase "baby stop" would otherwise shadow it).
-        if followup and is_end_phrase(text, self.end_phrases):
+        # (the kill phrase "baby stop" would otherwise shadow it). Said over
+        # Baby it closes the conversation too: a kept barge-in capture reaches
+        # here, and "bas" must not be sent to the model as a question.
+        if self._listen_source in ("followup", "barge") and is_end_phrase(
+            text, self.end_phrases
+        ):
             self._session_cue()
             self._publish("status", text="voice: conversation ended")
             return
@@ -556,6 +814,18 @@ class VoicePipeline:
             self._cancel_turn()
             self._drain_sentences()
             self._publish("status", text="voice: stopped by kill phrase")
+            return
+        if self.filler_filter and self._fillers < _MAX_FILLERS and is_filler(text):
+            # Thinking aloud ("uh... let me think") is not a request: no model
+            # call and no reply. Keep listening -- the question is coming.
+            self._fillers += 1
+            # Push-to-talk's pass on speaker verification covers one capture.
+            if self._listen_source == "ptt":
+                self._listen_source = "wake"
+            # Not "heard": the UI would light the path to the model.
+            self._publish("status", text=f"voice: listening (thinking aloud: {text!r})")
+            self.vad.reset()
+            self.state = LISTENING
             return
         # Game-mode escape hatch: a bare "game mode on/off" toggles directly,
         # no model in the loop — in game mode with the cloud down there is NO
@@ -611,6 +881,16 @@ class VoicePipeline:
         # stale sentinel from a cancelled prior turn must not end it early.
         self._interrupt.clear()
         self._drain_sentences()
+        # After a filler this capture was read from the mic audio queued while the
+        # filler was transcribed, so the VAD found its end late by an unknown amount.
+        # ponytail: no timing line for that turn rather than a wrong one; stamp
+        # each mic block in AudioIO if those turns ever need measuring.
+        self._timing = {} if self._fillers else {
+            "speech_end": speech_end,
+            "stt_done": stt_done,
+            "submitted": time.monotonic(),
+        }
+        self._heard_hindi = detect_language(text) == "Hindi"
         self._turn_future = self._submit(text)
         self.state = RESPONDING
 
@@ -658,73 +938,163 @@ class VoicePipeline:
             pass
 
     def _respond(self, frames) -> None:
+        """Speak this turn's sentences as they arrive, watching the mic throughout.
+
+        Kokoro runs on the synth worker, so sentence N+1 is being made while N
+        plays, and this loop never stops polling for a barge-in or the kill
+        switch -- it used to block for the length of every synthesis. All the
+        prefetched audio is local to this call: returning discards it.
+        """
+        turn_q = self.sentence_q
         stop_playback = threading.Event()
         speech_frames = 0
+        self._heard.clear()  # only this reply's audio may be replayed
+        ready: collections.deque = collections.deque()  # (pcm, rate, is_reply), in order
+        inflight = None  # (future, is_reply) for the sentence being synthesised
+        player: threading.Thread | None = None
+        ended = False  # the end-of-turn marker was read: nothing more will come
+        dead_since: float | None = None
         while not self._stopping.is_set():
             # Kill switch: stop everything now — no follow-up window, unlike a
             # barge-in or a clean turn end.
             if self._interrupt.is_set():
-                self._abort_speaking(stop_playback)
+                self._abort_speaking(stop_playback, player)
                 return
-            try:
-                sentence = self.sentence_q.get(timeout=0.1)
-            except queue.Empty:
-                sentence = _NOTHING
-            if sentence is None:  # end-of-turn sentinel
-                self._turn_future = None
-                # A kill switch that landed as the turn was ending must not open
-                # a follow-up window (the cancelled turn still emits a sentinel).
-                if self._interrupt.is_set():
-                    self._abort_speaking(stop_playback)
-                    return
-                # Conversation mode: keep the mic hot for a wake-word-free
-                # follow-up (opens only now that playback is fully done, so Baby
-                # never transcribes its own speech). Disabled → back to IDLE.
-                if self.conversation_enabled:
-                    self._enter_listening(frames, source="followup")
+
+            if inflight is not None and inflight[0].done():
+                (future, reply), inflight = inflight, None
+                try:
+                    pcm, sample_rate = future.result()
+                    ready.append((pcm, sample_rate, reply))
+                except Exception as exc:  # noqa: BLE001 — one bad sentence must not end the reply
+                    self._publish(
+                        "status", text=f"voice: skipped a sentence ({type(exc).__name__})"
+                    )
+
+            # Reaped before the gate below: with prefetch off it waits for the
+            # player to be gone, and a dead one would cost a whole extra pass.
+            if player is not None and not player.is_alive():
+                player = None
+
+            if inflight is None and not ended and self._may_synthesise(ready, player):
+                try:
+                    sentence = turn_q.get_nowait()
+                except queue.Empty:
+                    pass
                 else:
-                    self.state = IDLE
-                return
-            if sentence is not _NOTHING:
-                pcm, sample_rate = self.tts.synth(sentence)
+                    if sentence is None:
+                        ended = True
+                    else:
+                        # The canned "check the screen" line and the apology are
+                        # not the model's reply: if they took the tts/audio stamps
+                        # they would land before (or without) the first token, and
+                        # the timing line would read as a reply spoken.
+                        reply = sentence not in (CONFIRM_SENTENCE, APOLOGY_EN, APOLOGY_HI)
+                        if reply:
+                            self._mark("tts_start")
+                        inflight = (self._synth_later(sentence), reply)
+
+            if player is None and ready:
+                pcm, sample_rate, reply = ready.popleft()
                 player = threading.Thread(
-                    target=self.audio.play,
-                    args=(pcm, sample_rate, stop_playback),
-                    kwargs={"on_level": self._emit_tts_level},
-                    daemon=True,
+                    target=self._play, args=(pcm, sample_rate, stop_playback, reply), daemon=True
                 )
                 player.start()
-                while player.is_alive():
-                    if self._interrupt.is_set():  # kill switch mid-sentence
-                        stop_playback.set()
-                        player.join(timeout=1.0)
-                        self._abort_speaking(stop_playback)
-                        return
-                    speech_frames = self._barge_in_step(frames, speech_frames, stop_playback)
-                    if stop_playback.is_set():
-                        player.join(timeout=1.0)
-                        self._cancel_turn()
-                        self._drain_sentences()
-                        self._publish("status", text="voice: interrupted")
-                        self._enter_listening(frames)
-                        return
-                continue
-            # queue empty: keep monitoring the mic between sentences
+
+            busy = inflight is not None or bool(ready) or player is not None
+            if ended and not busy:
+                self._end_turn(frames, stop_playback)
+                return
+
+            # One mic poll: barge-in, and the pause that paces this loop.
             speech_frames = self._barge_in_step(frames, speech_frames, stop_playback)
             if stop_playback.is_set():
+                heard_at = time.monotonic()
+                if player is not None:
+                    player.join(timeout=1.0)
                 self._cancel_turn()
                 self._drain_sentences()
                 self._publish("status", text="voice: interrupted")
-                self._enter_listening(frames)
+                self._report_timing(cut=time.monotonic() - heard_at if player else 0.0)
+                self._enter_listening(frames, source="barge")
                 return
 
-    def _abort_speaking(self, stop_playback) -> None:
+            # A turn can die without publishing its end (it raised between
+            # turn_start and its try block, or the bus dropped the event). With
+            # nothing left to say, do not wait for a marker that is not coming.
+            if busy or ended or not turn_q.empty() or not self._turn_is_over():
+                dead_since = None
+            else:
+                dead_since = dead_since or time.monotonic()
+                if time.monotonic() - dead_since > _DEAD_TURN_S:
+                    self._publish("status", text="voice: turn finished without its end marker")
+                    if self._turn_failed():  # it raised: say so, as an error turn would
+                        turn_q.put(APOLOGY_HI if self._heard_hindi else APOLOGY_EN)
+                    turn_q.put(None)
+                    dead_since = None
+
+    def _turn_failed(self) -> bool:
+        future = self._turn_future
+        # done() first: exception() on a running future waits for it to finish.
+        return (
+            future is not None
+            and future.done()
+            and not future.cancelled()
+            and future.exception() is not None
+        )
+
+    def _may_synthesise(self, ready, player) -> bool:
+        """Bound on audio held: one sentence playing and at most _READY_AHEAD
+        more, ready or being made. With prefetch off, one at a time as it
+        always was."""
+        if self.prefetch:
+            return len(ready) < _READY_AHEAD
+        return player is None and not ready
+
+    def _turn_is_over(self) -> bool:
+        return self._turn_future is not None and self._turn_future.done()
+
+    def _play(self, pcm, sample_rate, stop, reply: bool) -> None:
+        """Player-thread body. A device error costs this sentence, not the reply."""
+        try:
+            self.audio.play(
+                pcm,
+                sample_rate,
+                stop,
+                on_level=self._emit_reply_level if reply else self._emit_tts_level,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._publish(
+                "status", text=f"voice: could not play a sentence ({type(exc).__name__})"
+            )
+
+    def _end_turn(self, frames, stop_playback) -> None:
+        """Everything the turn had to say has been said."""
+        self._turn_future = None
+        # A kill switch that landed as the turn was ending must not open a
+        # follow-up window (the cancelled turn still emits its end marker).
+        if self._interrupt.is_set():
+            self._abort_speaking(stop_playback)
+            return
+        self._report_timing()
+        # Conversation mode: keep the mic hot for a wake-word-free follow-up
+        # (opens only now that playback is fully done, so Baby never transcribes
+        # its own speech). Disabled → back to IDLE.
+        if self.conversation_enabled:
+            self._enter_listening(frames, source="followup")
+        else:
+            self.state = IDLE
+
+    def _abort_speaking(self, stop_playback, player=None) -> None:
         """Kill switch reached a live turn: halt playback, cancel the turn,
         drop queued speech, go fully idle (no follow-up window)."""
         stop_playback.set()
+        if player is not None:
+            player.join(timeout=1.0)
         self._cancel_turn()
         self._drain_sentences()
         self._interrupt.clear()
+        self._timing = {}  # a killed turn is not a wait worth measuring
         self.state = IDLE
         self._publish("status", text="voice: stopped by kill switch")
 
@@ -738,13 +1108,16 @@ class VoicePipeline:
 
     def _barge_in_step(self, frames, speech_frames: int, stop_playback) -> int:
         """One mic poll during playback; sets stop on sustained speech."""
-        if not self.barge_in:
-            return 0
+        # The read is also what paces the _respond loop, so it happens even with
+        # barge-in off -- returning before it made that loop spin a whole core.
         frame = self.audio.read(timeout=0.05)
         if frame is None:
             return speech_frames
+        if not self.barge_in:
+            return 0
         frames.push(frame)
         while (chunk := frames.pop(_VAD_FRAME)) is not None:
+            self._heard.append(chunk)
             if self.vad.is_speech(chunk, self.barge_in_threshold):
                 speech_frames += 1
                 if speech_frames >= _BARGE_IN_FRAMES:
@@ -753,10 +1126,3 @@ class VoicePipeline:
             else:
                 speech_frames = 0
         return speech_frames
-
-
-class _Nothing:
-    """Sentinel distinct from None (None = end-of-turn)."""
-
-
-_NOTHING = _Nothing()

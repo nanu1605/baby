@@ -1,0 +1,5 @@
+model: openai/gpt-4o-mini  test: T6  run: 4
+score: {"pass": true, "devanagari_ratio": 1.0}
+calls:
+final:
+"हर नया दिन एक नई शुरुआत है। अपनी मेहनत और सकारात्मक सोच के साथ आगे बढ़ो, क्योंकि सफलता तुम्हारे कदम चूमेगी।"

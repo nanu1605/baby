@@ -21,7 +21,7 @@ from core.intents import (
     parse_no,
     parse_yes,
 )
-from core.prompts import detect_language, system_prompt
+from core.prompts import detect_language, system_prompt, trailing_nudge
 from core.providers.base import ChatProvider, ToolCall
 from core.safety import SafetyClass, SafetyConfig, SafetyGate
 from db.database import Database
@@ -78,7 +78,8 @@ def _format_past_context(hits: list[dict] | None) -> str | None:
 # no action gets ONE deterministic retry telling the model to act now.
 _INTENT_ONLY_RE = re.compile(
     r"^\s*(?:(?:sure|okay|ok|right|alright)[,!\s]+)?"
-    r"(?:opening\b|(?:i'?ll|i\s+will|let\s+me)\s+"
+    # Either apostrophe: gpt-5.4 models write "I’ll" (DECISIONS #174).
+    r"(?:opening\b|(?:i['’]?ll|i\s+will|let\s+me)\s+"
     r"(?:open|go|search|run|start|check|look|get|fetch|take|close|launch"
     r"|browse|find|read|type|press|try|pull|research)\b)",
     re.IGNORECASE,
@@ -426,27 +427,12 @@ class AgentCore:
         messages: list[dict] = [
             {
                 "role": "system",
-                "content": system_prompt(summary, memories, language, past_context),
+                "content": system_prompt(
+                    summary, memories, language, past_context, channel=self.channel
+                ),
             },
             *history,
-            # Trailing nudge: the head-of-prompt language pin alone loses to a
-            # history full of another language (observed live with the 9B) —
-            # an instruction adjacent to generation is what holds. Same for
-            # capability claims: the model repeated its own stale "browser is
-            # not configured" excuses from history instead of using the fixed
-            # tool (observed live), so trust only the current tool list.
-            {
-                "role": "system",
-                "content": f"Reply ONLY in {language}. Match the tone of the "
-                "latest message: professional and emoji-free for work or serious "
-                "questions, playful only for casual chat. Ignore any claims in "
-                "this conversation OR its summary that a tool is broken, "
-                "unavailable, not configured, or that you lack a capability "
-                "(screenshots: browser_act action=screenshot for the browser "
-                "page, describe_screen for the whole screen) — the tool list "
-                "in THIS request is the only truth; try the tool before "
-                "saying it can't be done.",
-            },
+            {"role": "system", "content": trailing_nudge(language, self.channel)},
         ]
 
         # Strict gate (P2): whatever the DB or a half-written turn held, the
@@ -543,14 +529,22 @@ class AgentCore:
                         1,
                         "empty model output — served honest fallback",
                     )
+                    # Nothing was streamed, so say it the way the decline path
+                    # does: a voice turn otherwise ends in silence (#170).
+                    self.bus.publish(
+                        "token", self.channel, text=reply, turn_id=turn_id, source="baby_core"
+                    )
                 # Skip when the model already wrote a "Next:" line itself —
                 # it mimics suggestions seen in history, and appending a real
-                # one produced double "Next:" lines (observed live).
+                # one produced double "Next:" lines (observed live). A spoken
+                # reply that already ends in a question has made its own offer;
+                # a second one would leave "yes" answering the wrong question.
                 if (
                     self.suggest_next_step
                     and text.strip()
                     and tools_succeeded > 0
                     and "Next:" not in text
+                    and not (self.channel == "voice" and text.rstrip().endswith(("?", "？")))
                 ):
                     suggestion = await self._suggest_next_step(messages, text)
                     if suggestion:
@@ -642,7 +636,10 @@ class AgentCore:
         without the debris that triggered the rejection.
         """
         return [
-            {"role": "system", "content": system_prompt(summary, memories, language)},
+            {
+                "role": "system",
+                "content": system_prompt(summary, memories, language, channel=self.channel),
+            },
             {"role": "user", "content": user_text},
         ]
 

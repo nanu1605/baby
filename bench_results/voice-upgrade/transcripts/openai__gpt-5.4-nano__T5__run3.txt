@@ -1,0 +1,12 @@
+model: openai/gpt-5.4-nano  test: T5  run: 3
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Hey Tanishq 😄  
+Filhaal main online/idle mode mein hoon—tum kya karna chahte ho?  
+
+Agar tum chaho to main:
+- PC ke current status (CPU/GPU/RAM) check kar du,  
+- ya kisi file/app/browser mein help kar du.  
+
+Bas bata do “check status” ya “yeh kaam karna hai”.

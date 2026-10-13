@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-nano  test: T8  run: 2
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Kolkata","why":"Kolkata is widely considered one of India’s best street-food cities, with legendary options like phuchka (puchka), jhalmuri, kati rolls, rolls and kebabs, street sweets like rosogolla/rasgulla (near-street vendors too), and a dense, all-day street-food culture that spans many neighborhoods at affordable prices."}

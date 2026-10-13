@@ -1,0 +1,6 @@
+model: openai/gpt-5.4-mini  test: T5  run: 5
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Bas yahin hoon 😊  
+Aap batao, kya scene hai? Kya help chahiye aaj — PC, files, browsing, ya kuch aur?

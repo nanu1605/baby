@@ -1,0 +1,49 @@
+model: openai/gpt-5.4-mini  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 21}
+calls:
+final:
+Bilkul yaar — ghar pe bhi weekend mast ban sakta hai. Kuch vibe-wise plans de raha hoon:
+
+### 1) Proper chill movie marathon
+- 2–3 movies/series episodes
+- popcorn + cold drink
+- dim lights, blanket, no phone for 1–2 hours
+
+### 2) Gaming + snacks night
+- apna favorite game
+- little tournament type challenge
+- loser does snack duty / next round choose kare
+
+### 3) Home cafe setup
+- coffee/tea bana
+- kuch easy snack: toast, maggi, chips, sandwich
+- playlist on karke “cafe vibe” create kar
+
+### 4) Self-care reset
+- long shower
+- face pack / skincare
+- room clean + bed change
+- feels like mini refresh
+
+### 5) Lazy creative time
+- playlist bana
+- doodle/sketch/write random thoughts
+- old photos sort karo
+- thoda nostalgic, thoda peaceful
+
+### 6) Food experiment
+- kuch naya try karo: pasta, burger, momo, smoothie, dessert
+- cooking challenge: “jo kitchen me hai usse best banana”
+
+### 7) Friends ke saath online hangout
+- Discord/WhatsApp call
+- truth/dare, quizzes, “guess the song”
+- same movie start karke saath dekh lo
+
+### 8) “No plans” plan
+- literally no schedule
+- subah late uthna
+- whatever mood aaye woh karna
+- kabhi-kabhi best weekend यही hota hai
+
+Agar tu chahe, main tera **1-day perfect home weekend schedule** bana deta hoon — relaxed, fun, ya productive vibe me.

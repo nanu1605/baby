@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-nano  test: T8  run: 4
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Mumbai","why":"Mumbai has the most diverse, consistently available street-food options—vibrant carts and stalls across many neighborhoods (Vada Pav, Pav Bhaji, Bhel Puri, Pani Puri, Misal, Kebabs) with high “late-night” street culture and strong local variations."}

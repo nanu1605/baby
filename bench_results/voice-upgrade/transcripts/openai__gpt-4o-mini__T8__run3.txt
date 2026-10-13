@@ -1,0 +1,5 @@
+model: openai/gpt-4o-mini  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Delhi","why":"Delhi is renowned for its diverse and vibrant street food scene, offering everything from chaat to kebabs, reflecting the rich culinary heritage of India."}

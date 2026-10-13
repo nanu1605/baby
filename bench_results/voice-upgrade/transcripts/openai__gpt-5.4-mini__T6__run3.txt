@@ -1,0 +1,6 @@
+model: openai/gpt-5.4-mini  test: T6  run: 3
+score: {"pass": true, "devanagari_ratio": 1.0}
+calls:
+final:
+कल एक नया मौका है — अपने सपनों की ओर एक और कदम बढ़ाने का।  
+छोटी-छोटी कोशिशें ही बड़े बदलाव लाती हैं। 🌟

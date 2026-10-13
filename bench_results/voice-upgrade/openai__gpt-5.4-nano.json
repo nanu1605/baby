@@ -1,0 +1,842 @@
+{
+ "model": "openai/gpt-5.4-nano",
+ "runs": {
+  "T1": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome closed. **CPU usage is 34.2%**.",
+    "first_token_s": 1.296166600000106,
+    "total_s": 2.509,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome is closed. **Current CPU usage: 34.2%**.",
+    "first_token_s": 1.5301088000001073,
+    "total_s": 3.106,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome closed. Current **CPU usage: 34.2%**.",
+    "first_token_s": 2.5710252999997465,
+    "total_s": 7.232,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Google Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome is closed.  \n**CPU usage:** **34.2%**.",
+    "first_token_s": 1.1722175999998399,
+    "total_s": 3.997,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "correct_tools": true,
+     "args_ok": true,
+     "mentions_cpu": true
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"close\",\"name\":\"Chrome\"}"
+     ],
+     [
+      "get_system_stats",
+      "{\"detail\":false}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "Chrome is closed.  \n**CPU usage:** **34.2%**.",
+    "first_token_s": 1.7855994999999893,
+    "total_s": 2.992,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T2": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\",\"max_results\":20}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\",\"max_kb\":2000}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "I found **`quarterly_report.pdf`** at **`C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf`** and read it.\n\n**Revenue number:** **$4.2M**",
+    "first_token_s": 1.1510152999999264,
+    "total_s": 3.788,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\",\"max_results\":20}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\",\"max_kb\":2000}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "I found **`quarterly_report.pdf`** in **C:\\\\Users\\\\tanis\\\\Documents\\\\** and read it.\n\n✅ **Revenue number:** **$4.2M**",
+    "first_token_s": 1.396051599999737,
+    "total_s": 3.927,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\",\"max_results\":10}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\",\"max_kb\":2000}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "I found **C:\\Users\\tanis\\Documents\\quarterly_report.pdf** and read it.  \nThe **revenue number** mentioned is **$4.2M**.",
+    "first_token_s": 3.1338536000002932,
+    "total_s": 5.818,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\",\"max_results\":20}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\",\"max_kb\":2000}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "I found **`quarterly_report.pdf`** in `C:\\Users\\tanis\\Documents\\`.\n\nIn the document, the **revenue number is _$4.2M_**.",
+    "first_token_s": 1.237931899999694,
+    "total_s": 3.901,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "chain_ordered": true,
+     "args_ok": true,
+     "answer_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"quarterly_report.pdf\",\"max_results\":20}"
+     ],
+     [
+      "read_file",
+      "{\"path\":\"C:\\\\Users\\\\tanis\\\\Documents\\\\quarterly_report.pdf\",\"max_kb\":2000}"
+     ]
+    ],
+    "valid_arg_calls": 2,
+    "final": "I found **`quarterly_report.pdf`** at:\n\n`C:\\Users\\tanis\\Documents\\quarterly_report.pdf`\n\nReading it shows the revenue number is **$4.2M**.",
+    "first_token_s": 1.6264445000001615,
+    "total_s": 12.33,
+    "steps": 3,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T3": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup python script\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Found these Python scripts (max 5):\n\n1) `C:\\Users\\tanis\\scripts\\backup.py`  \n2) `C:\\Users\\tanis\\old\\backup_v2.py`",
+    "first_token_s": 1.715428399999837,
+    "total_s": 3.118,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup python\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Found these Python scripts (max 5):\n\n1. `C:\\Users\\tanis\\scripts\\backup.py`\n2. `C:\\Users\\tanis\\old\\backup_v2.py`",
+    "first_token_s": 1.3532696000002034,
+    "total_s": 2.613,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup python\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Found these Python scripts (showing up to 5):\n\n1. `C:\\Users\\tanis\\scripts\\backup.py`\n2. `C:\\Users\\tanis\\old\\backup_v2.py`",
+    "first_token_s": 1.8412170999999944,
+    "total_s": 3.093,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup python\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "I found these Python scripts (max 5):\n\n1. `C:\\Users\\tanis\\scripts\\backup.py`\n2. `C:\\Users\\tanis\\old\\backup_v2.py`",
+    "first_token_s": 1.930199999999786,
+    "total_s": 3.595,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "args_ok": true,
+     "query_ok": true,
+     "limit_ok": true
+    },
+    "calls": [
+     [
+      "file_search",
+      "{\"query\":\"backup python\",\"max_results\":5}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Here are the Python scripts I found with “backup” in the name (max 5):\n\n1. `C:\\Users\\tanis\\scripts\\backup.py`\n2. `C:\\Users\\tanis\\old\\backup_v2.py`",
+    "first_token_s": 1.3550344000000223,
+    "total_s": 3.333,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T4": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify isn’t installed on this PC (app not found).  \n\nDo you want me to open **Spotify in the browser** instead (spotify.com)?",
+    "first_token_s": 1.1896676999999727,
+    "total_s": 2.459,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify isn’t installed on this PC.  \nDo you want me to open Spotify in the browser (spotify.com), or install the desktop app?",
+    "first_token_s": 1.2310201000000234,
+    "total_s": 2.83,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify isn’t installed on this PC (I can’t open it).  \n\nDo you want me to open **Spotify Web** in the browser instead, or help you install the desktop app?",
+    "first_token_s": 1.3209177000003365,
+    "total_s": 4.702,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify isn’t installed on this PC (app not found).  \n\nDo you want me to open **Spotify Web** in the browser instead?",
+    "first_token_s": 1.2533101999997598,
+    "total_s": 2.644,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "honest": true,
+     "retried": false
+    },
+    "calls": [
+     [
+      "app_control",
+      "{\"action\":\"open\",\"name\":\"Spotify\"}"
+     ]
+    ],
+    "valid_arg_calls": 1,
+    "final": "Spotify isn’t installed on this PC (I can’t open it).  \n\nIf you want, tell me whether you’d like to:\n1) open Spotify in the browser (web player), or  \n2) install Spotify (if you have the installer).",
+    "first_token_s": 1.9511066999998548,
+    "total_s": 3.499,
+    "steps": 2,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T5": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan Tanishq—main yahin hoon 😄  \nAbhi mujhe tumhare PC ka live status dekhne ki zarurat hogi. Kya check karu?\n\n1) CPU/RAM/GPU usage  \n2) Temps & fans  \n3) Jo screen pe hai uska brief  \n4) Kisi specific kaam pe help (browser/file/app)",
+    "first_token_s": 1.0533013000003848,
+    "total_s": 1.641,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan Tanishq 😄 Baby on duty!  \n\nAbhi mere paas tumhare PC ki live status dekhne ke liye screen/sensors check karne ki request nahi aayi—bolo, kya chahiye?  \n- current screen kya chal raha hai  \n- performance/temps check  \n- koi app open/close karna hai  \n- ya kuch specific kaam start karna hai",
+    "first_token_s": 0.9676787999997032,
+    "total_s": 1.512,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Hey Tanishq 😄  \nFilhaal main online/idle mode mein hoon—tum kya karna chahte ho?  \n\nAgar tum chaho to main:\n- PC ke current status (CPU/GPU/RAM) check kar du,  \n- ya kisi file/app/browser mein help kar du.  \n\nBas bata do “check status” ya “yeh kaam karna hai”.",
+    "first_token_s": 0.9458566000002975,
+    "total_s": 2.216,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Arre Tanishq 😄 main yahin hoon—koi active task nahi chal raha abhi.\n\nAap batao: aaj kya karna hai—work stuff, browser/website, file dhoondhna, ya kuch aur?",
+    "first_token_s": 1.1417182999998658,
+    "total_s": 1.448,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "zero_tools": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan Tanishq 😄 filhaal main yahin hoon—PC pe kya chal raha hai, wo dekhne ke liye mujhe screen/status check karna hoga.\n\nChaho toh main:\n1) tumhari screen dekh ke bata du kya open hai, ya  \n2) system stats (CPU/RAM/GPU) dekh lu, ya  \n3) kisi specific cheez kaam pe focus karu?\n\nKaunsa option?",
+    "first_token_s": 1.1041607000001932,
+    "total_s": 1.716,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T6": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "कल के लिए छोटी सी प्रेरणादायक बात:  \n\n“आज अच्छा रहा तो कल और बेहतर होगा—बस एक छोटा सा कदम उठाओ, खुद पर भरोसा रखो, और मेहनत जारी रखो। तुम जितना सोचते हो, उससे ज्यादा सक्षम हो।”",
+    "first_token_s": 1.515850700000101,
+    "total_s": 1.649,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "कल का दिन भी आज की तरह अच्छा बने—बस एक बात याद रखो: **छोटे-छोटे कदम भी आगे ले जाते हैं।**  \nआज जो मेहनत करोगे, वही कल तुम्हारे लिए अवसर बन जाएगी। **डरो मत—बस चलते रहो।**",
+    "first_token_s": 1.3433709000000817,
+    "total_s": 1.798,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "कल के लिए प्रेरणादायक छोटी सी बात:\n\nकल चाहे जैसा भी हो, एक बात याद रखना—आज तुमने जो ऊर्जा और मेहनत जुटाई है, वही कल तुम्हें आगे बढ़ाएगी। छोटे कदम भी जीत की शुरुआत होते हैं। भरोसा रखो, प्रयास जारी रखो—तुम अपनी कहानी खुद लिख रहे हो। 💪✨",
+    "first_token_s": 1.0092491999998856,
+    "total_s": 1.425,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "कल के लिए तुम्हारी छोटी सी प्रेरणादायक बात:\n\n**आज जो तुमने किया, वही तुम्हें कल के लिए मजबूत बनाता है।**  \nकल चाहे जैसा भी दिन हो, बस एक काम याद रखना—**छोटा कदम भी प्रगति होता है।**  \n**डरो मत, कोशिश करते रहो—सफलता तुम्हारे प्रयासों के साथ ही आती है।** 🌟",
+    "first_token_s": 0.9701302999997097,
+    "total_s": 1.441,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "devanagari_ratio": 1.0
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "कल के लिए छोटी सी प्रेरणादायक बात:\n\nआज का दिन अच्छा रहा—इस खुशी को साथ लेकर कल की शुरुआत करो। **छोटी-छोटी कोशिशें भी बड़ा बदलाव लाती हैं।** डर या थकान आए तो भी एक कदम आगे बढ़ाओ, क्योंकि **तुम्हारी मेहनत ही तुम्हारी पहचान बनती है।**",
+    "first_token_s": 1.125930900000185,
+    "total_s": 1.553,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T7": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 23
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan yaar, weekend “ghar pe chill” ke liye kuch mast plan ideas—choose kar lo mood ke hisaab se 😄\n\n**1) Movie + Snacks Night**\n- 2-3 movies shortlist (one comedy, one action, one feel-good)\n- “snack challenge”: popcorn + chips + kuch homemade (maggi/cheese toast)\n- Last me short review: “best scene” 1 minute per person\n\n**2) Gaming / LAN-less Tournament (ghar ke andar)**\n- Fifa/EAFC, Tekken, Valorant practice, Uno—jo bhi comfortable ho\n- 3 rounds ka mini-tournament + winner gets “best snack” / “remote control” 😄\n\n**3) Cooking / Chai + Dessert Experiment**\n- Easy options: **pasta arrabbiata**, **manchurian**, **paneer tikka**, ya **fried rice**\n- Dessert: **brownie**, **milkshake**, ya **oreo shake**\n- “No recipe challenge”: jo available ho usse best banani\n\n**4) Clean + Setup “Cozy Mode”**\n- Room tidy + lights thodi warm\n- Playlist banake “vibes” set\n- 1 hour deep clean, phir straight chill\n\n**5) Board Games / Cards / Puzzle**\n- Ludo, Uno, chess, tambola (ghar walon ke saath super fun)\n- Or jigsaw puzzle + chai = aesthetic combo\n\n**6) Dream Trip + Photoshoot (ghar pe fun)**\n- Mock “travel vlog”: 10 min screen recording, fun narration\n- Best: living room ko “cafe” ya “beach” vibe deke\n\n**7) Early Sleep, Late Chill (healthy twist)**\n- 45 min workout/yoga\n- Shower + chai\n- Phir 1 long series episode + lights-off\n\n**Quick pick karte hain:**\nTum weekend pe **alone chill** karoge ya **family ke saath**?  \nAur mood: **movie / food / gaming / games** me se kya pasand hai?",
+    "first_token_s": 1.1460382999998728,
+    "total_s": 3.667,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 19
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan yaar, weekend “ghar pe chill” ke liye kuch mast plans—choose kar lo mood ke hisaab se 😄\n\n## 1) Movie + Comfort Night (Low effort, High vibe)\n- 1/2 movie + 1 series (mix)\n- Snacks: popcorn + fries/chaat/whatever\n- Light: dim + playlist (lofi/feel-good)\n**Pro tip:** “theme” set karo—romcom night / sci‑fi night / horror (agar vibe ho).\n\n## 2) Game Night + Snacks Tournament\n- FIFA/EA FC, Valorant custom, Mario/any casual, ya board games\n- Winner gets “boss snack” (like brownies/ice cream)\n**Pro tip:** 3 rounds max, warna weekend “overgaming” ho jayega 😅\n\n## 3) Cooking Challenge (2 hours fun)\n- Pair game: tum + house partner (or friend/parent)\n- Theme: “One ingredient, multiple dishes”  \n  Example: paneer/chicken/veg → paneer tikka + sandwich / chicken fried rice + wrap\n**End:** sab milke taste test + ranking.\n\n## 4) Cleaning + Reset + Mini Self-care\n- 30–40 min “speed clean”\n- Then: shower + skincare / hair oil / face pack\n- Evening: cozy tea/coffee + music\n**Result:** ghar bhi fresh, mood bhi.\n\n## 5) Photo/Memory + Skill Night\n- Old photos arrange, ya phone videos export + montage\n- Skill: something quick like Canva posters, editing, language practice, or learning a song on guitar\n**Pro tip:** 1 hour learn + 30 min output (small but satisfying).\n\n## 6) “Outdoor but at Home” (Balcony/terrace vibe)\n- Blankets + string lights\n- Drinks + snacks\n- Sunset/late evening walk around building + return\n**Cozy + low cost.**\n\n---\n\n### Quick question: tumhara mood kya hai?\n1) **Relax/Netflix**  \n2) **Games**  \n3) **Food/cooking**  \n4) **Clean + self-care**  \n5) **Creative/skill**\n\nBas number bol do—main uske hisaab se 1 perfect weekend plan (time-wise) bana deta hoon.",
+    "first_token_s": 1.250776500000029,
+    "total_s": 4.185,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 17
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan yaar! Weekend “ghar pe hi chill” ke liye kuch mast plan options—tum mood ke hisaab se pick kar lo 😄\n\n### 1) **Lazy Cinematic Day (best for chilling)**\n- Morning: late breakfast + coffee/chaas\n- Noon: **2–3 movies/series marathon**\n- Evening: popcorn + blanket + “one vibe playlist”\n- End: light dessert (ice cream/fruit) 😋\n\n### 2) **Game + Snacks Circuit**\n- 1st round: co-op/online game (or solo story game)\n- Snack breaks: fries/samosa + cold drink (or mocktail)\n- End: “who won” mini trophy moment 😂\n\n### 3) **Food Expedition (ghar pe restaurant feel)**\n- Theme choose karo: **Italian / Chinese / Desi thali**\n- Group challenge:  \n  “One person starter banaye, one main, one dessert”\n- House ke andar plating + music = full experience\n\n### 4) **Gym nahi, but “Active Chill”**\n- 30–45 min: stretching + light workout (YouTube routine)\n- Then: shower + chai\n- Evening: easy walk (balcony/nearby) + sunset vibe\n\n### 5) **Creative Weekend**\n- 1 hour: sketching / journaling / photo editing\n- 1 hour: DIY: desk cleanup + room corner upgrade\n- Night: gaming/movie—creative ka reward 😄\n\n### 6) **Friends/Family Hangout (ghar pe)**\n- Call group: games like “20 questions” / “never have I ever”\n- Shared watch: one episode together (video call ya screen share)\n- Snacks party = guaranteed fun\n\n**Quick question:** tumhara mood kya hai—  \n1) full movie marathon, 2) games, 3) food cooking, 4) light exercise + chill?  \nBas number bol de, main uske hisaab se exact 1-day plan bana deta hoon (time-wise).",
+    "first_token_s": 1.0581419999998616,
+    "total_s": 3.619,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 18
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan yaar! Weekend pe **ghar pe chill** ke liye kuch mast (and easy) plans—pick karo mood ke hisaab se 😄👇\n\n### 1) “Movie + Snacks” Night (Zero effort)\n- 2–3 movies/series ka theme: **comedy / thriller / rom-com**\n- Snacks: nachos + dip / popcorn + cold drink / chai + bhakarwadi\n- Plan: **1st half movie**, **intermission game** (truth & dare / dumb charades)\n\n### 2) Gaming + Food Challenge\n- 1–2 games (PC/console) + **food challenge**\n- Example: “spicy vs sweet round” ya “blind taste test” (jo best, usko win)\n\n### 3) Chill + Productivity (light version)\n- 60 min: room clean / desk setup / music playlist\n- 90 min: kuch hobby (coding, drawing, editing, reading)\n- 1 hour: watch + relax  \nBas heavy kuch nahi—steady vibe.\n\n### 4) “Late Night Snack Tour” (fun at home)\n- 4 snacks ka mini-circuit:  \n  **something crunchy → something cheesy → something sweet → something hot**\n- Har snack ke saath 1 meme/video share.\n\n### 5) Board Game / Card Game + Team Play\n- Ludo, Uno, cards (even at home basics)\n- Rule: har round me “1 dare” or “1 funny sentence” compulsory 😄\n\n### 6) Family Vibe Plan (if you wanna include others)\n- 1 short activity: **khaana decide + cooking together** (simple)\n- Then: **movie + chat** mode\n\n---\n\n**Quick question:** tumhara mood kya hai—**(A) full lazy**, **(B) fun + games**, ya **(C) thoda aesthetic/food**?  \nMain uske hisaab se 1 perfect “Saturday-Sunday” schedule bana deta hoon.",
+    "first_token_s": 1.058021099999678,
+    "total_s": 3.305,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "hinglish_hits": 19
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "Haan yaar, weekend “ghar pe chill” ka mast plan set karte hain 😄 Tanishq ke vibe ke hisaab se 3 options—pick one:\n\n### 1) **Cozy Movie + Snacks (Low-effort)**\n- Subah: late breakfast (pancakes/poha/whatever)\n- Afternoon: **1 long movie** + 1 short series episode\n- Evening: popcorn nachos + cold drink / chai + cookies\n- End: 15 min “reset” (room thoda tidy) + bed pe comfort\n\n**Mood booster:** movie se pehle 10 min light cleaning = whole vibe up.\n\n---\n\n### 2) **Home Mini-Adventure (Active but still ghar)**\n- 1 hour: **indoor workout** (jumping jacks / pushups / stretching)\n- 1.5–2 hours: **game night** (Ludo/UNO/Chess/whatever you’ve got)\n- Food: **DIY dinner** (pizza base/rolls/sandwich tower)\n- Night: “theme” playlist + dim lights + chill\n\n---\n\n### 3) **Creative + Chilled (Most fun)**\n- Afternoon: **something creative** (sketch, photo editing, playlist making, journaling)\n- Evening: **cook/experiment** (maggi upgrade, sandwich experiment, or dal-chawal style)\n- Night: “watch + review” — har episode/move ke 2-2 lines note karo (mazaa aayega)\n\n---\n\n### Quick add-ons (any plan me)\n- **One friend call** (30 min max) for catch-up\n- **DIY mocktail**: soda + lemon + sugar/honey\n- **No-phone time**: dinner ke 30 min phone off\n\nBas bata: tumhara vibe kya hai—**movie**, **workout+games**, ya **creative**? Aur Saturday aur Sunday kaunse time free ho (morning/afternoon/evening)? Main tumhare hisaab se exact schedule bana dunga.",
+    "first_token_s": 0.988471600000139,
+    "total_s": 3.34,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ],
+  "T8": [
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Mumbai\",\"why\":\"Street food variety and availability across South Mumbai, Dadar, and local markets, with iconic options like vada pav, pav bhaji, bhel puri, misal, and kebabs—plus year-round footfall and long-established vendors.\"}",
+    "first_token_s": 1.0423296999997547,
+    "total_s": 1.482,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Kolkata\",\"why\":\"Kolkata is widely considered one of India’s best street-food cities, with legendary options like phuchka (puchka), jhalmuri, kati rolls, rolls and kebabs, street sweets like rosogolla/rasgulla (near-street vendors too), and a dense, all-day street-food culture that spans many neighborhoods at affordable prices.\"}",
+    "first_token_s": 0.9784061999998812,
+    "total_s": 1.407,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Indore\",\"why\":\"Indore is renowned for its street food scene (especially namkeen, chaat, kebabs, and regional snacks like poha-jalebi and street-side kebab/chaat) with abundant late-night vendors, strong flavors, and a consistent variety across the city.\"}",
+    "first_token_s": 1.3327887999998893,
+    "total_s": 1.853,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Mumbai\",\"why\":\"Mumbai has the most diverse, consistently available street-food options—vibrant carts and stalls across many neighborhoods (Vada Pav, Pav Bhaji, Bhel Puri, Pani Puri, Misal, Kebabs) with high “late-night” street culture and strong local variations.\"}",
+    "first_token_s": 1.033684799999719,
+    "total_s": 1.52,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   },
+   {
+    "ok": true,
+    "score": {
+     "pass": true,
+     "json_valid": true,
+     "keys_ok": true
+    },
+    "calls": [],
+    "valid_arg_calls": 0,
+    "final": "{\"city\":\"Mumbai\",\"why\":\"Massive variety of iconic street food, strong everyday street-scene culture, late-night availability, and affordability across multiple neighborhoods.\"}",
+    "first_token_s": 2.2522508000001835,
+    "total_s": 2.651,
+    "steps": 1,
+    "count_429": 0,
+    "stream_errors": 0,
+    "error": ""
+   }
+  ]
+ },
+ "reasoning_effort": "accepted"
+}

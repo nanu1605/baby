@@ -1,0 +1,7 @@
+model: openai/gpt-5.4-nano  test: T1  run: 2
+score: {"pass": true, "correct_tools": true, "args_ok": true, "mentions_cpu": true}
+calls:
+  app_control({"action":"close","name":"Chrome"})
+  get_system_stats({"detail":false})
+final:
+Chrome is closed. **Current CPU usage: 34.2%**.

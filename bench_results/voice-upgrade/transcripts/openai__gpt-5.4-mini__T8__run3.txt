@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-mini  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Delhi","why":"Delhi has some of India’s most iconic street food scenes, from chaat and parathas to kebabs and chole bhature, with huge variety, strong flavor, and famous food hubs like Chandni Chowk and Old Delhi."}

@@ -1,0 +1,322 @@
+{
+ "V1_correction_app": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "focus",
+      "name": "VS Code"
+     }
+    ]
+   ],
+   "final": "Opened VS Code and focused it for you."
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "focus",
+      "name": "VS Code"
+     }
+    ]
+   ],
+   "final": "Opening VS Code now."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "VS Code"
+     }
+    ]
+   ],
+   "final": "Opening VS Code now."
+  }
+ ],
+ "V2_correction_search": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "March invoice",
+      "max_results": 20
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "invoice March",
+      "max_results": 20
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "March",
+      "max_results": 20
+     }
+    ]
+   ],
+   "final": "I searched your files for “March invoice” and also just “March”, but nothing came up.\n\nWhat’s the file name pattern or customer name on that March invoice? If you tell me either, I’ll search again with that exact wording."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "March invoice",
+      "max_results": 20
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "invoice March",
+      "max_results": 20
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "March",
+      "max_results": 20
+     }
+    ]
+   ],
+   "final": "I searched your files for “March invoice” and “invoice March” and also just “March”, but nothing matched.\n\nTell me the exact wording you remember from the filename or which month format you used (like “Mar-2024” or “03-2024”), and I’ll re-run the search with that."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March",
+      "max_results": 20
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "March invoice",
+      "max_results": 20
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "invoice",
+      "max_results": 20
+     }
+    ]
+   ],
+   "final": "I searched your files for “invoice” and also for “March invoice”, but nothing came up. What’s the exact filename keyword you remember, like the client name or something from the subject line?"
+  }
+ ],
+ "V3_thinking_aloud": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "No rush. Take your time. When you’re ready, tell me what you want to do or decide."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time. What are you trying to decide or figure out?"
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time. What are you trying to figure out—something technical, or just deciding what to do next?"
+  }
+ ],
+ "V4_disfluent": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Supabase pricing mostly depends on how much compute and storage you use.\n\nFor the free tier, it’s typically $0 to get started (with limits on usage and for things like auth, database size, and traffic). Once you move up, common paid plans are usually in the range of a few dollars per month, and the higher tiers scale with bigger Postgres resources and traffic.\n\nIf you tell me roughly three things—how many monthly active users, how much data you expect (GB), and whether you expect heavy reads/writes—I can narrow it to the closest plan range and estimate a realistic monthly cost."
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Supabase pricing is mostly based on which plan you pick plus how much storage, database size, and egress you use. Roughly, the free tier is usable for dev, and for production most people land on the “Pro” paid tiers, where you’re typically paying on the order of tens of dollars per month, scaling up as you need more resources.  \n\nIf you tell me roughly your use case—like expected users, whether you’ll have heavy reads/writes, and how much data per month (and if you’ll stream a lot of files)—I can narrow it to a more realistic monthly range."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Supabase pricing depends on which plan you pick and roughly how much usage you mean (storage, database size, bandwidth). For most small projects, the free tier is enough to start, and then you move up once you’re getting real traffic or need higher limits.\n\nIf you tell me your expected monthly database size and your rough monthly bandwidth or users (like “maybe 1–5k users/month, few MB writes”), I can narrow it to a realistic range and which plan makes sense."
+  }
+ ],
+ "V5_reference": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "It was about 17,999 rupees."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "It was about 17,999 rupees."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "It was about 17,999 rupees."
+  }
+ ],
+ "V6_short": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Fifteen times twelve is one hundred eighty."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Fifteen times twelve is one hundred eighty."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Fifteen times twelve is one hundred eighty."
+  }
+ ],
+ "V7_no_list": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Keep your wake-up time consistent, even on weekends.  \nAvoid caffeine after mid-afternoon, especially coffee and energy drinks.  \nGet morning light for 10 to 20 minutes, and keep your bedroom dark and cool at night."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Keep a consistent sleep and wake time, even on weekends.  \nCut caffeine after late morning, and avoid big meals close to bedtime.  \nMake your bedroom cool and dark, and do 20 minutes of low-light wind-down like reading or light stretching."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Keep a consistent sleep and wake time, even on weekends.  \nGet light in your eyes within an hour of waking, and dim lights/screens 60 to 90 minutes before bed.  \nMake your room cool and dark, and avoid caffeine or heavy meals in the late afternoon."
+  }
+ ],
+ "V8_hindi": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "आज शाम को तुम तीन चीज़ों में से चुन लो, जो मूड के हिसाब से सही लगे।  \nअगर दिमाग फ्रेश चाहिए तो 30–40 मिनट वॉक या हल्की वर्कआउट कर लो, फिर 20 मिनट कुछ स्किल पर पढ़ लो।  \nअगर थकान लग रही है तो घर पर आसान स्ट्रेचिंग, फिर अच्छा डिनर और 1–2 एपिसोड/एक छोटा वीडियो देख लो।  \nऔर अगर प्रोडक्टिव रहना है तो कल के लिए छोटा प्लान बना लो, फिर एक काम सिर्फ 45 मिनट “डीप फोकस” में निपटा दो।  \n\nतुम्हारा अभी मूड क्या है—थकान, एनर्जी, या बोरियत? उसी हिसाब से मैं एकदम फिट प्लान बता दूँ।"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "आज शाम के लिए एकदम सेट प्लान बताता हूँ। पहले 30 मिनट की वॉक या हल्की स्ट्रेचिंग कर लो ताकि दिमाग फ्रेश हो जाए। फिर 45–60 मिनट कुछ “काम का” कर लो, जैसे कोड रिव्यू, किसी प्रोजेक्ट का एक छोटा टास्क, या फिर पढ़ाई। उसके बाद 30 मिनट “खुद का” समय रखो—चाहे जिम, घर का काम, या कोई हॉबी। रात का खाना थोड़ा जल्दी कर लेना और सोने से पहले 10 मिनट जर्नलिंग या रीडिंग कर लेना।  \n\nतुम्हें शाम में फिटनेस चाहिए या आराम, या फिर काम पर फोकस?"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "आज शाम आराम से एक छोटा सा “प्लान” कर लो तो दिन का अच्छा एंड होगा। पहले 30 से 45 मिनट कोई हल्की वर्कआउट या वॉक कर लो, फिर 1 घंटा कुछ सीखने या लंबित काम निपटाने में लगाओ। उसके बाद अपने लिए अच्छा सा डिनर और 20 मिनट स्क्रीन से दूर टाइम रखो, जैसे पढ़ना या संगीत सुनना।  \n\nतुम्हारा मूड कैसा है—फिटनेस वाला, पढ़ाई वाला, या बस chill वाला?"
+  }
+ ],
+ "V9_hinglish": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Weekend ke liye 3-4 solid plans de deta hoon, aap vibe bata dena (chill, fitness, ya thoda adventurous).\n\nOption 1: Early morning workout + breakfast, phir ghar ke paas ek long walk ya cycling. Shaam ko movies ya rooftop dinner type.\n\nOption 2: Tech/AI day 3-4 hours ka. Ek chhota side project pick kar lo, like aapka favorite model ko fine-tune/optimize karke ek mini demo bana do, then rest of day hobbies.\n\nOption 3: EV/auto + food crawl. Kisi showroom ya EV event type cheez dekh lo, phir 2-3 cafes me sequential tasting.\n\nOption 4: Full reset. Grocery + laundry + organize, phir evening me library/book store ya casual meet-up.\n\nAap Indore me hi plan karna hai na, aur weekend me kitna time free hoga—half day ya full day?"
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Haan yaar weekend ke liye 3 solid plans de deta hoon—tu bata kis vibe ka hai.\n\nAgar chill chahiye: subah early walk ya gym, phir coffee ke saath Netflix ya reading, shaam ko long drive ya kisi cafe me chill.\n\nAgar productive weekend: 2-3 hours deep work (koi project ya skills), baaki time cleaning + meal prep, raat ko podcast ya light workout.\n\nAgar outing wali mood: Indore me koi new place explore, friends ke saath casual dinner, aur thoda photography type roaming.\n\nTu bata “chill”, “productive”, ya “outing” — aur time kitna free hai, subah ya poora day?"
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Haan yaar, weekend ke liye kuch solid plans—pick kar le mood pe depend karega.\n\nAgar chill mood hai toh subah late breakfast, phir long drive ya nearby cafe hopping. Sham ko workout ya badminton/park walk.\n\nAgar productive banna hai toh 2 ghante “deep work” type—resume/portfolio update, ya ek chhota automation script/AI notebook. Baaki time movie + dinner.\n\nAgar adventure chahiye toh Indore me kahi local spot explore kar, ya phir cycling + sunset photo type.\n\nTu bata, kal ka mood kya hai—chill, productive, ya adventure?"
+  }
+ ],
+ "V10_filler": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Canberra is the capital of Australia."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "The capital of Australia is Canberra."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "The capital of Australia is Canberra."
+  }
+ ]
+}

@@ -85,6 +85,7 @@ voice:
     cpu_threads: 4                      # ~13% slower than 8 threads for ~43% less CPU (DECISIONS #167)
     beam_size: 1
     hotwords: "Baby, Ollama, Chromium, Telegram, Gemini, qwen, Spotify, WhatsApp, YouTube"
+    languages: []                       # e.g. [en, hi]: Whisper only picks from these; empty = any (DECISIONS #173)
   tts:
     engine: kokoro-onnx
     model: models/kokoro-v1.0.onnx
@@ -93,7 +94,8 @@ voice:
     voice_hi: hf_beta
     speed: 1.05
     cpu_threads: 4                      # onnxruntime otherwise takes every core per sentence (DECISIONS #167)
-  vad_silence_ms: 400
+    prefetch: true                      # make the next sentence while this one plays (DECISIONS #170)
+  vad_silence_ms: 700                   # quiet that ends what you say; 400 cut people off mid-thought (DECISIONS #173)
   vad_speech_wait_ms: 5000
   speaker_verify:
     enabled: false                      # off by default; a fresh user has no enrolled profile
@@ -107,6 +109,8 @@ voice:
     demote_after: 2
   barge_in: true
   barge_in_threshold: 0.6
+  barge_in_keep_audio: false            # true keeps the words that interrupted Baby; headset only -- on open speakers Baby can hear and answer itself (DECISIONS #171)
+  filler_filter: true                   # "uh... let me think" is not a question: keep listening (DECISIONS #173)
   ready_announce:
     enabled: true
     phrase: "Baby ready"

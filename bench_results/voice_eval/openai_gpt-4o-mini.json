@@ -1,0 +1,307 @@
+{
+ "V1_correction_app": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "VS Code"
+     }
+    ]
+   ],
+   "final": "I've opened VS Code for you."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "VS Code"
+     }
+    ]
+   ],
+   "final": "I've opened VS Code for you."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "VS Code"
+     }
+    ]
+   ],
+   "final": "I've opened VS Code for you."
+  }
+ ],
+ "V2_correction_search": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March"
+     }
+    ]
+   ],
+   "final": "I couldn't find any invoice from March in your files. Maybe it’s named differently?"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March"
+     }
+    ]
+   ],
+   "final": "I couldn't find any invoice from March. You might want to check the file name or location again."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March"
+     }
+    ]
+   ],
+   "final": "I couldn't find any invoice from March in your files. Do you want to try searching for something else?"
+  }
+ ],
+ "V3_thinking_aloud": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time! What are you thinking about?"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time! I'm here when you're ready."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time! I'm here when you're ready."
+  }
+ ],
+ "V4_disfluent": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "web_search",
+     {
+      "query": "Supabase pricing"
+     }
+    ]
+   ],
+   "final": "Supabase has a free tier, and the Pro plan starts at twenty-five dollars a month."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "web_search",
+     {
+      "query": "Supabase pricing"
+     }
+    ]
+   ],
+   "final": "Supabase has a free tier, and their Pro plan starts at twenty-five dollars a month."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "web_search",
+     {
+      "query": "Supabase pricing"
+     }
+    ]
+   ],
+   "final": "Supabase has a free tier, and the Pro plan starts at twenty-five dollars a month."
+  }
+ ],
+ "V5_reference": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [
+    [
+     "web_search",
+     {
+      "query": "Redmi Note 14 price in India"
+     }
+    ]
+   ],
+   "final": "I couldn't check the price right now, but the Redmi Note 14 is usually around 17,999 rupees. You might want to confirm that on an official site or store."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "It was around seventeen thousand nine hundred ninety-nine rupees."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "It was around seventeen thousand nine hundred ninety-nine rupees."
+  }
+ ],
+ "V6_short": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Fifteen times twelve is one hundred eighty."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Fifteen times twelve is one hundred eighty."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Fifteen times twelve is one hundred eighty."
+  }
+ ],
+ "V7_no_list": [
+  {
+   "pass": false,
+   "meant": true,
+   "shape": [
+    "stock opener"
+   ],
+   "calls": [],
+   "final": "Sure! First, stick to a consistent sleep schedule by going to bed and waking up at the same time every day. Second, create a relaxing bedtime routine to wind down, like reading or meditating. Lastly, make sure your sleep environment is comfortable, dark, and quiet. These tips can really help you get better sleep!"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "To improve your sleep, try establishing a regular sleep schedule, limit screen time before bed, and create a relaxing bedtime routine. These can really help you wind down and get better rest."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Try to stick to a regular sleep schedule by going to bed and waking up at the same time each day. Create a relaxing bedtime routine to wind down, like reading or meditating. And make your sleep environment comfortable; keep it dark, quiet, and cool."
+  }
+ ],
+ "V8_hindi": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "आज शाम को तुम कुछ नया कर सकते हो। कोई नई फिल्म देख लो या फिर दोस्तों के साथ बाहर घूमने जाओ। अगर तुम कुछ क्रिएटिव करना चाहो तो पेंटिंग या कोई नया रेसिपी ट्राई कर सकते हो। किस चीज़ में ज्यादा दिलचस्पी है?"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "आज शाम को तुम कुछ नया कर सकते हो। शायद किसी नए रेस्टोरेंट में डिनर करने जा सकते हो या फिर अपने पसंदीदा शो का नया एपिसोड देख सकते हो। अगर फिटनेस में दिलचस्पी है, तो जिम जा कर एक अच्छी वर्कआउट कर सकते हो। क्या तुम्हें कुछ खास करना है?"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "आज शाम को कुछ नया करने का मन है? तुम एक अच्छी मूवी देख सकते हो, या फिर अपने पसंदीदा खेल का कोई मैच देख सकते हो। अगर बाहर जाना चाहो, तो किसी अच्छे कैफे में जा सकते हो। फिटनेस का भी ध्यान रखना है, तो थोड़ी एक्सरसाइज भी कर लो। क्या तुमको कुछ और खास करना है?"
+  }
+ ],
+ "V9_hinglish": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Kya soch rahe ho? Movie dekhne chale jao ya phir koi outdoor activity plan karo. Gym bhi ja sakte ho, ya dosto ke sath chill karne ka plan banao. Kya pasand hai?"
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Weekend ka plan toh badiya hona chahiye! Koi movie dekhne ja sakte ho, ya phir friends ke saath outing plan kar sakte ho. Fitness ke liye kuch outdoor activities bhi try kar sakte ho, jaise trekking ya cycling. Tumhe kya pasand hai?"
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Kya plan karna hai? Movies dekhne ja sakte ho, ya phir koi outdoor activity, jaise cycling ya hiking. Ya fir ghar par chill karne ka plan bhi acha hai. Kya soch rahe ho?"
+  }
+ ],
+ "V10_filler": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "The capital of Australia is Canberra."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "The capital of Australia is Canberra."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "The capital of Australia is Canberra."
+  }
+ ]
+}

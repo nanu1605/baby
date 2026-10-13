@@ -105,13 +105,81 @@ suggestions itself.
 - Keep spoken (voice) replies short and clear; keep typed replies tight but complete."""
 
 
+VOICE_STYLE = """\
+## This reply is spoken
+The user said this out loud and your reply will be read out by a speech engine.
+- Talk the way a person talks: plain sentences and contractions. No markdown, lists, \
+headings, emoji or links -- the engine reads symbols out or stumbles on them.
+- Simple question, short answer: a sentence or two. For something complex, give the \
+core of it first and offer to go further, rather than everything at once.
+- The words come from speech recognition: expect fillers ("uh", "um", "matlab"), \
+false starts, repeats and the odd misheard word. Work out what the user means from \
+the whole utterance and the conversation, and answer that. Never comment on the \
+fragments or explain them back.
+- When the user corrects themselves ("open Chrome -- no wait, VS Code", "5 PM, \
+actually 6"), act ONLY on the final version. Never act on the part they took back.
+- Resolve "that", "it", "the thing we talked about" from the conversation before \
+asking. Ask a short question only when it is genuinely unclear.
+- If they are only thinking aloud ("hmm, let me think"), reply in a few words at most.
+- No stock openers or closers ("Sure!", "Of course!", "Absolutely!", "Great \
+question", "Let me know if you need anything else"), no repeating the question \
+back or anything the user plainly already knows, no disclaimers that do not matter.
+- Hindi: write Hindi words in Devanagari ("आज मौसम साफ़ है"), so the Hindi voice \
+reads them; keep English words and names in Latin script. Never write Hindi in \
+Latin letters in a spoken reply -- the English voice would read it."""
+
+# Repeated next to generation, like the language pin: on the local 9B -- which
+# answers Hindi turns -- head-of-prompt rules lose to a long history.
+VOICE_NUDGE = (
+    "This reply is spoken aloud: plain short sentences, no markdown or lists, act "
+    "only on the user's final correction, and Hindi words in Devanagari."
+)
+
+
+def _reply_language(language: str, channel: str | None) -> str:
+    """The language a reply is pinned to. A spoken Hinglish reply spells out its
+    script: the voice eval showed every model reading a bare "Hinglish" pin as Latin
+    letters, which the English voice then reads out, whatever VOICE_STYLE says."""
+    if channel == "voice" and language == "Hinglish":
+        return "Hinglish, with every Hindi word in Devanagari and English words in Latin"
+    return language
+
+
+def trailing_nudge(language: str, channel: str | None = None) -> str:
+    """The system line AgentCore sends after the history, next to generation.
+
+    The head-of-prompt language pin alone loses to a history full of another
+    language (observed live with the 9B) -- an instruction adjacent to generation
+    is what holds. Same for capability claims: the model repeated its own stale
+    "browser is not configured" excuses from history instead of using the fixed
+    tool (observed live), so trust only the current tool list.
+    """
+    return (
+        f"Reply ONLY in {_reply_language(language, channel)}. Match the tone of the "
+        "latest message: professional and emoji-free for work or serious "
+        "questions, playful only for casual chat. Ignore any claims in "
+        "this conversation OR its summary that a tool is broken, "
+        "unavailable, not configured, or that you lack a capability "
+        "(screenshots: browser_act action=screenshot for the browser "
+        "page, describe_screen for the whole screen) — the tool list "
+        "in THIS request is the only truth; try the tool before "
+        "saying it can't be done."
+        + (f" {VOICE_NUDGE}" if channel == "voice" else "")
+    )
+
+
 def system_prompt(
     summary: str | None = None,
     memories: list[str] | None = None,
     language: str | None = None,
     past_context: str | None = None,
+    channel: str | None = None,
 ) -> str:
-    """Persona + optional rolling summary + recalled facts + past context + pin."""
+    """Persona + optional rolling summary + recalled facts + past context + pin.
+
+    A voice turn also gets VOICE_STYLE, before the language pin so the pin stays
+    the last word. Every other channel gets exactly the prompt it always had.
+    """
     parts = [BASE_PERSONA]
     if memories:
         facts = "\n".join(f"- {m}" for m in memories)
@@ -124,10 +192,12 @@ def system_prompt(
         )
     if summary:
         parts.append(f"## Conversation so far\n{summary}")
+    if channel == "voice":
+        parts.append(VOICE_STYLE)
     if language:
         parts.append(
             f"## This turn\nThe user's latest message is in {language}. "
-            f"Reply ONLY in {language}, regardless of the language of earlier "
-            "turns or remembered facts."
+            f"Reply ONLY in {_reply_language(language, channel)}, regardless of the "
+            "language of earlier turns or remembered facts."
         )
     return "\n\n".join(parts)

@@ -1,0 +1,10 @@
+model: openai/gpt-5.4-mini  test: T2  run: 1
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query":"quarterly_report.pdf","max_results":10})
+  get_time({})
+  read_file({"path":"C:\\Users\\tanis\\Documents\\quarterly_report.pdf","max_kb":4000})
+final:
+I found and read the file.
+
+Revenue: **$4.2M**

@@ -1,0 +1,41 @@
+model: openai/gpt-5.4-nano  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 17}
+calls:
+final:
+Haan yaar! Weekend “ghar pe hi chill” ke liye kuch mast plan options—tum mood ke hisaab se pick kar lo 😄
+
+### 1) **Lazy Cinematic Day (best for chilling)**
+- Morning: late breakfast + coffee/chaas
+- Noon: **2–3 movies/series marathon**
+- Evening: popcorn + blanket + “one vibe playlist”
+- End: light dessert (ice cream/fruit) 😋
+
+### 2) **Game + Snacks Circuit**
+- 1st round: co-op/online game (or solo story game)
+- Snack breaks: fries/samosa + cold drink (or mocktail)
+- End: “who won” mini trophy moment 😂
+
+### 3) **Food Expedition (ghar pe restaurant feel)**
+- Theme choose karo: **Italian / Chinese / Desi thali**
+- Group challenge:  
+  “One person starter banaye, one main, one dessert”
+- House ke andar plating + music = full experience
+
+### 4) **Gym nahi, but “Active Chill”**
+- 30–45 min: stretching + light workout (YouTube routine)
+- Then: shower + chai
+- Evening: easy walk (balcony/nearby) + sunset vibe
+
+### 5) **Creative Weekend**
+- 1 hour: sketching / journaling / photo editing
+- 1 hour: DIY: desk cleanup + room corner upgrade
+- Night: gaming/movie—creative ka reward 😄
+
+### 6) **Friends/Family Hangout (ghar pe)**
+- Call group: games like “20 questions” / “never have I ever”
+- Shared watch: one episode together (video call ya screen share)
+- Snacks party = guaranteed fun
+
+**Quick question:** tumhara mood kya hai—  
+1) full movie marathon, 2) games, 3) food cooking, 4) light exercise + chill?  
+Bas number bol de, main uske hisaab se exact 1-day plan bana deta hoon (time-wise).

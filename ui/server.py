@@ -118,6 +118,41 @@ def _ui_history(config: dict) -> str:
     return "off" if val == "off" else "on"
 
 
+async def _build_voice(loop, agent, bus, config: dict):
+    """(pipeline, ok, notes). A voice or conversation value that is not a number
+    ("vad_silence_ms: 700ms", a blank "window_s:") is read when the pipeline is
+    built, outside load()'s fail-soft path; it must cost voice, not the app."""
+    from voice.pipeline import VoicePipeline
+
+    try:
+        pipeline = VoicePipeline(loop, agent, bus, _voice_config(config))
+    except (TypeError, ValueError) as exc:
+        return None, False, [f"voice unavailable: bad voice setting: {exc}"]
+    ok, notes = await asyncio.to_thread(pipeline.load)
+    return pipeline, ok, notes
+
+
+def _voice_config(config: dict) -> dict:
+    """The `voice:` block plus the `conversation:` block that sits beside it.
+
+    `conversation:` is top-level in config.yaml, but the pipeline reads it out of
+    the one dict it is handed. That dict used to be `voice:` alone, so follow-up
+    mode always ran on the pipeline's code defaults and a configured end phrase
+    was ignored (DECISIONS #168).
+
+    A key left empty in YAML arrives as None. Those are dropped so the pipeline's
+    own default applies, as it did while the whole block was being ignored --
+    the pipeline is built outside voice's fail-soft load, so a None here would
+    stop Baby starting at all.
+    """
+    voice = dict(config.get("voice") or {})
+    conversation = config.get("conversation") or {}
+    voice.setdefault(
+        "conversation", {key: value for key, value in conversation.items() if value is not None}
+    )
+    return voice
+
+
 class _StateDeriver:
     """Fold the bus event stream into a single pipeline state for the gauge (B1c).
 
@@ -1616,8 +1651,6 @@ async def run_ui(config: dict, with_voice: bool = False) -> int:
     voice_ok = False
     voice_notes: list[str] = []
     if with_voice and config.get("voice", {}).get("enabled", True):
-        from voice.pipeline import VoicePipeline
-
         voice_conv = await db.latest_conversation("voice") or await db.create_conversation("voice")
         voice_agent = AgentCore(
             provider,
@@ -1629,10 +1662,9 @@ async def run_ui(config: dict, with_voice: bool = False) -> int:
             memory=memory,
             suggest_next_step=config.get("persona", {}).get("suggest_next_step", True),
         )
-        voice_pipeline = VoicePipeline(
-            asyncio.get_running_loop(), voice_agent, bus, config.get("voice", {})
+        voice_pipeline, voice_ok, voice_notes = await _build_voice(
+            asyncio.get_running_loop(), voice_agent, bus, config
         )
-        voice_ok, voice_notes = await asyncio.to_thread(voice_pipeline.load)
         for note in voice_notes:
             print(f"voice: {note}")
         if voice_ok:

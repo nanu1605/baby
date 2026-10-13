@@ -1,0 +1,335 @@
+{
+ "V1_correction_app": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "Visual Studio Code"
+     }
+    ]
+   ],
+   "final": "Opened VS Code."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "Visual Studio Code"
+     }
+    ]
+   ],
+   "final": "Opened VS Code."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "app_control",
+     {
+      "action": "open",
+      "name": "Visual Studio Code"
+     }
+    ]
+   ],
+   "final": "Opened VS Code."
+  }
+ ],
+ "V2_correction_search": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March",
+      "max_results": 10
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "March invoice",
+      "max_results": 10
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "invoice",
+      "max_results": 10
+     }
+    ]
+   ],
+   "final": "I couldn’t find a file matching “invoice” or “March invoice.”\n\nIf you want, I can try broader searches like “bill,” “receipt,” or the company name."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March",
+      "max_results": 10
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "invoice",
+      "max_results": 10
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "March",
+      "max_results": 10
+     }
+    ]
+   ],
+   "final": "I couldn’t find any file matching invoice from March, or even a likely invoice file in the local search index. If you want, I can try broader names like bill, receipt, or vendor name."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "file_search",
+     {
+      "query": "invoice March",
+      "max_results": 10
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "March invoice",
+      "max_results": 10
+     }
+    ],
+    [
+     "file_search",
+     {
+      "query": "invoice",
+      "max_results": 10
+     }
+    ]
+   ],
+   "final": "I couldn’t find a file matching invoice from March. If you want, I can search by extension, vendor name, or a broader date range."
+  }
+ ],
+ "V3_thinking_aloud": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Take your time."
+  }
+ ],
+ "V4_disfluent": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Supabase can be cheap to start with, but the cost depends on how much you use. The free tier is usually enough for small projects or prototypes, and paid plans typically start around the low tens of dollars per month, then scale up with database size, bandwidth, and extras like auth, storage, and serverless functions. If you want, I can check the current pricing for the exact plan tiers."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [
+    [
+     "web_search",
+     {
+      "query": "Supabase pricing free pro team enterprise pricing official"
+     }
+    ],
+    [
+     "fetch_page",
+     {
+      "url": "https://supabase.com/pricing"
+     }
+    ]
+   ],
+   "final": "Supabase starts with a free tier, and the Pro plan is about 25 dollars a month. If you go past that, the cost mainly depends on database size, storage, bandwidth, and how much compute you use."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Supabase can be free to start, then paid plans usually begin around 25 dollars a month for a small project. Real cost depends mostly on database size, storage, bandwidth, and how much you use auth, functions, and realtime.\n\nIf you want, I can estimate it for your specific app shape."
+  }
+ ],
+ "V5_reference": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "17,999 rupees."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "17,999 rupees."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "It was 17,999 rupees."
+  }
+ ],
+ "V6_short": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "180"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "180"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "180"
+  }
+ ],
+ "V7_no_list": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Keep a consistent sleep and wake time, even on weekends. Cut caffeine at least six to eight hours before bed. Dim lights and avoid screens for the last hour before sleep."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Keep a consistent sleep and wake time, even on weekends. Stop caffeine at least six to eight hours before bed. Dim screens and bright lights an hour before sleep so your brain actually starts winding down."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Keep a consistent sleep and wake time, even on weekends. Cut caffeine at least 6 to 8 hours before bed. Dim lights and put screens away for the last 30 to 60 minutes."
+  }
+ ],
+ "V8_hindi": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "अगर मन हल्का करना है, तो एक तेज़ वॉक कर लो, अच्छा सा म्यूज़िक सुनो, और फिर कुछ आरामदायक देखो या पढ़ो।  \nअगर productive शाम चाहिए, तो जिम, कोई छोटा side project, या 30 मिनट का finance/AI learning session रखो।  \n\nचाहो तो मैं तुम्हारे मूड के हिसाब से तीन पक्के options बना दूँ — chill, productive, या social."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "अगर थोड़ा आराम चाहिए, तो शाम को टहल लो, अच्छा खाना खा लो, और कोई हल्की सी फ़िल्म या किताब पकड़ लो।  \nअगर कुछ प्रोडक्टिव करना है, तो 30 मिनट वर्कआउट, फिर अगले हफ्ते की प्लानिंग, और आखिर में थोड़ा म्यूज़िक।"
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "अगर मूड हल्का है तो थोड़ी वॉक कर लो, अच्छा खाना खाओ, और कोई एक पुराना गाना या शो लगा लो।  \nअगर कुछ प्रोडक्टिव करना है, तो 45 मिनट फिटनेस, 30 मिनट पढ़ाई या साइड प्रोजेक्ट, और फिर आराम।"
+  }
+ ],
+ "V9_hinglish": [
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "अगर chill चाहिए तो Saturday को late breakfast, thoda gym ya walk, phir brunch aur evening में movie या café. अगर kaafi active mood है, तो short drive, new place explore, aur raat को दोस्तों के साथ dinner. Aur agar बस recharge करना है, तो sleep, good food, aur no plans वाला दिन भी solid रहता है."
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "चलो, weekend को आराम से मज़ेदार बनाते हैं। अगर बाहर निकलना है, तो brunch, movie, या कोई nice café + long walk कर लो। अगर low-key मूड है, तो घर पर film, good food, aur थोड़ा workout या gaming vibe भी बढ़िया रहेगा। चाहो तो मैं तुम्हारे mood ke हिसाब se 3 exact plans बना दूँ।"
+  },
+  {
+   "pass": false,
+   "meant": false,
+   "shape": [],
+   "calls": [],
+   "final": "Haan, weekend ko sahi use karte hain. Agar chill mood hai to brunch, movie, aur shaam ko cafe ya long drive. Agar productive feel karna hai to gym, thoda deep cleaning, aur kisi side project pe 2-3 ghante. Aur agar bas reset chahiye, to late breakfast, walk, aur bina guilt ke rest — body bhi khush, dimaag bhi."
+  }
+ ],
+ "V10_filler": [
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Canberra."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Canberra."
+  },
+  {
+   "pass": true,
+   "meant": true,
+   "shape": [],
+   "calls": [],
+   "final": "Canberra."
+  }
+ ]
+}

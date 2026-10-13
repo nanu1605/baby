@@ -1,0 +1,37 @@
+model: openai/gpt-5.4-nano  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 19}
+calls:
+final:
+Haan yaar, weekend “ghar pe chill” ka mast plan set karte hain 😄 Tanishq ke vibe ke hisaab se 3 options—pick one:
+
+### 1) **Cozy Movie + Snacks (Low-effort)**
+- Subah: late breakfast (pancakes/poha/whatever)
+- Afternoon: **1 long movie** + 1 short series episode
+- Evening: popcorn nachos + cold drink / chai + cookies
+- End: 15 min “reset” (room thoda tidy) + bed pe comfort
+
+**Mood booster:** movie se pehle 10 min light cleaning = whole vibe up.
+
+---
+
+### 2) **Home Mini-Adventure (Active but still ghar)**
+- 1 hour: **indoor workout** (jumping jacks / pushups / stretching)
+- 1.5–2 hours: **game night** (Ludo/UNO/Chess/whatever you’ve got)
+- Food: **DIY dinner** (pizza base/rolls/sandwich tower)
+- Night: “theme” playlist + dim lights + chill
+
+---
+
+### 3) **Creative + Chilled (Most fun)**
+- Afternoon: **something creative** (sketch, photo editing, playlist making, journaling)
+- Evening: **cook/experiment** (maggi upgrade, sandwich experiment, or dal-chawal style)
+- Night: “watch + review” — har episode/move ke 2-2 lines note karo (mazaa aayega)
+
+---
+
+### Quick add-ons (any plan me)
+- **One friend call** (30 min max) for catch-up
+- **DIY mocktail**: soda + lemon + sugar/honey
+- **No-phone time**: dinner ke 30 min phone off
+
+Bas bata: tumhara vibe kya hai—**movie**, **workout+games**, ya **creative**? Aur Saturday aur Sunday kaunse time free ho (morning/afternoon/evening)? Main tumhare hisaab se exact schedule bana dunga.

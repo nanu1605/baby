@@ -15,12 +15,31 @@ from pathlib import Path
 
 SAMPLE_RATE = 24000  # Kokoro output rate
 
-# Sentence terminators: western + Devanagari danda. Ellipsis handled by the
-# abbreviation guard below (a '…' or '...' ends a sentence only at a break).
+# Sentence terminators: western + Devanagari danda.
 _TERMINATORS = ".!?…।"
+# May follow a terminator and still belong to the sentence: closing quotes and
+# brackets, and the markdown markers a model wraps text in ("**Yes.** Then").
+_CLOSERS = "\"')\\]”’*_`"
+_OPENERS = "([{\"'“‘*_`"
+# Punctuation that is not speech on its own (a streamed lone "!", a bare bullet).
+_UNSPOKEN = _TERMINATORS + _CLOSERS + _OPENERS + " \t\r-–—•|#>~"
 # Common abbreviations that end with '.' but do not end a sentence.
-_ABBREVIATIONS = frozenset("dr mr mrs ms prof st vs etc e.g i.e eg ie no fig approx".split())
-_SENTENCE_RE = re.compile(rf"[^{_TERMINATORS}]*[{_TERMINATORS}]+[\"')\]]*\s*", re.DOTALL)
+_ABBREVIATIONS = frozenset(
+    "dr mr mrs ms prof st vs etc e.g i.e eg ie no fig approx a.m p.m rs".split()
+)
+# Only the full stop is ambiguous: it also sits inside "12.5", "v6.0.2" and
+# "example.com", so it ends a sentence only when whitespace follows (after any
+# closer). '!', '?', '…' and the danda end one wherever they stand. A full stop
+# at the very end of the buffer is therefore NOT a boundary yet -- the next
+# character decides -- which is why the bridge flushes a buffer that has gone
+# quiet (ends_sentence below).
+#
+# The pattern finds boundaries; it does not match whole sentences. A lazy ".*?"
+# in front of it retried every failed lookahead from every offset -- cubic on a
+# run of dots -- and this runs on the asyncio loop once per token.
+_BOUNDARY_RE = re.compile(
+    rf"(?:[!?…।]|\.(?=[{_CLOSERS}]*\s))[{_TERMINATORS}]*[{_CLOSERS}]*\s*"
+)
 _DEVANAGARI_RE = re.compile(r"[ऀ-ॿ]")
 
 
@@ -29,11 +48,45 @@ def _is_abbreviation(sentence: str) -> bool:
     stripped = sentence.rstrip()
     if not stripped.endswith("."):
         return False
-    last_word = stripped[:-1].split()[-1].lower() if stripped[:-1].split() else ""
+    words = stripped[:-1].split()
+    if not words:
+        return False
+    # "10." with nothing before it is a list marker: it belongs with its item.
+    if len(words) == 1 and words[0].isdigit():
+        return True
+    last_word = words[-1].lower().lstrip(_OPENERS)  # "(e.g." is still "e.g."
     bare = last_word.replace(".", "")
-    # Single letters cover initials and the halves of "e.g."/"i.e." the
-    # sentence regex cuts at their first dot.
+    # Single letters cover initials and the halves of "e.g."/"i.e.".
     return len(bare) == 1 or last_word in _ABBREVIATIONS or bare in _ABBREVIATIONS
+
+
+def _speakable(text: str) -> bool:
+    """False for a chunk that is punctuation only: Kokoro should never be
+    handed a bare "!" or a list bullet. A symbol ("%", "@") is speech."""
+    return bool(text.strip(_UNSPOKEN))
+
+
+def _split_line(line: str, final: bool) -> tuple[list[str], str]:
+    sentences: list[str] = []
+    pos = 0
+    pending = ""  # accumulates chunks glued across abbreviation dots
+    for match in _BOUNDARY_RE.finditer(line):
+        chunk = pending + line[pos : match.end()]
+        pos = match.end()
+        if _is_abbreviation(chunk):
+            pending = chunk
+            continue
+        text = chunk.strip()
+        if _speakable(text):
+            sentences.append(text)
+        pending = ""
+    remainder = pending + line[pos:]
+    if final:
+        tail = remainder.strip()
+        if _speakable(tail):
+            sentences.append(tail)
+        remainder = ""
+    return sentences, remainder
 
 
 def split_sentences(buf: str, *, final: bool = False) -> tuple[list[str], str]:
@@ -42,29 +95,39 @@ def split_sentences(buf: str, *, final: bool = False) -> tuple[list[str], str]:
     Called repeatedly as tokens arrive; returns sentences ready for TTS and
     the unfinished tail to carry into the next call. final=True flushes the
     tail as a last sentence (end of turn).
-    """
-    sentences: list[str] = []
-    pos = 0
-    pending = ""  # accumulates chunks glued across abbreviation dots
-    for match in _SENTENCE_RE.finditer(buf):
-        chunk = pending + match.group(0)
-        if _is_abbreviation(chunk):
-            pending = chunk
-            pos = match.end()
-            continue
-        text = chunk.strip()
-        if text:
-            sentences.append(text)
-        pending = ""
-        pos = match.end()
-    remainder = pending + buf[pos:]
-    if final:
-        tail = remainder.strip()
-        if tail:
-            sentences.append(tail)
-        remainder = ""
-    return sentences, remainder
 
+    A newline is a boundary: every completed line is flushed whole, so a list
+    is spoken item by item instead of waiting for a full stop that never comes.
+    """
+    *lines, tail = buf.split("\n")
+    sentences: list[str] = []
+    for line in lines:
+        sentences += _split_line(line, True)[0]
+    more, remainder = _split_line(tail, final)
+    return sentences + more, remainder
+
+
+def ends_sentence(buf: str) -> bool:
+    """True when the buffer stops on a terminator that is not an abbreviation.
+
+    The bridge uses this to flush a buffer the model has stopped adding to:
+    "Let me check." followed by a tool call has no next character to prove the
+    full stop was a sentence end.
+    """
+    stripped = buf.rstrip().rstrip(_CLOSERS)
+    if stripped[-1:] not in tuple(_TERMINATORS):
+        return False
+    # "The answer is 5." ends on a single character, which _is_abbreviation
+    # reads as an initial. A digit before the stop of a quiet buffer is an answer.
+    return stripped[-2:-1].isdigit() or not _is_abbreviation(stripped)
+
+
+# espeak reads an emoji's name: "Done 👍" became "done thumbs up". Pictographs,
+# flags, arrows, shapes, stars, and the joiners that glue emoji together.
+EMOJI_RE = re.compile(
+    r"[\U0001f000-\U0001faff\u2190-\u21ff\u2300-\u23ff\u25a0-\u25ff"
+    r"\u2600-\u27bf\u2b00-\u2bff\ufe0f\u200d\u20e3]"
+)
 
 # Markdown → speakable text: Kokoro/espeak read "**" aloud ("asterisk
 # asterisk" — owner report). Applied inside synth(), the single funnel for
@@ -82,7 +145,18 @@ _MD_RULES: tuple[tuple[re.Pattern, str], ...] = (
     (re.compile(r"^#{1,6}\s+", re.MULTILINE), ""),  # headings
     (re.compile(r"^\s*[-*•]\s+", re.MULTILINE), ""),  # bullet markers
     (re.compile(r"[*_#`]{2,}"), " "),  # unpaired leftovers
+    # Not markdown, same funnel: a full stop inside a token. Kokoro's phonemizer
+    # cuts at every '.', so "12.5" came out as "twelve" -- pause -- "five" and
+    # "example.com" as two words, however the sentence had been split. Lowercase
+    # only after "dot": a domain or a file extension, never "check.It".
+    (re.compile(r"(?<=\d)\.(?=\d)"), " point "),
+    (re.compile(r"(?<=[A-Za-z0-9])\.(?=[a-z]{2,}\b)"), " dot "),
+    (EMOJI_RE, " "),
 )
+
+
+# espeak's language-switch marks in phonemizer output: "(en)", "(hi)", "(en-us)".
+_SWITCH_FLAG_RE = re.compile(r"\([a-z]{2,3}(?:-[a-z]{2,3})?\)")
 
 
 def strip_markdown(text: str) -> str:
@@ -152,8 +226,12 @@ class TextToSpeech:
         if not sentence:  # pure-markdown chunk (e.g. a lone "**")
             return np.zeros(0, dtype=np.int16), SAMPLE_RATE
         voice, lang = pick_voice(sentence, self.voice_en, self.voice_hi)
+        # espeak marks a switch of language inside a sentence -- the English words
+        # in a Hindi one -- as "(en)...(hi)", and kokoro-onnx hands those letters to
+        # Kokoro, which says them. Phonemize here so the marks can go first.
+        phonemes = _SWITCH_FLAG_RE.sub("", self._kokoro.tokenizer.phonemize(sentence, lang))
         samples, sample_rate = self._kokoro.create(
-            sentence, voice=voice, speed=self.speed, lang=lang
+            phonemes, voice=voice, speed=self.speed, is_phonemes=True
         )
         pcm16 = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
         return pcm16, sample_rate

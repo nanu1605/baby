@@ -92,6 +92,60 @@ def is_end_phrase(text: str, phrases) -> bool:
     return _short_contains(text, phrases, _MAX_END_WORDS)
 
 
+# -- thinking aloud (voice): no request in it, so no turn ------------------------
+_MAX_FILLER_WORDS = 8
+_FILLER_TOKENS = frozenset(
+    "uh uhh uhm um umm ummm hmm hmmm hm mm mmm er erm ah ahh eh oh ooh well so like "
+    "matlab toh".split()
+)
+# Matched whole, longest first, before the leftover words are checked one by one.
+# Normalized like the utterance, which also splits Devanagari at its combining
+# marks ("हम्म" -> "हम म", "सोचने" -> "स चन"), so Devanagari fillers live here
+# rather than in the tokens.
+_FILLER_PHRASES = tuple(
+    sorted(
+        {
+            _normalize(p)
+            for p in (
+                "let me think", "let me think about it", "let me see", "one sec",
+                "one second", "just a sec", "just a second", "give me a sec",
+                "give me a second", "hold on", "wait", "i mean", "you know", "thinking",
+                "ek second", "ek sec", "ek minute", "sochne do", "soch raha hoon",
+                "soch rahi hoon", "एक सेकंड", "सोचने दो", "हम्म", "अम्म", "अं", "मतलब",
+            )
+        },
+        key=len,
+        reverse=True,
+    )
+)
+
+
+_ASSENT = frozenset({"mm hmm", "mm hm", "m hm"})
+
+
+def is_filler(text: str) -> bool:
+    """True when a short utterance is only thinking aloud ("uh... let me think").
+
+    Never True for anything parse_yes or parse_no would read: "haan", "ok" or
+    "ruko" can answer a pending question, so they always reach the agent.
+    """
+    norm = _normalize(text)
+    # Words as spoken: the normaliser splits a Devanagari word at its vowel signs.
+    if not norm or len(text.split()) > _MAX_FILLER_WORDS:
+        return False
+    # "Matlab?" or "So?" asks something -- Whisper keeps a rising voice's "?" --
+    # and "mm-hmm" is assent, not a pause.
+    if text.rstrip().endswith(("?", "？")) or norm in _ASSENT:
+        return False
+    if parse_yes(text) or parse_no(text):
+        return False
+    padded = f" {norm} "
+    for phrase in _FILLER_PHRASES:
+        while f" {phrase} " in padded:
+            padded = padded.replace(f" {phrase} ", " ")
+    return all(token in _FILLER_TOKENS for token in padded.split())
+
+
 # -- memory commands (P4): deterministic clear / forget / wipe ----------------
 # Short anchored phrases, so a real request that merely mentions "forget" ("forget
 # that I said my address earlier") stays a normal turn and reaches the model.

@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-nano  test: T8  run: 3
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Indore","why":"Indore is renowned for its street food scene (especially namkeen, chaat, kebabs, and regional snacks like poha-jalebi and street-side kebab/chaat) with abundant late-night vendors, strong flavors, and a consistent variety across the city."}

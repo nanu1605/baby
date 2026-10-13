@@ -2844,3 +2844,465 @@ Running log of non-obvious choices made during the build. Newest last.
      16 ms anyway) -- and not openWakeWord or faster-whisper's VAD, whose onnxruntime
      sessions are built with one thread. Unidentified; about a fifth of the CPU for two
      seconds is not worth guessing at. Trace it on the installed build if it matters.
+168. **The conversational-voice spec mostly described what Baby already does.**
+     The owner handed over a specification for six upgrades -- a fast model through
+     OpenRouter, streamed replies, a sentence-level TTS queue, true barge-in, a voice
+     prompt, an intent layer -- with one instruction above the rest: inspect before
+     modifying. The inspection is the first result, and it changes the size of the job.
+
+     | Spec item | Already there | The actual gap |
+     |---|---|---|
+     | Fast model via OpenRouter | The primary cloud brain is OpenRouter (#83); the model is one config line | Which model |
+     | Streaming | A token per chunk on the bus, split into sentences, spoken while the model is still writing | The splitter cuts "12.5" in half; a failed turn is silent |
+     | Sentence TTS queue | One queue, in order | No prefetch, nothing polls the mic during synthesis, one Kokoro error drops the rest |
+     | Barge-in | VAD stops playback and cancels the turn, which closes the HTTP stream | The interrupting words are discarded and a beep plays |
+     | Voice prompt | One persona for every channel, with one line asking for short spoken replies | The prompt is never told the turn is spoken, so that line cannot act |
+     | Intent layer | Strict yes/no, end and kill phrases, memory commands, 30 messages of history | Filler reaches the model; a 400 ms pause ends the utterance |
+
+     So this is a set of focused changes to the voice path on its own branch and
+     release, stacked on 6.0.2, not the rewrite the spec itself forbids. #169 onward
+     record each one.
+
+     **Every spoken turn now reports where its wait went.** One feed line and one
+     `voice_timing` audit row per turn, each figure in seconds since the user stopped
+     speaking. `request`, `token`, `sentence`, `tts`, `audio` and, on an interrupted
+     turn, `cut` are the six figures the spec asks for; `stt` and `end` are additions.
+     What each one is, exactly:
+
+     - `request` is the turn being handed to the agent. Memory recall and routing
+       happen after it, so it is slightly before the HTTP request itself.
+     - `audio` is the first ~100 ms block written to the speaker, stamped from the
+       player. Stamping when the sentence was queued would leave out opening the
+       output device, and would count a sentence that was interrupted before it
+       sounded.
+     - `tts` and `audio` belong to the model's reply. The canned "check the screen"
+       line is spoken before the first token and does not take them.
+     - `cut` is from noticing the user's speech to the player thread returning. It
+       leaves out the ~200 ms of sustained speech that noticing takes.
+     - The start is the VAD's endpoint minus its silence window, because the VAD only
+       reports the end once that window has passed; measured from the endpoint,
+       lengthening the window would look free.
+
+     A turn stopped by the kill switch reports nothing: it is not a wait. The labels
+     avoid every word the UI matches on status text, or a timing line would move the
+     orb or raise a toast: `listening`, `stopped`, `interrupted`, `heard`,
+     `conversation ended`, and the toast list `wiped`, `kill`, `error`, `cancelled`,
+     `offline`, `degraded`. A test holds the labels to that. The line goes out as
+     `status` because a voice `error` event reaches no socket.
+
+     **Whisper is the largest part of that wait, and the spec does not mention it.**
+     About 3.3 s per utterance on the CPU (#167), before any of the six upgrades gets
+     to act. The owner's call: measure first. The line exists so that decision is
+     made on numbers from the installed build. Nothing here has been run on a real
+     microphone yet.
+
+     **`conversation:` never reached the pipeline.** It is a top-level block in both
+     config files, but the pipeline reads it out of the one dict it is handed, and the
+     server handed it `voice:` alone. Follow-up mode has therefore always run on the
+     pipeline's code defaults: a configured window or end phrase did nothing. The
+     server now passes both. One visible consequence: "bas", "bas baby" and "so jao"
+     were code defaults, not in the shipped config, so they stop ending a
+     conversation on an install whose config lists only the two English phrases --
+     which is every public install, fresh or upgraded, because the shipped template
+     lists only those two and a seeded config is never rewritten. Anyone who uses
+     them adds them to `conversation.end_phrases`. A key left empty in that block is
+     None in YAML and is dropped before the pipeline sees it, so the default applies:
+     the pipeline is built outside voice's fail-soft load, and a None there would
+     stop Baby starting.
+169. **A full stop ends a sentence only when something follows it, and is spoken when it is inside a word.**
+     Spec item 2, streaming, was already built: a token per chunk, split into
+     sentences, spoken while the model is still writing. What was wrong was the
+     splitter. It cut at terminators regardless of what followed, so "The price is
+     12.5 dollars." was spoken as "The price is twelve." and then "Five dollars.",
+     and "v6.0.2" and "example.com" went the same way.
+
+     Only the full stop is ambiguous, so only the full stop changed: it ends a
+     sentence when whitespace follows it, after any closing quote, bracket or
+     markdown marker (a model writes "**Yes.** Then..."). `!`, `?`, `…` and the danda
+     end one wherever they stand, which keeps Hindi written without a space after the
+     danda working. Requiring whitespace after every terminator was the first idea and
+     would have broken five of the eight existing splitter tests; this changes one.
+
+     **Splitting was only half of it.** The review synthesised the result and measured
+     it: Kokoro's phonemizer cuts at every full stop too, so "12.5" kept in one
+     sentence was still "twelve" -- a 290 ms pause -- "five", byte for byte the old
+     audio. The speech funnel (`strip_markdown`, inside `synth`) now says what a person
+     would: a full stop between digits is " point ", and one followed by two or more
+     lowercase letters is " dot " ("example dot com", "report dot pdf"). Lowercase
+     only, so "check.It" -- two generations glued together -- gets a pause, never a
+     "dot". Left as they are: an IP address is "192 point 168", and "5.30 pm" is "5
+     point 30".
+
+     **The cost of the new rule, and what pays for it.** A full stop at the very end
+     of the buffer is no longer a boundary, because mid-stream "12." may be the start
+     of "12.5". Three things release text that stops on one:
+
+     - A `tool_start` event flushes the buffer. It is published once the generation
+       that asked for the tool has finished, so what is buffered is complete. Without
+       this, "Let me check." was glued to the answer whenever the tool was quick
+       ("Let me check.It is noon."), and the "check the screen" line was spoken
+       before the sentence introducing it.
+     - A `confirm_request` flushes before queueing its own line, for the same order.
+     - Otherwise the bridge flushes a buffer that ends a sentence once no token has
+       arrived for 250 ms. That covers the last sentence of a reply waiting on the
+       next-step call. The quiet is counted from the last token, not the last bus
+       event (`tts_rms` arrives every 100 ms while Baby speaks), and the wait is only
+       timed on an empty queue: once the deadline has passed `wait_for` raises without
+       looking, and the token that completes the number may already be waiting.
+       250 ms is a guess.
+
+     **Same function, found by the review.** The first pattern matched whole sentences
+     lazily and was cubic on a run of dots -- 1600 of them took seven seconds, on the
+     asyncio loop, per token. It now searches for boundaries and is linear (20,000
+     dots in under a millisecond). A newline is a boundary, so a list is spoken line
+     by line as it completes. A chunk that is only punctuation is dropped (a streamed
+     "Really?" then "!" handed Kokoro a bare "!"), but a symbol such as "%" is speech.
+     "10." alone is a list marker and stays with its item. "(e.g." is still "e.g.".
+     "a.m.", "p.m." and "Rs." joined the abbreviations; the undotted "am" did not, or
+     "I am." would never end.
+
+     **Known and left.** A sentence ending on a single letter ("Checking drive C.")
+     is not flushed by the timer, because one letter before a full stop reads as an
+     initial; it goes out at the tool call or the end of the turn. A web address with
+     a query string is still cut at the "?". Two generations with no tool call between
+     them (the agent's "you promised an action" retry) rely on the timer alone.
+
+     **Not built.** Cutting a long sentence at a comma so first audio comes sooner.
+     Commas and dashes sit inside "1,000,000" and "state-of-the-art", and kokoro-onnx
+     already batches long input. The timing line (#168) will say whether long first
+     sentences are a real delay. Nor a streaming on/off switch: there is no
+     non-streaming path in Baby to fall back to, and building one is the rewrite the
+     spec forbids.
+170. **The next sentence is made while this one plays, and every turn has its own queue.**
+     Spec item 3. Baby already spoke a reply sentence by sentence, in order, from one
+     queue. Three things were wrong with how.
+
+     **Synthesis blocked the voice thread.** `_respond` called Kokoro inline, about
+     0.6 s a sentence (#167), and only then started playback, so sentence N+1 was not
+     begun until N had finished: a synthesis-length gap at every full stop. For those
+     0.6 s nothing read the microphone, so talking over Baby just before it spoke was
+     only noticed once the sentence had started, and the kill switch waited too.
+     Kokoro now runs on one worker thread and `_respond` is a loop that never blocks:
+     collect a finished synthesis, start the next, start the next player, poll the
+     mic. Announcements go through the same worker, so Kokoro is never asked for two
+     things at once. The worker is a plain daemon thread rather than a
+     ThreadPoolExecutor: a pool's worker is joined at interpreter exit, so a shutdown
+     landing mid-sentence would have waited for Kokoro, forever if a call hung. For
+     the same reason an announcement waits at most 30 s for its synthesis: it runs on
+     the voice thread while idle, and a call that never came back would leave Baby
+     deaf to the wake word for good.
+
+     **Bounded.** One sentence playing and at most two more, synthesised or being
+     made; the rest of a long reply stays as text until there is room. The text queue
+     itself has no cap: it holds the reply's own sentences and nothing else, and a cap
+     there could only drop speech -- including the "check the screen" line.
+     `voice.tts.prefetch: false` gives one sentence at a time, which is how before and
+     after are compared on the same build; it is about 20 ms slower per sentence than
+     the old code was, against ~600 ms of synthesis.
+
+     **Stale audio was kept out by timing, not by construction.** A cut-off turn's
+     leftovers were drained when listening began and again before the next submit. A
+     late end-of-turn marker arriving after that would have ended the next reply
+     early. The first design for this stamped every queue item with a generation and
+     had each consumer drop what was not live. The review found it could hang: the
+     kill switch runs on the asyncio thread, and racing the voice thread it could mark
+     the live turn stale, so that turn's own end marker was dropped and `_respond`
+     never returned. It also changed the shape of every queue item, breaking nine
+     existing tests.
+
+     What is built has no shared state to corrupt. `_submit` makes a new queue for
+     the turn, and the bridge switches to it when it reads that turn's `turn_start`.
+     A turn that was cut off can only ever write into the queue it was given, which
+     nobody reads any more. A new turn waits (up to 5 s) for the one before it to
+     finish unwinding, and a `turn_end` whose turn id is not the adopted turn's is
+     ignored. The review checked what a cancelled `run_turn` can still publish: its
+     own `turn_end`, with its own id, and nothing else -- nothing in core, tools, db or
+     memory swallows a cancellation -- so the id check alone keeps a late end out of
+     the next turn. The 5 s cap stops one turn that did ignore its cancellation from
+     holding voice forever.
+
+     **Turns that end badly now say so.** A turn that ended in an error cleared the
+     buffer and left silence followed by the follow-up cue; it now speaks one line of
+     apology, in Hindi if the question was. A turn that hit the tool limit was silent
+     for a different reason -- its message is never streamed as tokens -- and is now
+     spoken from the `turn_end` itself. A cancelled turn stays silent. A turn that
+     dies without publishing its end at all (it raised between `turn_start` and its
+     `try`, or the bus dropped the event) used to leave `_respond` waiting until
+     someone spoke; one second after the turn is over with nothing left to say,
+     `_respond` now ends it, with the apology if the turn raised. Still silent: a
+     memory command that fails, because `_run_memory_command` reports `ok` whatever
+     happened, and that is the agent's to fix, not the voice path's.
+
+     **Found on the way.** One Kokoro error raised out of `_respond` and dropped the
+     rest of the reply; it now costs that sentence and says so in the feed. A device
+     error already cost only its sentence, but silently; it is reported now too. One
+     malformed event killed the bridge coroutine, after which Baby was silent for good
+     with nothing to say why; each event is now handled under a guard. And with
+     `barge_in: false` the mic poll returned before reading, so the playback loop
+     span a whole core; it still reads, and discards.
+
+     **Unproven.** How long the pause between sentences actually is on real hardware.
+     Each sentence still opens its own output stream, and the first sentence of a
+     reply -- or any the model writes slower than Baby speaks -- still waits for its
+     synthesis. The timing line and the owner's ear decide whether that needs one
+     continuous stream.
+171. **Interrupting Baby can keep what you said, and the speaker goes quiet at once.**
+     Spec item 4. The barge-in itself already existed: Silero VAD, six 32 ms frames of
+     speech while Baby talks, playback stopped, the turn cancelled. Cancelling the
+     turn reaches the model's stream through the router and closes it; a test now pins
+     that through `CloudRouter`, since nothing did before. What happened next was the
+     problem.
+
+     **The interrupting words were thrown away.** Barge-in went straight into the
+     wake-word path: a beep, the microphone drained, the capture buffer cleared. The
+     words that had just interrupted Baby -- at least the 200 ms it takes to notice,
+     usually the whole of "stop" -- were gone, and a beep played over the user, who
+     then had to say it all again. While Baby speaks, the last ~0.5 s of microphone
+     chunks are now kept (sixteen 32 ms chunks: the streak and a little lead). With
+     `voice.barge_in_keep_audio` on, barge-in puts them back in front of the capture
+     buffer, with no beep and no drain, and `_listen` runs unchanged. It hears and
+     endpoints the replayed speech like any other. Seeding the transcript buffer
+     directly was the obvious way and the wrong one: `_listen` discards a capture
+     whose VAD never saw speech start, so a one-word "stop" would have come back as
+     "heard nothing". Kill phrase and speaker check run on the whole utterance as
+     before, and an end phrase said over Baby ("bas") now closes the conversation as
+     it does in a follow-up window, instead of being sent to the model as a question.
+
+     **Off for a fresh install, on for the owner.** There is no echo cancellation
+     (#49). The review fed Baby's own voice at 3% of full volume into the real Silero
+     VAD while it spoke: that alone trips barge-in at the 0.6 threshold, and with the
+     audio kept, the replay is a turn made of Baby's own words, which it then answers.
+     Discarding the audio, as before, ends in "heard nothing" instead. So the shipped
+     config and the code default are `false`, and a headset owner -- this one -- sets
+     `true`. Replaying only when the user is still talking after playback stops would
+     tell the two apart, but a one-word "stop" is over by then.
+
+     **Interrupting no longer buys back speaker trust.** Barge-in entered listening as
+     a fresh wake, which resets the session-trust smoother to optimistic: an unknown
+     speaker could regain tools by talking over Baby. It is now the same session, like
+     a follow-up -- with the audio kept or not.
+
+     **The speaker stopped late.** Playback writes 100 ms blocks and checks the stop
+     flag between them, but leaving the `with sd.OutputStream` calls `stop()`, which
+     plays out whatever the device still has queued. It now calls `abort()` instead,
+     including for a stop that lands after the last block is written, by waiting out
+     the stream's latency on the stop flag: unstopped, that wait is the drain `stop()`
+     would have done anyway. Measured by the review on the real default device: stop
+     to silence 0.23-0.30 s before, 0.02-0.11 s after. The `cut` figure in the timing
+     line (#168) shows it on an installed build.
+
+     **The limit, stated.** With the audio kept on open speakers, the kept half-second
+     also holds Baby's own last words: the transcript can start with them, and a short
+     "baby stop" can be pushed past the five-word kill-phrase limit (it is then an
+     ordinary turn; the old one is cancelled either way).
+172. **A spoken turn tells the model it is spoken.**
+     Spec item 5. The persona had one line for voice -- "keep spoken (voice) replies
+     short and clear" -- in a prompt that never said which channel a turn came from,
+     so the model could not act on it. Voice replies came back as text written to be
+     read: markdown, lists, "Sure! I'd be happy to help", the question restated.
+
+     `system_prompt` takes the channel. A voice turn gets one extra block, after the
+     memories and summary and before the language pin, so the pin stays the last word:
+     talk like a person, short answers to simple questions, no markdown, lists, emoji
+     or links; the words come from speech recognition, so answer what was meant and
+     never the fragments; act only on the final version of a self-correction ("open
+     Chrome -- no wait, VS Code"); resolve "that" and "it" from the conversation; a
+     few words at most for thinking aloud; no stock openers or closers. The
+     agent's trailing nudge gets the short form of the same rules on voice turns. The
+     comment beside it already records why: on the local 9B, rules at the head of the
+     prompt lose to a long history, and the 9B is what answers Hindi voice turns (the
+     language pin).
+
+     **Hindi is written in Devanagari when it will be spoken.** The voice is chosen
+     per sentence by script: any Devanagari goes to the Hindi voice. A Hindi reply
+     written in Latin letters went to the English voice, which is what the owner heard
+     as "Bella speaking Hindi". The block asks for Hindi words in Devanagari and English
+     words and names in Latin. espeak switches language inside a sentence, so the
+     English words in a Hindi sentence get English sounds -- but it marks each switch
+     as "(en)...(hi)", and kokoro-onnx passed those letters to Kokoro, which spoke
+     them: about a second of stray syllables in "VS Code और Chrome खोल दिए हैं".
+     Hindi sentences with an English word in them already did this; the new rule
+     makes them common. `TextToSpeech.synth` now phonemizes the sentence itself,
+     drops the marks and hands Kokoro the phonemes.
+
+     **Two things that were spoken and should not be.** The persona allows an emoji in
+     casual chat and espeak reads its name ("done thumbs up"); the speech funnel now
+     drops emoji, whatever the prompt says. And the block lets the model end a complex
+     answer by offering more, while a tool turn also gets the system's own "Next: want
+     me to ...?". Two offers leave "yes" answering the wrong one, so a spoken reply
+     that already ends in a question gets no second offer. Typed turns are unchanged.
+
+     **Every other channel is untouched, and a test holds it.** Typed chat, tasks,
+     Telegram and the scheduler get the same bytes as before: the test pins the
+     SHA-256 of the prompt as it was, for six channels and three argument sets, and
+     of the trailing nudge, which moved from `core/agent.py` to
+     `core/prompts.trailing_nudge` so the eval below sends the same one. The self-heal
+     path that rebuilds a
+     rejected context from the summary keeps the voice block too.
+
+     **Corrections and references are the model's job, measured.** The spec's intent
+     layer asks for corrections, thinking aloud and "how much was that?" to be
+     understood, and prefers the primary model over a second call. That is what this
+     block does. `scripts/voice_eval.py` checks it against a real model: ten spoken
+     transcripts through Baby's own voice prompt and tool schemas, scored on the tool
+     calls (VS Code opened, never Chrome; the invoice searched, never the budget), on
+     the one fact an answer needs, and on the shape of the reply -- not on its wording.
+     A test holds its messages byte for byte to what the voice agent sends. A run that
+     never reached the model is counted as an error, not as a wrong answer. The Hindi
+     case only says something about a cloud model in game mode: on a normal day the
+     language pin sends a Devanagari turn to the local model. The results will be
+     recorded with the model choice.
+173. **The intent layer is a filter, a longer pause and a language list -- not a second model.**
+     Spec item 6 asks for filler, corrections, thinking aloud, incomplete speech,
+     confirmations, cancellations and references to be told apart before anything is
+     acted on, and warns against a second LLM call that doubles latency and cost.
+     Most of the list already had an owner. Confirmations and cancellations are the
+     strict yes/no parsers and end phrases in `core/intents.py` and the kill phrases
+     in `voice/pipeline.py`. Corrections and references are the primary model's job,
+     given the voice block of #172 and 30 messages of history. What was left is three
+     small things.
+
+     **Thinking aloud is not a turn.** "Uh... let me think" went to the model, which
+     answered it. `is_filler` is true when a short utterance (eight words at most) is
+     nothing but filler -- "uh", "hmm", "let me think", "one second", "wait",
+     "matlab", "sochne do", "हम्म" -- and never for anything `parse_yes` or `parse_no`
+     would read, because "ok", "haan" or "ruko" can answer a pending question. Nor
+     for a question: Whisper keeps the "?" of a rising voice, and "Matlab?" or "So?"
+     asks something. Nor for "mm-hmm", which is assent. The pipeline then listens
+     again with the same wait as before (ten seconds after a wake word), without a
+     model call, a reply or a beep; the feed shows what was set aside. A side effect
+     worth having: a "hmm" no longer uses up a pending next-step offer. Three fillers
+     in a row and the fourth goes to the model as usual, so thinking aloud cannot hold
+     the mic open without a wake word for ever; and a filler after push-to-talk does
+     not carry push-to-talk's exemption from speaker verification into the next
+     capture. `voice.filler_filter: false` turns it off. Devanagari fillers are
+     matched as whole phrases, because the shared normaliser splits Devanagari at its
+     combining marks; the word cap counts the words as spoken, before that split.
+     The mic is not drained after a filler, so a question begun while the filler was
+     being transcribed is kept -- which also means that capture is read from queued
+     audio and its end of speech cannot be timed, so that turn has no timing line.
+
+     **The pause that ends an utterance is 700 ms, not 400.** 400 ms cut people off
+     mid-thought ("the thing we talked about... the database"), and the cut-off half
+     went to the model. 700 ms is 0.3 s more wait against a ~3.3 s transcription, and
+     the timing line (#168) counts it, because it measures from when the user stopped,
+     not from when the VAD noticed. The VAD and the timing line now read the setting
+     from one place, so they cannot disagree. It is a tuning knob,
+     `voice.vad_silence_ms`; every installed config names 400, and keeps it until the
+     owner changes it. The alternative, waiting longer when a transcript ends on a
+     dangling "and" or "matlab", was not built: it needs word lists in three scripts
+     and adds seconds to "I think so".
+
+     **Whisper can be held to the languages the owner speaks.** It picks the likeliest
+     of about a hundred languages, and Hindi with an Indian accent can come out as
+     Urdu, Punjabi or Marathi -- the owner's report. `voice.stt.languages` (say
+     `[en, hi]`) wraps the CTranslate2 model so its language detection puts the best
+     allowed language first; faster-whisper reads the first entry, so that is the
+     whole change, and the encoder still runs once (#167). There is no public seam
+     that detects within a set and encodes once: `transcribe` throws its detection's
+     encoder output away, and the CTranslate2 object cannot be patched in place. The
+     default is empty, which locks nothing, because a stranger may speak something
+     other than English or Hindi; an unknown code is ignored rather than locking out
+     every language. A hand-edited `languages: en, hi`, `"[en, hi]"` or `[EN, HI]`
+     is read as `[en, hi]`, and `languages: hi` as Hindi alone.
+174. **gpt-5.4-mini was measured against gpt-4o-mini, and the swap waits for the owner.**
+     Spec item 1 asks for a fast model through OpenRouter, and the owner chose
+     `openai/gpt-5.4-mini` for every channel if it passed four bars set before the run:
+     a bench score at least gpt-4o-mini's from the same run; first token p50 no worse
+     than 1.2 s and p95 under the 3.5 s voice cutoff; no request rejected for
+     `temperature`; and the router's recovery probe (a 1-token completion) working.
+     It fails the first bar narrowly, so `installer/config.default.yaml` still names
+     `openai/gpt-4o-mini`. Any fix for a failed bar was to be an edit to
+     `core/providers/nvidia.py`, frozen ground; this one is not a provider problem at
+     all, and the call belongs to the owner.
+
+     The bench (`scripts/pick_nim_model.py --tag voice-upgrade`, 2026-10-13 at 10:30
+     IST -- morning, not the evening peak the script asks for -- five runs of each of
+     T1-T8 through Baby's provider class with Baby's real tool schemas):
+
+     | model | quality | first token p50 | p95 | score | stream errors |
+     |---|---|---|---|---|---|
+     | openai/gpt-4o-mini | 100 | 1.01 s | 2.86 s | 96.0 | 0 |
+     | openai/gpt-5.4-mini | 100 | 1.20 s | 2.85 s | 95.2 | 0 |
+     | openai/gpt-5.4-nano | 100 | 1.25 s | 2.57 s | 95.0 | 0 |
+
+     Quality is the mean pass rate over the eight tests; the score subtracts four
+     points per second of median first token. All three are perfect on quality, so
+     the whole gap is 0.19 s of median first token. The first report had
+     gpt-5.4-mini at 0% on T4 (honest about a failed tool) and nano at 40%: both write
+     typographic apostrophes ("couldn’t open Spotify"), which the honesty check did not
+     recognise, and "open Spotify" then read as a claim of success. Their replies were
+     honest. The check now normalises the apostrophe and also accepts "isn't
+     installed", and the saved replies were rescored without a new call. The live
+     agent had the same blind spot: its one forced re-ask when a reply promises an
+     action and calls no tool matched only "I'll", never "I’ll". It takes both now.
+
+     The other three bars pass. No request failed: OpenRouter lists no `temperature`
+     for the gpt-5.4 models and drops the one Baby sends. The recovery probe worked
+     for all three. The latency bar passes narrowly and off-peak: gpt-5.4-mini's median
+     is 1.198 s against 1.2 s, and one first token in forty (3.94 s) went past the
+     voice cutoff, the only one of any model. gpt-4o-mini's p95 was 4.01 s in the
+     evening run of #83 and 2.86 s this morning, so a run at the owner's evening hours
+     could tip it.
+
+     The voice eval (#172; ten spoken cases, three runs each) is where the new model
+     is better: 90% against 83% for gpt-4o-mini and 70% for nano. gpt-4o-mini still
+     opened with "Sure!" once in three despite the voice rules, and once searched the
+     web for a price already in the conversation; nano used "focus" for "open VS
+     Code", ran past the ninety words a spoken Supabase answer gets, and answered
+     thinking aloud with more than the few words it calls for. Every model failed the
+     Hinglish case.
+
+     Cost, from the token counts of five voice turns on a fresh install (no history
+     yet, so a floor): gpt-5.4-mini $0.00174 a turn, gpt-4o-mini $0.00038, nano
+     $0.00073 -- 4.6 times as much, about $5 a month against about $1 at a hundred
+     voice turns a day, rising with history.
+
+     So the owner is choosing between better-behaved spoken replies for 4.6 times the
+     cost and 0.2 s more median wait, with no difference on Baby's tool battery. To
+     take it, change `models.nim_primary.model` to `openai/gpt-5.4-mini` in
+     `%LOCALAPPDATA%\baby\config.yaml` (and in the shipped template, with the two
+     README lines that name gpt-4o-mini, if it should be everyone's default).
+
+     **Spoken Hinglish now names its script, which helps one model only.** Every model
+     answered a Hinglish voice turn in Latin letters, which the English voice reads.
+     The pin said "Reply ONLY in Hinglish", and each model took that over VOICE_STYLE.
+     On a voice turn both pins now say "Hinglish, with every Hindi word in Devanagari
+     and English words in Latin". gpt-5.4-mini then wrote most of its Hindi words in
+     Devanagari in two runs of three, still with a few in Latin; gpt-4o-mini and nano
+     did not change. Typed turns are unchanged. Doing it reliably needs transliteration
+     before speech, or a voice that reads Hinglish as written -- the parked Sarvam work.
+175. **What a review of the whole branch found between the phases.** Each phase of
+     #168-#174 was reviewed on its own; one more review read them together. Eight
+     findings held up, all fixed:
+
+     - **A mistyped voice setting stopped Baby starting.** #173 moved the
+       `vad_silence_ms` parse into the pipeline's constructor and #168 made the
+       `conversation:` block reach it, both outside `load()`'s fail-soft path, so a
+       hand-edit like `vad_silence_ms: 700ms` or `window_s: 10s` raised out of the
+       server instead of turning voice off. The server now builds and loads the
+       pipeline in one fail-soft step; a bad value costs voice, with the reason in
+       the log, and text keeps working.
+     - **`end_phrases: bas` became the letters b, a and s**, so a short follow-up
+       with an "a" in it ended the conversation. A single string is one phrase.
+     - **An empty answer was silent on voice.** When the model returns nothing even
+       after the retry, the honest fallback line was returned but never published,
+       so the voice side had nothing to say -- the silence #170 set out to end. It is
+       published now, as the decline path already did.
+     - **The apology took the reply's timing stamps.** #170's spoken apology counted
+       as `tts` and `audio`, so an error turn's timing line read like a reply. It is
+       exempt now, like the confirmation line.
+     - **Emoji coverage was narrower than #172 claimed.** Stars, clocks, play
+       buttons, flags, arrows, skin tones and joined family emoji were still read
+       out. `voice/tts.EMOJI_RE` now covers them; the eval uses the same pattern.
+     - **The spec's "do not repeat what the user already knows" rule was missing**
+       from VOICE_STYLE. It is one clause in the no-stock-openers bullet, added after
+       the eval runs of #174, so those numbers predate it.
+     - **Checklist rows asked to watch the chat for voice text**, which the chat never
+       shows; and the Hindi row expected Hinglish to reach the Hindi voice, which
+       #174 records as failing. Both are reworded.
+
+     Looked at and left: speech while Baby is about to answer counts as an
+     interruption by design (#170), so an "uh" then cancels the question; with
+     `barge_in_keep_audio` on, the "uh" is then set aside as thinking aloud and the
+     question has to be asked again -- the same outcome as the beep without it.

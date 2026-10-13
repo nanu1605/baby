@@ -1,0 +1,41 @@
+model: openai/gpt-5.4-nano  test: T7  run: 1
+score: {"pass": true, "hinglish_hits": 23}
+calls:
+final:
+Haan yaar, weekend “ghar pe chill” ke liye kuch mast plan ideas—choose kar lo mood ke hisaab se 😄
+
+**1) Movie + Snacks Night**
+- 2-3 movies shortlist (one comedy, one action, one feel-good)
+- “snack challenge”: popcorn + chips + kuch homemade (maggi/cheese toast)
+- Last me short review: “best scene” 1 minute per person
+
+**2) Gaming / LAN-less Tournament (ghar ke andar)**
+- Fifa/EAFC, Tekken, Valorant practice, Uno—jo bhi comfortable ho
+- 3 rounds ka mini-tournament + winner gets “best snack” / “remote control” 😄
+
+**3) Cooking / Chai + Dessert Experiment**
+- Easy options: **pasta arrabbiata**, **manchurian**, **paneer tikka**, ya **fried rice**
+- Dessert: **brownie**, **milkshake**, ya **oreo shake**
+- “No recipe challenge”: jo available ho usse best banani
+
+**4) Clean + Setup “Cozy Mode”**
+- Room tidy + lights thodi warm
+- Playlist banake “vibes” set
+- 1 hour deep clean, phir straight chill
+
+**5) Board Games / Cards / Puzzle**
+- Ludo, Uno, chess, tambola (ghar walon ke saath super fun)
+- Or jigsaw puzzle + chai = aesthetic combo
+
+**6) Dream Trip + Photoshoot (ghar pe fun)**
+- Mock “travel vlog”: 10 min screen recording, fun narration
+- Best: living room ko “cafe” ya “beach” vibe deke
+
+**7) Early Sleep, Late Chill (healthy twist)**
+- 45 min workout/yoga
+- Shower + chai
+- Phir 1 long series episode + lights-off
+
+**Quick pick karte hain:**
+Tum weekend pe **alone chill** karoge ya **family ke saath**?  
+Aur mood: **movie / food / gaming / games** me se kya pasand hai?

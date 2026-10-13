@@ -1,0 +1,5 @@
+model: openai/gpt-4o-mini  test: T6  run: 1
+score: {"pass": true, "devanagari_ratio": 1.0}
+calls:
+final:
+"कल का दिन एक नई शुरुआत है। अपने सपनों की ओर कदम बढ़ाने का समय है। विश्वास रखो, मेहनत रंग लाएगी।"

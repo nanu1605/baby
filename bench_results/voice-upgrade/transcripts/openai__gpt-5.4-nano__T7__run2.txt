@@ -1,0 +1,50 @@
+model: openai/gpt-5.4-nano  test: T7  run: 2
+score: {"pass": true, "hinglish_hits": 19}
+calls:
+final:
+Haan yaar, weekend “ghar pe chill” ke liye kuch mast plans—choose kar lo mood ke hisaab se 😄
+
+## 1) Movie + Comfort Night (Low effort, High vibe)
+- 1/2 movie + 1 series (mix)
+- Snacks: popcorn + fries/chaat/whatever
+- Light: dim + playlist (lofi/feel-good)
+**Pro tip:** “theme” set karo—romcom night / sci‑fi night / horror (agar vibe ho).
+
+## 2) Game Night + Snacks Tournament
+- FIFA/EA FC, Valorant custom, Mario/any casual, ya board games
+- Winner gets “boss snack” (like brownies/ice cream)
+**Pro tip:** 3 rounds max, warna weekend “overgaming” ho jayega 😅
+
+## 3) Cooking Challenge (2 hours fun)
+- Pair game: tum + house partner (or friend/parent)
+- Theme: “One ingredient, multiple dishes”  
+  Example: paneer/chicken/veg → paneer tikka + sandwich / chicken fried rice + wrap
+**End:** sab milke taste test + ranking.
+
+## 4) Cleaning + Reset + Mini Self-care
+- 30–40 min “speed clean”
+- Then: shower + skincare / hair oil / face pack
+- Evening: cozy tea/coffee + music
+**Result:** ghar bhi fresh, mood bhi.
+
+## 5) Photo/Memory + Skill Night
+- Old photos arrange, ya phone videos export + montage
+- Skill: something quick like Canva posters, editing, language practice, or learning a song on guitar
+**Pro tip:** 1 hour learn + 30 min output (small but satisfying).
+
+## 6) “Outdoor but at Home” (Balcony/terrace vibe)
+- Blankets + string lights
+- Drinks + snacks
+- Sunset/late evening walk around building + return
+**Cozy + low cost.**
+
+---
+
+### Quick question: tumhara mood kya hai?
+1) **Relax/Netflix**  
+2) **Games**  
+3) **Food/cooking**  
+4) **Clean + self-care**  
+5) **Creative/skill**
+
+Bas number bol do—main uske hisaab se 1 perfect weekend plan (time-wise) bana deta hoon.

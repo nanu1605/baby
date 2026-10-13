@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+
 from core.agent import MAX_TOOL_ITERATIONS, AgentCore
 from core.bus import EventBus
 from core.providers.base import ToolCall
@@ -227,8 +229,17 @@ async def test_empty_reply_and_empty_retry_serves_honest_line(db):
     from core.agent import _EMPTY_REPLY_FALLBACK
 
     agent, provider, conv_id = await _make_agent(db, ["", ""])
+    agent.bus = EventBus()
+    feed = agent.bus.subscribe()
     reply = await agent.run_turn("hi")
     assert reply == _EMPTY_REPLY_FALLBACK
+    # Published as a token too, so a voice turn speaks it instead of going quiet.
+    tokens = []
+    while not feed.empty():
+        event = feed.get_nowait()
+        if event.kind == "token":
+            tokens.append(event.payload["text"])
+    assert "".join(tokens).strip() == _EMPTY_REPLY_FALLBACK
     assert "(no response)" not in reply
     # The silence is recorded for the audit trail.
     row = await db._fetchone(
@@ -287,9 +298,10 @@ async def test_cancelled_turn_writes_closure_marker(db):
     assert "do not answer" in rows[-1]["content"]
 
 
-async def test_promise_without_action_gets_one_push(db):
+@pytest.mark.parametrize("apostrophe", ["'", "’"])
+async def test_promise_without_action_gets_one_push(db, apostrophe):
     script = [
-        "I'll open Google and run the search for you.",
+        f"I{apostrophe}ll open Google and run the search for you.",
         _tc("echo_tool", {"text": "searched"}),
         "Done — here are the results.",
     ]
@@ -371,6 +383,20 @@ async def test_successful_suggestion_arms_pending(db):
     reply = await agent.run_turn("do the thing")
     assert "Next: Want me to zip it?" in reply
     assert agent.pending_suggestion == "Want me to zip it?"
+
+
+async def test_spoken_reply_that_asks_gets_no_second_offer(db):
+    # The voice prompt lets the model offer more itself; a second, system offer
+    # would leave "yes" answering the wrong question. Typed replies keep theirs.
+    for channel, offered in (("voice", False), ("cli", True)):
+        script = [_tc("echo_tool", {"text": "x"}), "Done. Want the details?", "Zip it?"]
+        conv_id = await db.create_conversation(channel)
+        agent = AgentCore(
+            FakeProvider(script), db, conv_id, channel=channel, suggest_next_step=True
+        )
+        reply = await agent.run_turn("do the thing")
+        assert ("Next:" in reply) is offered, channel
+        assert (agent.pending_suggestion is not None) is offered, channel
 
 
 async def test_proceed_executes_prior_suggestion_via_loop(db):

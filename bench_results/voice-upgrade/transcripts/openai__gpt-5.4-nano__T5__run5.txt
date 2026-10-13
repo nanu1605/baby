@@ -1,0 +1,12 @@
+model: openai/gpt-5.4-nano  test: T5  run: 5
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Haan Tanishq 😄 filhaal main yahin hoon—PC pe kya chal raha hai, wo dekhne ke liye mujhe screen/status check karna hoga.
+
+Chaho toh main:
+1) tumhari screen dekh ke bata du kya open hai, ya  
+2) system stats (CPU/RAM/GPU) dekh lu, ya  
+3) kisi specific cheez kaam pe focus karu?
+
+Kaunsa option?

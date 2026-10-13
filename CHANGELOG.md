@@ -1,5 +1,77 @@
 # Changelog
 
+## Unreleased -- conversational voice
+
+Baby's voice, reworked so talking to it feels like a conversation. Most of what that
+takes was already there -- streamed replies, sentence-by-sentence speech, stopping
+when you talk over it -- so this release fixes what was missing around it.
+
+- **Your follow-up settings now apply.** The `conversation:` block in `config.yaml`
+  -- how long Baby keeps listening after it answers, and which phrases end the
+  conversation -- was never read; Baby used built-in values instead. It is read now.
+  If you end conversations by saying "bas" or "so jao", add them to `end_phrases`:
+  those were built-in values, and the shipped config lists only "stop listening" and
+  "baby stop listening".
+- **Each spoken turn shows where its wait went.** After Baby answers aloud, the
+  activity feed shows one line: how long it took to transcribe what you said, when
+  the first word of the answer arrived, and when Baby started speaking, all counted
+  from the moment you stopped talking.
+- **Decimals, version numbers and site names are read the way you would say them.**
+  Baby used to stop at every full stop, so "12.5 dollars" came out as "twelve" --
+  pause -- "five dollars", and "example.com" was cut in two. It now says "twelve
+  point five" and "example dot com", and a full stop only ends a sentence when it
+  really is the end of one.
+- **Lists are spoken item by item.** A list without full stops used to be held back
+  and read in one go at the very end of the reply. Each line is now spoken as soon as
+  it is written.
+- **Shorter pauses between sentences.** Baby used to finish saying one sentence
+  before it began preparing the next, which left a pause at every full stop. It now
+  prepares the next sentence while it is still speaking.
+- **Interrupting lands sooner.** While Baby was preparing a sentence it was not
+  listening, so speaking over it just before it started to talk was only noticed once
+  it had begun the sentence. It listens the whole time now, and the stop button acts
+  at once too.
+- **Baby tells you when an answer went wrong.** If the answer failed, or Baby ran
+  out of steps on a long task, it used to go quiet and then play the listening sound
+  as if it had answered. It now says so out loud. And one sentence that cannot be
+  prepared no longer takes the rest of the answer with it.
+- **With a headset, interrupting Baby can keep what you said.** Talking over Baby
+  stops it, plays a beep, and throws away the words you had just said, so you say
+  them again after the beep. Set `voice: barge_in_keep_audio: true` and Baby instead
+  carries straight on listening, starting from the words that interrupted it. It is
+  off by default because on open speakers Baby can hear its own voice, take it for
+  an interruption, and answer itself.
+- **Baby stops talking the moment you interrupt.** It used to finish the bit of
+  audio already sent to the speaker first.
+- **Interrupting no longer resets speaker recognition.** If you use voice
+  recognition, a voice Baby did not recognise could win back its trust by talking
+  over it. An interruption now counts as part of the same conversation.
+- **Baby knows its answer will be spoken.** Voice turns now tell the model to talk
+  like a person: no lists, formatting, "Sure, I'd be happy to help" or your question
+  repeated back; short answers to short questions; and when you correct yourself
+  mid-sentence ("open Chrome -- no wait, VS Code"), act only on what you settled on.
+- **Hindi answers go to the Hindi voice.** Baby is now asked to write spoken Hindi in
+  Hindi script, which is what picks the Hindi voice; Hindi in English letters went to
+  the English one. English words inside a Hindi sentence no longer come with stray
+  "en" and "hi" sounds. Hinglish is asked for the same way, but most models still
+  answer it in English letters, so a Hinglish answer is usually still read by the
+  English voice.
+- **Baby no longer reads out emoji** ("done thumbs up"), and a spoken answer that
+  already ends in a question is no longer followed by a second "want me to ...?".
+- **"Uh... let me think" no longer gets an answer.** Thinking aloud used to be sent to
+  Baby as a question. Baby now listens again for your actual question. "Yes", "no",
+  "haan", "ruko" and anything said as a question ("matlab?") are never treated this
+  way.
+- **Baby waits a little longer before deciding you have finished.** A short pause
+  mid-sentence used to end what you were saying. New installs wait 0.7 s instead of
+  0.4 s; on an existing install set `voice: vad_silence_ms: 700` to match.
+- **Hindi is less often heard as another language.** Set `voice: stt: languages:
+  [en, hi]` and speech recognition only chooses between English and Hindi, instead
+  of sometimes hearing Hindi as Urdu or Punjabi.
+- **A typo in a voice setting no longer stops Baby starting.** Voice turns off, the
+  log says why, and typing keeps working.
+- **When the model returns nothing, Baby says so out loud** instead of going quiet.
+
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 
 Fixes reported from running Baby on an actual machine rather than a VM -- five
