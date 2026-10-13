@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+import pytest
+
 from core.agent import MAX_TOOL_ITERATIONS, AgentCore
 from core.bus import EventBus
 from core.providers.base import ToolCall
@@ -287,9 +289,10 @@ async def test_cancelled_turn_writes_closure_marker(db):
     assert "do not answer" in rows[-1]["content"]
 
 
-async def test_promise_without_action_gets_one_push(db):
+@pytest.mark.parametrize("apostrophe", ["'", "’"])
+async def test_promise_without_action_gets_one_push(db, apostrophe):
     script = [
-        "I'll open Google and run the search for you.",
+        f"I{apostrophe}ll open Google and run the search for you.",
         _tc("echo_tool", {"text": "searched"}),
         "Done — here are the results.",
     ]

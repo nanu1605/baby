@@ -78,7 +78,8 @@ def _format_past_context(hits: list[dict] | None) -> str | None:
 # no action gets ONE deterministic retry telling the model to act now.
 _INTENT_ONLY_RE = re.compile(
     r"^\s*(?:(?:sure|okay|ok|right|alright)[,!\s]+)?"
-    r"(?:opening\b|(?:i'?ll|i\s+will|let\s+me)\s+"
+    # Either apostrophe: gpt-5.4 models write "I’ll" (DECISIONS #174).
+    r"(?:opening\b|(?:i['’]?ll|i\s+will|let\s+me)\s+"
     r"(?:open|go|search|run|start|check|look|get|fetch|take|close|launch"
     r"|browse|find|read|type|press|try|pull|research)\b)",
     re.IGNORECASE,
