@@ -566,6 +566,22 @@ microphone, and none of it has had one yet. A config change only takes effect af
 - [ ] **Hindi stays Hindi.** Set `voice: stt: languages: [en, hi]`, restart, and ask
       five or six questions in Hindi. Each one shows in the feed as `voice: heard`
       followed by Devanagari, none in Urdu script or another language.
+- [ ] **Your config, after installing this build.** These keys are read from
+      `%LOCALAPPDATA%\baby\config.yaml`, which an install never overwrites, so a
+      returning install keeps its old values until you change them:
+      `voice: stt: languages: [en, hi]`, `voice: vad_silence_ms: 700`, and, with the
+      headset on, `voice: barge_in_keep_audio: true`. Quit Baby (app) from the tray
+      and start it again.
+- [ ] **Before and after, ten turns each.** With `voice: tts: prefetch: false`, ask
+      ten questions by voice whose answers run to a few sentences, and copy the ten
+      timing lines from the feed. Set it back to `true`, restart, and ask the same
+      ten. `end` should drop, because the gap between sentences is gone; `stt` and
+      `audio` (the first sentence) should not move much. Those twenty lines are the
+      before/after table for the pull request.
+- [ ] **The model, last and only if you choose it** (DECISIONS #174). Set
+      `models: nim_primary: model: openai/gpt-5.4-mini`, restart, and ask the same ten
+      again. Compare `token` (first word from the model) with the run before. Put it
+      back to `openai/gpt-4o-mini` if the wait is worse than the answers are better.
 
 ## 6. Regression on the real box
 
