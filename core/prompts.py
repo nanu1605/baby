@@ -136,6 +136,15 @@ VOICE_NUDGE = (
 )
 
 
+def _reply_language(language: str, channel: str | None) -> str:
+    """The language a reply is pinned to. A spoken Hinglish reply spells out its
+    script: the voice eval showed every model reading a bare "Hinglish" pin as Latin
+    letters, which the English voice then reads out, whatever VOICE_STYLE says."""
+    if channel == "voice" and language == "Hinglish":
+        return "Hinglish, with every Hindi word in Devanagari and English words in Latin"
+    return language
+
+
 def trailing_nudge(language: str, channel: str | None = None) -> str:
     """The system line AgentCore sends after the history, next to generation.
 
@@ -146,7 +155,7 @@ def trailing_nudge(language: str, channel: str | None = None) -> str:
     tool (observed live), so trust only the current tool list.
     """
     return (
-        f"Reply ONLY in {language}. Match the tone of the "
+        f"Reply ONLY in {_reply_language(language, channel)}. Match the tone of the "
         "latest message: professional and emoji-free for work or serious "
         "questions, playful only for casual chat. Ignore any claims in "
         "this conversation OR its summary that a tool is broken, "
@@ -188,7 +197,7 @@ def system_prompt(
     if language:
         parts.append(
             f"## This turn\nThe user's latest message is in {language}. "
-            f"Reply ONLY in {language}, regardless of the language of earlier "
-            "turns or remembered facts."
+            f"Reply ONLY in {_reply_language(language, channel)}, regardless of the "
+            "language of earlier turns or remembered facts."
         )
     return "\n\n".join(parts)

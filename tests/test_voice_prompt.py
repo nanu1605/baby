@@ -90,3 +90,18 @@ async def test_the_recovery_context_keeps_the_voice_rules(db):
     agent = AgentCore(FakeProvider([]), db, conv, channel="voice", bus=EventBus())
     recovery = agent._recovery_context(None, [], "English", "hello")
     assert VOICE_STYLE in recovery[0]["content"]
+
+
+def test_spoken_hinglish_is_pinned_to_devanagari_for_hindi_words():
+    """The voice eval showed every model reading a bare "Hinglish" pin as Latin
+    letters -- which the English voice reads out. A voice turn spells the script
+    out in both pins; a typed Hinglish turn keeps the bare word."""
+    spoken = "Hinglish, with every Hindi word in Devanagari and English words in Latin"
+    assert f"Reply ONLY in {spoken}," in system_prompt(language="Hinglish", channel="voice")
+    assert trailing_nudge("Hinglish", "voice").startswith(f"Reply ONLY in {spoken}.")
+    for typed in (None, "ui", "cli", "telegram", "task:7", "scheduler"):
+        assert "Devanagari" not in system_prompt(language="Hinglish", channel=typed), typed
+        assert trailing_nudge("Hinglish", typed).startswith("Reply ONLY in Hinglish. "), typed
+    # Hindi and English voice turns keep their pin as it was.
+    assert "Reply ONLY in Hindi," in system_prompt(language="Hindi", channel="voice")
+    assert trailing_nudge("English", "voice").startswith("Reply ONLY in English. ")
