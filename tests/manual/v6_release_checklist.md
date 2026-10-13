@@ -513,9 +513,9 @@ microphone, and none of it has had one yet. A config change only takes effect af
 - [ ] **A site name is spoken with "dot".** Ask "what is the address of Wikipedia".
       You hear "wikipedia dot org", not two separate words.
 - [ ] **A long list starts before it is finished.** Ask for "ten things to pack for a
-      trip, one per line". Baby is already speaking the first items while the list is
-      still growing in the chat, and in the timing line `sentence` is within a
-      fraction of a second of `token`.
+      trip, one per line". Baby starts speaking the first items while the model is
+      still writing the rest: in the timing line `sentence` is within a fraction of a
+      second of `token`, and well before `end`.
 - [ ] **"Let me check" comes before the answer.** Ask something that needs a tool
       ("how much free disk space do I have"). If Baby says a line before using the
       tool, you hear it on its own, then the answer -- never run together.
@@ -524,8 +524,8 @@ microphone, and none of it has had one yet. A config change only takes effect af
       set `voice: tts: prefetch: false`, restart, and ask again: the pauses are
       clearly longer. Put it back to `true`.
 - [ ] **An interruption before the first word lands before it.** Ask for "one very
-      long sentence about the history of tea". The moment its text appears in the
-      chat, and before you hear it, start talking. You hear no syllable of the
+      long sentence about the history of tea". The moment the orb turns to speaking,
+      and before you hear anything, start talking. You hear no syllable of the
       answer, and the timing line ends in `cut 0.0s`. (The automated test
       `test_barge_in_detected_while_synth_runs` is the exact check; this is the
       by-ear one.)
@@ -534,8 +534,8 @@ microphone, and none of it has had one yet. A config change only takes effect af
       skipped.
 - [ ] **Interrupting keeps your words.** Set `voice: barge_in_keep_audio: true` (you
       use a headset) and restart. Ask for a long answer and, while Baby is speaking,
-      say "stop, what's the time instead". Baby stops with no beep, and the chat shows
-      the whole of what you said, from "stop" onwards, as the next question.
+      say "stop, what's the time instead". Baby stops with no beep, and the feed's
+      `voice: heard` line shows the whole of what you said, from "stop" onwards.
 - [ ] **A one-word interruption is enough.** Ask for a long answer and say just
       "stop" over it. Baby stops and treats "stop" as your turn; it does not say it
       heard nothing.
@@ -547,15 +547,18 @@ microphone, and none of it has had one yet. A config change only takes effect af
       `cut 0.1s` (it was 0.2-0.3 s before this change).
 - [ ] **Answers sound spoken.** Ask "give me three tips for better sleep". Baby says
       them as sentences, with no "first point" list reading, no "Sure!" and no
-      repeating your question.
+      repeating your question. (On `gpt-4o-mini` a "Sure!" turned up once in three
+      eval runs; #174.)
 - [ ] **A self-correction is followed.** Say "open Chrome -- no wait, open Notepad".
       Notepad opens; Chrome does not.
 - [ ] **"That" is understood.** Ask about a product's price, then "how much was
       that again?". Baby answers with the price, without asking what you mean.
-- [ ] **Hindi in the Hindi voice.** Ask something in Hindi, or in Hinglish. The
-      answer is spoken in the Hindi voice, not the English one, and English words
-      in it ("Chrome", "weekend") are said plainly, with no "en" or "hi" sounds
-      around them. (The chat window shows typed conversations only.)
+- [ ] **Hindi in the Hindi voice.** Ask something in Hindi. The answer is spoken in
+      the Hindi voice, not the English one, and English words in it ("Chrome",
+      "weekend") are said plainly, with no "en" or "hi" sounds around them. Then ask
+      in Hinglish and note which voice answers: on `gpt-4o-mini` it is usually the
+      English one, a known limit (#174). (The chat window shows typed conversations
+      only.)
 - [ ] **Thinking aloud is ignored.** After waking Baby, say "uh... let me think",
       pause, then ask a real question. Baby says nothing to the first part and answers
       the question; the feed shows `voice: listening (thinking aloud: 'Uh... let me

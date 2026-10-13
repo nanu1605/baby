@@ -68,6 +68,9 @@ when you talk over it -- so this release fixes what was missing around it.
 - **Hindi is less often heard as another language.** Set `voice: stt: languages:
   [en, hi]` and speech recognition only chooses between English and Hindi, instead
   of sometimes hearing Hindi as Urdu or Punjabi.
+- **A typo in a voice setting no longer stops Baby starting.** Voice turns off, the
+  log says why, and typing keeps working.
+- **When the model returns nothing, Baby says so out loud** instead of going quiet.
 
 ## v6.0.2 -- usability fixes found on a real desktop (2026-09-07)
 

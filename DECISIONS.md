@@ -3272,3 +3272,37 @@ Running log of non-obvious choices made during the build. Newest last.
      Devanagari in two runs of three, still with a few in Latin; gpt-4o-mini and nano
      did not change. Typed turns are unchanged. Doing it reliably needs transliteration
      before speech, or a voice that reads Hinglish as written -- the parked Sarvam work.
+175. **What a review of the whole branch found between the phases.** Each phase of
+     #168-#174 was reviewed on its own; one more review read them together. Eight
+     findings held up, all fixed:
+
+     - **A mistyped voice setting stopped Baby starting.** #173 moved the
+       `vad_silence_ms` parse into the pipeline's constructor and #168 made the
+       `conversation:` block reach it, both outside `load()`'s fail-soft path, so a
+       hand-edit like `vad_silence_ms: 700ms` or `window_s: 10s` raised out of the
+       server instead of turning voice off. The server now builds and loads the
+       pipeline in one fail-soft step; a bad value costs voice, with the reason in
+       the log, and text keeps working.
+     - **`end_phrases: bas` became the letters b, a and s**, so a short follow-up
+       with an "a" in it ended the conversation. A single string is one phrase.
+     - **An empty answer was silent on voice.** When the model returns nothing even
+       after the retry, the honest fallback line was returned but never published,
+       so the voice side had nothing to say -- the silence #170 set out to end. It is
+       published now, as the decline path already did.
+     - **The apology took the reply's timing stamps.** #170's spoken apology counted
+       as `tts` and `audio`, so an error turn's timing line read like a reply. It is
+       exempt now, like the confirmation line.
+     - **Emoji coverage was narrower than #172 claimed.** Stars, clocks, play
+       buttons, flags, arrows, skin tones and joined family emoji were still read
+       out. `voice/tts.EMOJI_RE` now covers them; the eval uses the same pattern.
+     - **The spec's "do not repeat what the user already knows" rule was missing**
+       from VOICE_STYLE. It is one clause in the no-stock-openers bullet, added after
+       the eval runs of #174, so those numbers predate it.
+     - **Checklist rows asked to watch the chat for voice text**, which the chat never
+       shows; and the Hindi row expected Hinglish to reach the Hindi voice, which
+       #174 records as failing. Both are reworded.
+
+     Looked at and left: speech while Baby is about to answer counts as an
+     interruption by design (#170), so an "uh" then cancels the question; with
+     `barge_in_keep_audio` on, the "uh" is then set aside as thinking aloud and the
+     question has to be asked again -- the same outcome as the beep without it.
