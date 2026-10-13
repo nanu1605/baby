@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-nano  test: T8  run: 5
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Mumbai","why":"Massive variety of iconic street food, strong everyday street-scene culture, late-night availability, and affordability across multiple neighborhoods."}

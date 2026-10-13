@@ -1,0 +1,43 @@
+model: openai/gpt-5.4-mini  test: T7  run: 5
+score: {"pass": true, "hinglish_hits": 15}
+calls:
+final:
+Bilkul yaar — ghar pe bhi weekend full chill + mast ho sakta hai. Yeh lo ek easy, fun plan:
+
+### Lazy-to-fun weekend plan
+**Morning**
+- Thoda late uthna, chai/coffee + breakfast
+- 20–30 min balcony/window sunlight + music
+- Ek light “reset”: room tidy, bedsheet change, phone cleanup
+
+**Afternoon**
+- **Movie marathon**: 1 comfort movie + 1 fun movie  
+  - Comedy / thriller / feel-good pick kar
+- Ya **gaming session**: chill solo game ya friends ke saath
+- Light snack + cold drink setup, proper home theater vibe
+
+**Evening**
+- **Cooking experiment**: maggi upgrade, sandwich, pasta, or mocktail
+- **Mini activity**:
+  - playlist banana
+  - journal/plan next week
+  - YouTube rabbit hole but with a theme: food, travel, tech, cars, anything
+
+**Night**
+- Fan/light dim karke **pillow + blanket setup**
+- One episode of a series
+- 10 min stretch / skincare / prep for Monday so mood bhi set rahe
+
+### Agar bilkul low-effort mood hai:
+- movie + snacks + nap + music + scrolling, no guilt weekend
+
+### Agar thoda productive bhi hona hai:
+- 1 hour room cleanup
+- 1 hour skill/learning
+- baaki pure time chill
+
+Agar chahe toh main **tera exact weekend schedule** bana du:
+- **lazy mode**
+- **fun mode**
+- **productive + chill mode**  
+Bas bol de kaunsa chahiye.

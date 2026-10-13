@@ -1,0 +1,19 @@
+model: openai/gpt-4o-mini  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 37}
+calls:
+final:
+Weekend pe chill karne ke liye kuch mast plans ho sakte hain:
+
+1. **Movie Marathon**: Apne favorite movies ya series ka ek marathon plan karo. Snacks ke saath ghar par hi cinema ka maza lo.
+
+2. **Game Night**: Doston ya family ke saath video games ya board games khelo. Thodi competition aur masti ho jayegi.
+
+3. **Cook Together**: Apne liye kuch naya khaana banane ki koshish karo. Recipe search karke, ek cooking session organize karo.
+
+4. **Outdoor Picnic**: Agar weather accha hai, to kisi park ya garden me picnic plan karo. Thodi nature ke beech relax karne ka maza alag hota hai.
+
+5. **DIY Projects**: Ghar ke liye kuch DIY projects ya crafts karo. Ye creative aur productive dono hote hain.
+
+6. **Reading Retreat**: Agar books padhne ka shauk hai, to ek reading retreat plan karo. Apni favorite books ke saath ek cozy corner me baithein.
+
+Koi bhi plan pasand aaye, to usme thoda aur detail add karne ka keh sakte ho!

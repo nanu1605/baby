@@ -1,0 +1,11 @@
+model: openai/gpt-5.4-nano  test: T5  run: 1
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Haan Tanishq—main yahin hoon 😄  
+Abhi mujhe tumhare PC ka live status dekhne ki zarurat hogi. Kya check karu?
+
+1) CPU/RAM/GPU usage  
+2) Temps & fans  
+3) Jo screen pe hai uska brief  
+4) Kisi specific kaam pe help (browser/file/app)

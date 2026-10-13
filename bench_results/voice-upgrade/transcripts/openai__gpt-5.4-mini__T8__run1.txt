@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-mini  test: T8  run: 1
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Mumbai","why":"It offers an unmatched variety of iconic street foods like vada pav, pav bhaji, bhel puri, sev puri, and misal pav, with lively food streets and consistently high energy and flavor."}

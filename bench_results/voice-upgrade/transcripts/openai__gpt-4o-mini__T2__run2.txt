@@ -1,0 +1,7 @@
+model: openai/gpt-4o-mini  test: T2  run: 2
+score: {"pass": true, "chain_ordered": true, "args_ok": true, "answer_ok": true}
+calls:
+  file_search({"query":"quarterly_report.pdf"})
+  read_file({"path":"C:\\Users\\tanis\\Documents\\quarterly_report.pdf"})
+final:
+The revenue number from the quarterly report is **$4.2M**.

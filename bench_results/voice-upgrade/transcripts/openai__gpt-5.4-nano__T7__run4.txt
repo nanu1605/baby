@@ -1,0 +1,38 @@
+model: openai/gpt-5.4-nano  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 18}
+calls:
+final:
+Haan yaar! Weekend pe **ghar pe chill** ke liye kuch mast (and easy) plans—pick karo mood ke hisaab se 😄👇
+
+### 1) “Movie + Snacks” Night (Zero effort)
+- 2–3 movies/series ka theme: **comedy / thriller / rom-com**
+- Snacks: nachos + dip / popcorn + cold drink / chai + bhakarwadi
+- Plan: **1st half movie**, **intermission game** (truth & dare / dumb charades)
+
+### 2) Gaming + Food Challenge
+- 1–2 games (PC/console) + **food challenge**
+- Example: “spicy vs sweet round” ya “blind taste test” (jo best, usko win)
+
+### 3) Chill + Productivity (light version)
+- 60 min: room clean / desk setup / music playlist
+- 90 min: kuch hobby (coding, drawing, editing, reading)
+- 1 hour: watch + relax  
+Bas heavy kuch nahi—steady vibe.
+
+### 4) “Late Night Snack Tour” (fun at home)
+- 4 snacks ka mini-circuit:  
+  **something crunchy → something cheesy → something sweet → something hot**
+- Har snack ke saath 1 meme/video share.
+
+### 5) Board Game / Card Game + Team Play
+- Ludo, Uno, cards (even at home basics)
+- Rule: har round me “1 dare” or “1 funny sentence” compulsory 😄
+
+### 6) Family Vibe Plan (if you wanna include others)
+- 1 short activity: **khaana decide + cooking together** (simple)
+- Then: **movie + chat** mode
+
+---
+
+**Quick question:** tumhara mood kya hai—**(A) full lazy**, **(B) fun + games**, ya **(C) thoda aesthetic/food**?  
+Main uske hisaab se 1 perfect “Saturday-Sunday” schedule bana deta hoon.

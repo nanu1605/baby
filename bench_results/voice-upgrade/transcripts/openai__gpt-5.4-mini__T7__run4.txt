@@ -1,0 +1,41 @@
+model: openai/gpt-5.4-mini  test: T7  run: 4
+score: {"pass": true, "hinglish_hits": 8}
+calls:
+final:
+Bilkul yaar — ghar pe chill weekend ke liye ek mast, zero-stress plan:
+
+### Friday night
+- **Order in / simple snack platter**: chips, dip, cold drink, maybe maggi or pizza
+- **Movie or series start**: ek light feel-good movie ya 2-3 episodes
+- **No productivity guilt**: bas phone silent, vibe on
+
+### Saturday
+- **Late wake-up**
+- **Breakfast/brunch at home**: chai + toast/omelette/paratha
+- **1 fun activity**:
+  - gaming session
+  - playlist + room cleaning
+  - cooking something new
+  - random YouTube rabbit hole
+- **Evening cozy mode**:
+  - indoor cafe vibe: lights dim, music low
+  - board game / cards if family/friends around
+
+### Sunday
+- **Slow morning**
+- **Self-care reset**:
+  - shave/grooming
+  - laundry
+  - clean desk/room for 20 min
+- **Chill ending**:
+  - comfort movie
+  - journaling / planning next week
+  - early sleep so Monday kam dard ho
+
+### Extra fun ideas
+- “**Theme day**” banao: retro movies, anime day, desi snacks day
+- **Build a snack combo challenge**
+- **Photo dump / memory cleanup** on phone
+- **Cook-off**: jo bhi pantry me hai usse best dish banana
+
+Agar chahe, main tere liye **exact hour-by-hour weekend chill schedule** bana deta hoon — lazy mode ya full fun mode?

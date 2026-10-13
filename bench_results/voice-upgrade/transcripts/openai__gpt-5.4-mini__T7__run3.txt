@@ -1,0 +1,53 @@
+model: openai/gpt-5.4-mini  test: T7  run: 3
+score: {"pass": true, "hinglish_hits": 17}
+calls:
+final:
+Bilkul yaar — ghar pe hi chill weekend ka full mast plan de deta hoon. Mood ke hisaab se choose kar:
+
+### 1) Proper Lazy Chill
+- Late wake-up
+- Strong chai / coffee
+- 1 movie + 1 series episode
+- Snacks ka mini stash: chips, maggi, popcorn
+- Phone on DND, bas vibe
+
+### 2) Cozy Reset Mode
+- Room thoda set kar
+- Bedsheet change, lights soft
+- Playlist laga ke clean-up
+- Shower + comfy clothes
+- Good food order karke pure relax
+
+### 3) Gaming + Snacks Setup
+- 1–2 solid games
+- Headphones full volume
+- Drink/snack nearby
+- 2-hour no-disturb zone
+- Raat ko guilt-free sleep
+
+### 4) Foodie Home Date With Yourself
+- Breakfast: bread omelette / poha / paratha
+- Lunch: something favorite order
+- Evening: tea + dessert
+- Dinner: movie ke saath comfort food
+
+### 5) Chill But Productive
+- 1–2 small kaam nipta
+- Old photos/music/docs sort kar
+- Thoda reading ya journaling
+- Baaki time pure chill
+
+### 6) Full Entertainment Marathon
+- Movie marathon
+- Web series binge
+- Meme scroll session
+- Discord/voice call with friends
+- Late-night snacks
+
+Agar chahe toh main tere liye:
+- **1-day exact weekend schedule**
+- **budget-friendly plan**
+- **friends ke saath ghar pe plan**
+- **single person relaxing plan**
+
+bana deta hoon.

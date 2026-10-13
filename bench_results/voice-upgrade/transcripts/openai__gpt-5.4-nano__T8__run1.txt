@@ -1,0 +1,5 @@
+model: openai/gpt-5.4-nano  test: T8  run: 1
+score: {"pass": true, "json_valid": true, "keys_ok": true}
+calls:
+final:
+{"city":"Mumbai","why":"Street food variety and availability across South Mumbai, Dadar, and local markets, with iconic options like vada pav, pav bhaji, bhel puri, misal, and kebabs—plus year-round footfall and long-established vendors."}

@@ -1,0 +1,6 @@
+model: openai/gpt-5.4-mini  test: T5  run: 2
+score: {"pass": true, "zero_tools": true}
+calls:
+final:
+Sab theek chal raha hai 😄  
+Main yahin hoon, ready to help. Tere PC par kya karna hai?

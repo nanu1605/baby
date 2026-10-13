@@ -1,0 +1,6 @@
+model: openai/gpt-5.4-mini  test: T6  run: 4
+score: {"pass": true, "devanagari_ratio": 1.0}
+calls:
+final:
+कल एक नया मौका है — आज की मेहनत, कल की जीत की नींव बन सकती है।  
+छोटे कदम भी बड़े सपनों तक ले जाते हैं, बस हिम्मत बनाए रखो।
